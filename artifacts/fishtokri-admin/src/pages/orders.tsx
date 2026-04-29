@@ -22,6 +22,7 @@ import {
 import iconView from "@/assets/icon-view.png";
 import iconEdit from "@/assets/icon-edit.png";
 import iconDelete from "@/assets/icon-delete.png";
+import recycleIcon from "@/assets/recycling-symbol.png";
 import { BRAND_COLORS } from "@/lib/brand";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -1683,37 +1684,50 @@ export default function Orders() {
     <div className="w-full bg-white">
       {headerSlot && createPortal(
         <>
-          <h1 className="text-lg font-bold text-[#162B4D] truncate">Orders</h1>
-          <p className="text-black text-sm truncate hidden sm:block">Track and manage all customer orders</p>
-          <div className="flex-1" />
-          <Button variant="outline" size="sm" onClick={() => { load(); loadStats(); }} className="h-8 gap-1.5 text-black">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </Button>
+          <h1 className="text-lg font-bold text-[#162B4D] truncate flex-shrink-0">Orders</h1>
+          <div className="flex items-center flex-wrap gap-0 border-b border-transparent flex-1 min-w-0">
+            {TABS.map(({ key, label, count }) => (
+              <button
+                key={key}
+                onClick={() => { setActiveTab(key); setStatusFilter(""); }}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 transition-colors flex-shrink-0 ${
+                  activeTab === key
+                    ? "border-[#1A56DB] text-[#1A56DB]"
+                    : "border-transparent text-black hover:text-[#1A56DB]"
+                }`}
+              >
+                {label}
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${activeTab === key ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-black"}`}>{count}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => { load(); loadStats(); }}
+            className="flex-shrink-0 p-1.5 rounded hover:bg-gray-100 transition-colors"
+            title="Refresh"
+          >
+            <span
+              className="block w-5 h-5"
+              style={{
+                backgroundColor: "#1A56DB",
+                WebkitMaskImage: `url(${recycleIcon})`,
+                maskImage: `url(${recycleIcon})`,
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskPosition: "center",
+                WebkitMaskSize: "contain",
+                maskSize: "contain",
+              }}
+            />
+          </button>
         </>,
         headerSlot
       )}
 
       {!isCreatePage && (<>
-      {/* Tabs row + New Order button */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-1">
-        <div className="flex items-center flex-wrap">
-          {TABS.map(({ key, label, count, icon: Icon, color }) => (
-            <button
-              key={key}
-              onClick={() => { setActiveTab(key); setStatusFilter(""); }}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
-                activeTab === key
-                  ? "border-[#1A56DB] text-[#1A56DB]"
-                  : "border-transparent text-black hover:text-[#1A56DB]"
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${activeTab === key ? "text-[#1A56DB]" : color}`} />
-              {label}
-              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${activeTab === key ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-black"}`}>{count}</span>
-            </button>
-          ))}
-        </div>
-
+      {/* New Order button */}
+      <div className="flex items-center justify-end pb-1 border-b border-gray-200">
         <Button size="sm" onClick={() => { resetCreateForm(); setLocation("/orders/new"); }} className="h-8 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
           <Plus className="w-3.5 h-3.5" /> New Order
         </Button>
@@ -1726,35 +1740,25 @@ export default function Orders() {
         {activeTab !== "invoices" && <div className="flex items-center gap-1.5 py-2.5 overflow-x-auto scrollbar-none bg-white">
           <button
             onClick={() => setStatusFilter("")}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-              !statusFilter
-                ? "bg-[#162B4D] text-white shadow-sm"
-                : "bg-white border border-gray-200 text-black hover:border-gray-300"
-            }`}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all bg-[#162B4D] text-white shadow-sm"
           >
             All
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${!statusFilter ? "bg-white/20 text-white" : "bg-gray-100 text-black"}`}>
+            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-white/20 text-white">
               {totalAll}
             </span>
           </button>
           {ALL_STATUSES.map((s) => {
             const cfg = STATUS_CONFIG[s];
-            const Icon = cfg.icon;
             const count = statsData[s] ?? 0;
-            const isActive = statusFilter === s;
+            const solidBg = SOLID_STATUS_BG[s] ?? "bg-gray-500";
             return (
               <button
                 key={s}
-                onClick={() => { setStatusFilter(isActive ? "" : s); setActiveTab("all"); }}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
-                  isActive
-                    ? `${cfg.bg} ${cfg.color} shadow-sm`
-                    : "bg-white border-gray-200 text-black hover:border-gray-300"
-                }`}
+                onClick={() => { setStatusFilter(s === statusFilter ? "" : s); setActiveTab("all"); }}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all ${solidBg} text-white shadow-sm`}
               >
-                <Icon className={`w-3 h-3 ${isActive ? cfg.color : "text-black"}`} />
                 {cfg.label}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/60" : "bg-gray-100 text-black"}`}>
+                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-white/25 text-white">
                   {count}
                 </span>
               </button>

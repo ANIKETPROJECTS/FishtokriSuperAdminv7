@@ -422,21 +422,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div id="page-header-slot" className="flex items-center gap-3 flex-1 min-w-0" />
-
-          <div className="flex items-center gap-2 min-w-0">
-            <UserCircle className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span className="text-sm font-semibold text-[#162B4D] truncate max-w-[140px] sm:max-w-none">{adminName}</span>
-          </div>
-          <div className="w-px h-6 bg-gray-200 mx-2 md:mx-4" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="text-gray-400 hover:text-red-500 hover:bg-red-50 h-8 px-3"
-            data-testid="button-logout"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
         </header>
 
         <div className={`flex-1 min-w-0 bg-white ${location.startsWith("/orders") ? "px-4 py-3" : "p-4 sm:p-6 lg:p-8"}`}>
