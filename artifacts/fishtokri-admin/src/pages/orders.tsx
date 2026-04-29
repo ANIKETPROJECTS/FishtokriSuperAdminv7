@@ -1613,57 +1613,60 @@ export default function Orders() {
   ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-4 w-full bg-white">
       {!isCreatePage && (<>
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      {/* Header — title, tabs, refresh and new order all in a single horizontal row */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-2">
+        <div className="flex items-baseline gap-3 flex-shrink-0">
           <h1 className="text-2xl font-bold text-[#162B4D]">Orders</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Track and manage all customer orders</p>
+          <p className="text-black text-sm">Track and manage all customer orders</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => { load(); loadStats(); }} className="h-8 gap-1.5 text-gray-500">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </Button>
-          <Button size="sm" onClick={() => { resetCreateForm(); setLocation("/orders/new"); }} className="h-8 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
-            <Plus className="w-3.5 h-3.5" /> New Order
-          </Button>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center">
+            {TABS.map(({ key, label, count, icon: Icon, color }) => (
+              <button
+                key={key}
+                onClick={() => { setActiveTab(key); setStatusFilter(""); }}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === key
+                    ? "border-[#1A56DB] text-[#1A56DB]"
+                    : "border-transparent text-black hover:text-[#1A56DB]"
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${activeTab === key ? "text-[#1A56DB]" : color}`} />
+                {label}
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${activeTab === key ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-black"}`}>{count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => { load(); loadStats(); }} className="h-8 gap-1.5 text-black">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </Button>
+            <Button size="sm" onClick={() => { resetCreateForm(); setLocation("/orders/new"); }} className="h-8 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white">
+              <Plus className="w-3.5 h-3.5" /> New Order
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Main Card */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        {/* Tabs */}
-        <div className="flex border-b border-gray-100">
-          {TABS.map(({ key, label, count, icon: Icon, color }) => (
-            <button
-              key={key}
-              onClick={() => { setActiveTab(key); setStatusFilter(""); }}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors ${
-                activeTab === key
-                  ? "border-[#1A56DB] text-[#1A56DB] bg-blue-50/40"
-                  : "border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${activeTab === key ? "text-[#1A56DB]" : color}`} />
-              {label}
-              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${activeTab === key ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-500"}`}>{count}</span>
-            </button>
-          ))}
-        </div>
+      {/* Full-width content area (no card wrapper) */}
+      <div className="bg-white">
 
         {/* Status Tabs — hidden on Invoices tab */}
-        {activeTab !== "invoices" && <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-50 overflow-x-auto scrollbar-none bg-gray-50/50">
+        {activeTab !== "invoices" && <div className="flex items-center gap-1.5 py-2.5 overflow-x-auto scrollbar-none bg-white">
           <button
             onClick={() => setStatusFilter("")}
             className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
               !statusFilter
                 ? "bg-[#162B4D] text-white shadow-sm"
-                : "bg-white border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                : "bg-white border border-gray-200 text-black hover:border-gray-300"
             }`}
           >
             All
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${!statusFilter ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${!statusFilter ? "bg-white/20 text-white" : "bg-gray-100 text-black"}`}>
               {totalAll}
             </span>
           </button>
@@ -1679,12 +1682,12 @@ export default function Orders() {
                 className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
                   isActive
                     ? `${cfg.bg} ${cfg.color} shadow-sm`
-                    : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                    : "bg-white border-gray-200 text-black hover:border-gray-300"
                 }`}
               >
-                <Icon className={`w-3 h-3 ${isActive ? cfg.color : "text-gray-400"}`} />
+                <Icon className={`w-3 h-3 ${isActive ? cfg.color : "text-black"}`} />
                 {cfg.label}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/60" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/60" : "bg-gray-100 text-black"}`}>
                   {count}
                 </span>
               </button>
@@ -1693,21 +1696,21 @@ export default function Orders() {
         </div>}
 
         {/* Toolbar */}
-        <div className="p-4 border-b border-gray-50 flex flex-wrap gap-2.5 items-center">
+        <div className="py-3 flex flex-wrap gap-2.5 items-center bg-white">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-black" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, phone, area..."
-              className="pl-8 h-9 text-sm"
+              className="pl-8 h-9 text-sm text-black placeholder:text-black/60"
             />
-            {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="w-3.5 h-3.5" /></button>}
+            {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black hover:text-red-500"><X className="w-3.5 h-3.5" /></button>}
           </div>
 
           <Select value={`${sortField}:${sortDir}`} onValueChange={(v) => { const [f, d] = v.split(":"); setSortField(f); setSortDir(d as any); }}>
-            <SelectTrigger className="h-9 w-44 text-sm gap-1">
-              <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+            <SelectTrigger className="h-9 w-44 text-sm gap-1 text-black">
+              <ArrowUpDown className="w-3.5 h-3.5 text-black" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1723,14 +1726,14 @@ export default function Orders() {
             variant="outline"
             size="sm"
             onClick={() => setShowFilters(!showFilters)}
-            className={`h-9 gap-1.5 ${showFilters ? "bg-blue-50 border-blue-200 text-[#1A56DB]" : "text-gray-500"}`}
+            className={`h-9 gap-1.5 ${showFilters ? "bg-blue-50 border-blue-200 text-[#1A56DB]" : "text-black"}`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             Filters {hasFilters && <span className="bg-[#1A56DB] text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">{[statusFilter, deliveryTypeFilter, dateFrom, dateTo].filter(Boolean).length}</span>}
           </Button>
 
           {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-gray-400 hover:text-red-500 gap-1">
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-black hover:text-red-500 gap-1">
               <X className="w-3.5 h-3.5" /> Clear
             </Button>
           )}
@@ -1738,11 +1741,11 @@ export default function Orders() {
 
         {/* Expandable Filter Row */}
         {showFilters && (
-          <div className="px-4 pb-3 flex flex-wrap gap-3 bg-gray-50/60 border-b border-gray-100 pt-3">
+          <div className="pb-3 flex flex-wrap gap-3 bg-white pt-3">
             <div className="flex flex-col gap-1">
-              <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Delivery Type</Label>
+              <Label className="text-[10px] font-bold text-black uppercase tracking-wide">Delivery Type</Label>
               <Select value={deliveryTypeFilter} onValueChange={(v) => setDeliveryTypeFilter(v === "_all" ? "" : v)}>
-                <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="All types" /></SelectTrigger>
+                <SelectTrigger className="h-8 w-36 text-xs text-black"><SelectValue placeholder="All types" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_all">All types</SelectItem>
                   <SelectItem value="slot">Slot</SelectItem>
@@ -1751,18 +1754,18 @@ export default function Orders() {
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">From Date</Label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs w-36" />
+              <Label className="text-[10px] font-bold text-black uppercase tracking-wide">From Date</Label>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs w-36 text-black" />
             </div>
             <div className="flex flex-col gap-1">
-              <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">To Date</Label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs w-36" />
+              <Label className="text-[10px] font-bold text-black uppercase tracking-wide">To Date</Label>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs w-36 text-black" />
             </div>
           </div>
         )}
 
         {/* Results Count */}
-        <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-50">
+        <div className="py-2 text-xs text-black">
           {loading ? "Loading..." : activeTab === "invoices"
             ? `${orders.filter(o => o.status !== "cancelled").length} invoice${orders.filter(o => o.status !== "cancelled").length !== 1 ? "s" : ""}`
             : `${total} order${total !== 1 ? "s" : ""} found`}
@@ -1855,66 +1858,66 @@ export default function Orders() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  <th className="px-4 py-3 text-left">Customer</th>
-                  <th className="px-4 py-3 text-left">Items</th>
-                  <th className="px-4 py-3 text-left">Total</th>
-                  <th className="px-4 py-3 text-left">Sub Hub</th>
-                  <th className="px-4 py-3 text-left">Time Slot</th>
-                  <th className="px-4 py-3 text-left">Location</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Delivery Partner</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                <tr className="bg-white border-b border-gray-200 text-xs font-semibold text-black uppercase tracking-wide">
+                  <th className="px-3 py-3 text-left">Customer</th>
+                  <th className="px-3 py-3 text-left">Items</th>
+                  <th className="px-3 py-3 text-left">Total</th>
+                  <th className="px-3 py-3 text-left">Sub Hub</th>
+                  <th className="px-3 py-3 text-left">Time Slot</th>
+                  <th className="px-3 py-3 text-left">Location</th>
+                  <th className="px-3 py-3 text-left">Status</th>
+                  <th className="px-3 py-3 text-left">Delivery Partner</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-100 bg-white">
                 {orders.map((o) => {
                   const total = effectiveOrderTotal(o);
                   const items: any[] = Array.isArray(o.items) ? o.items : [];
                   const slot = formatTimeSlot(o);
                   return (
-                    <tr key={String(o._id)} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-[#162B4D] text-sm">{o.customerName}</p>
-                        <p className="text-xs text-gray-500">{o.phone}</p>
+                    <tr key={String(o._id)} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-3">
+                        <p className="font-semibold text-black text-sm">{o.customerName}</p>
+                        <p className="text-xs text-black">{o.phone}</p>
                         <p className="text-xs text-black mt-1 whitespace-nowrap">{formatDate(o.createdAt)}</p>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         {items.length === 0 ? (
-                          <span className="text-xs text-gray-300">—</span>
+                          <span className="text-xs text-black">—</span>
                         ) : (
-                          <div className="space-y-0.5 max-w-[200px]">
+                          <div className="space-y-0.5 max-w-[220px]">
                             {items.map((it: any, i: number) => (
-                              <p key={i} className="text-xs text-[#162B4D] truncate">
+                              <p key={i} className="text-xs text-black truncate">
                                 <span className="font-medium">{it.name}</span>
-                                <span className="text-gray-500"> × {Number(it.quantity) || 1}{it.unit ? ` ${it.unit}` : ""}</span>
+                                <span> × {Number(it.quantity) || 1}</span>
                               </p>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="font-bold text-[#162B4D]">{formatRupees(total)}</span>
-                        {o.instantDeliveryCharge ? <p className="text-xs text-orange-500">+{formatRupees(o.instantDeliveryCharge)} delivery</p> : null}
+                      <td className="px-3 py-3">
+                        <span className="font-bold text-black">{formatRupees(total)}</span>
+                        {o.instantDeliveryCharge ? <p className="text-xs text-orange-600">+{formatRupees(o.instantDeliveryCharge)} delivery</p> : null}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         {o.subHubName
-                          ? <span className="text-xs font-medium text-[#162B4D]">{o.subHubName}</span>
-                          : <span className="text-xs text-gray-300">—</span>}
+                          ? <span className="text-xs font-medium text-black">{o.subHubName}</span>
+                          : <span className="text-xs text-black">—</span>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         {o.deliveryType === "takeaway" ? (
-                          <span className="text-xs text-gray-500 italic">Takeaway</span>
+                          <span className="text-xs text-black italic">Takeaway</span>
                         ) : slot ? (
-                          <span className="text-xs font-medium text-[#162B4D] whitespace-nowrap">{slot}</span>
+                          <span className="text-xs font-medium text-black whitespace-nowrap">{slot}</span>
                         ) : (
-                          <span className="text-xs text-gray-300">—</span>
+                          <span className="text-xs text-black">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         {o.deliveryArea
-                          ? <span className="text-xs text-[#162B4D]">{o.deliveryArea}</span>
-                          : <span className="text-xs text-gray-300">—</span>}
+                          ? <span className="text-xs text-black">{o.deliveryArea}</span>
+                          : <span className="text-xs text-black">—</span>}
                       </td>
                       <td className="px-4 py-3"><SolidStatusBadge status={o.status} deliveryType={o.deliveryType} /></td>
                       <td className="px-4 py-3">
@@ -1978,8 +1981,8 @@ export default function Orders() {
 
         {/* Pagination */}
         {pages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/40">
-            <p className="text-xs text-gray-400">Page {page} of {pages} · {total} total</p>
+          <div className="flex items-center justify-between py-3 border-t border-gray-100 bg-white">
+            <p className="text-xs text-black">Page {page} of {pages} · {total} total</p>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="h-7 w-7 p-0">
                 <ChevronLeft className="w-3.5 h-3.5" />
