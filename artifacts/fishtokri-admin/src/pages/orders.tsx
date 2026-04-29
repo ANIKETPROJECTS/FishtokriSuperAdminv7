@@ -116,31 +116,12 @@ function PaymentBadge({ order }: { order: any }) {
     (Array.isArray(order?.payments) && order.payments[0]?.mode) ||
     ""
   ).toLowerCase().trim();
-  const mode = rawMode === "upi" ? "upi"
-    : rawMode === "card" ? "card"
-    : rawMode === "wallet" ? "wallet"
-    : (rawMode === "cash" || rawMode === "cod" || rawMode === "") ? "cod"
-    : rawMode;
-  const cfg: Record<string, { label: string; cls: string; Icon: any }> = {
-    cod: { label: "COD", cls: "bg-amber-50 text-amber-700 border-amber-200", Icon: Banknote },
-    upi: { label: "UPI", cls: "bg-violet-50 text-violet-700 border-violet-200", Icon: Smartphone },
-    card: { label: "Card", cls: "bg-blue-50 text-blue-700 border-blue-200", Icon: CreditCard },
-    wallet: { label: "Wallet", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", Icon: Wallet },
-  };
-  const info = cfg[mode] ?? { label: mode.toUpperCase() || "—", cls: "bg-gray-50 text-black border-gray-200", Icon: Wallet };
-  const Icon = info.Icon;
-  const paid = order?.paymentStatus === "paid";
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className={`inline-flex items-center gap-1 w-fit text-[11px] font-semibold px-2 py-0.5 rounded-full border ${info.cls}`}>
-        <Icon className="w-3 h-3" />
-        {info.label}
-      </span>
-      {paid && (
-        <span className="inline-flex items-center w-fit text-[10px] font-semibold text-emerald-700">Paid</span>
-      )}
-    </div>
-  );
+  const label = rawMode === "upi" ? "UPI"
+    : rawMode === "card" ? "Card"
+    : rawMode === "wallet" ? "Wallet"
+    : (rawMode === "cash" || rawMode === "cod" || rawMode === "") ? "COD"
+    : rawMode.toUpperCase();
+  return <span className="text-xs font-medium text-black">{label}</span>;
 }
 
 function formatTime12(t: string): string {
@@ -506,37 +487,18 @@ function InlineDeliverySelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className={`group flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-all w-full max-w-[175px] hover:shadow-sm
-            ${assigned
-              ? "bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
-              : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-white hover:border-gray-300"
-            }`}
+          className="flex items-center gap-2 rounded-md border border-black bg-white px-2 py-1 text-xs font-medium text-black w-full max-w-[140px] hover:bg-gray-50"
         >
-          {assigned ? (
-            <div className="w-5 h-5 rounded-full bg-orange-200 flex items-center justify-center flex-shrink-0">
-              <Truck className="w-3 h-3 text-orange-600" />
-            </div>
-          ) : (
-            <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-              <User className="w-3 h-3 text-gray-400" />
-            </div>
-          )}
           <span className="flex-1 text-left truncate leading-tight">
             {assigned ? assignedName || "Assigned" : "Unassigned"}
           </span>
-          <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""} ${assigned ? "text-orange-400" : "text-gray-300"}`} />
+          <ChevronDown className={`w-3 h-3 flex-shrink-0 text-black transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="p-0 w-64 shadow-xl border border-gray-100 rounded-2xl overflow-hidden" align="start" sideOffset={6}>
+      <PopoverContent className="p-0 w-64 shadow-md border border-gray-200 rounded-md overflow-hidden bg-white" align="start" sideOffset={6}>
         {/* Header */}
-        <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/80">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assign Delivery Partner</p>
-          {isFiltered && (
-            <p className="text-[10px] text-blue-500 flex items-center gap-0.5 mt-0.5">
-              <Building2 className="w-2.5 h-2.5" />
-              {filtered.length} hub partner{filtered.length !== 1 ? "s" : ""}
-            </p>
-          )}
+        <div className="px-3 py-2 border-b border-gray-200">
+          <p className="text-[11px] font-semibold text-black uppercase tracking-wide">Assign Delivery Partner</p>
         </div>
 
         {/* Options list */}
@@ -544,22 +506,18 @@ function InlineDeliverySelect({
           {/* Unassign option */}
           <button
             onClick={() => { onAssign(String(order._id), ""); setOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 transition-colors group ${!assigned ? "bg-gray-50/50" : ""}`}
+            className="w-full flex items-center px-3 py-2 hover:bg-gray-50 transition-colors text-left"
           >
-            <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 group-hover:bg-red-100">
-              <X className="w-3.5 h-3.5 text-gray-400 group-hover:text-red-400" />
-            </div>
-            <span className="text-xs font-medium text-gray-400 group-hover:text-red-500">Remove assignment</span>
-            {!assigned && <Check className="w-3 h-3 text-gray-300 ml-auto" />}
+            <span className="text-xs font-medium text-black">Remove assignment</span>
+            {!assigned && <Check className="w-3 h-3 text-black ml-auto" />}
           </button>
 
           {/* Divider */}
-          <div className="mx-3 my-1 border-t border-gray-100" />
+          <div className="mx-3 my-1 border-t border-gray-200" />
 
           {filtered.length === 0 ? (
-            <div className="px-3 py-4 text-center">
-              <User className="w-6 h-6 text-gray-200 mx-auto mb-1" />
-              <p className="text-[11px] text-gray-400">No partners for this hub</p>
+            <div className="px-3 py-3 text-center">
+              <p className="text-[11px] text-black">No partners for this hub</p>
             </div>
           ) : (
             filtered.map((p) => {
@@ -572,29 +530,18 @@ function InlineDeliverySelect({
                 <button
                   key={p.id}
                   onClick={() => { onAssign(String(order._id), p.id); setOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 hover:bg-orange-50 transition-colors text-left
-                    ${isSelected ? "bg-orange-50/80" : ""}`}
+                  className="w-full flex items-start gap-2 px-3 py-2 hover:bg-gray-50 transition-colors text-left"
                 >
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs
-                    ${isSelected ? "bg-orange-200 text-orange-700" : "bg-[#162B4D]/10 text-[#162B4D]"}`}>
-                    {p.name.charAt(0).toUpperCase()}
-                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold truncate ${isSelected ? "text-orange-700" : "text-[#162B4D]"}`}>{p.name}</p>
-                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                      {p.phone && (
-                        <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                          <Phone className="w-2.5 h-2.5" />{p.phone}
-                        </span>
-                      )}
-                      {hubs.length > 0 && (
-                        <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1 py-0.5 rounded-full flex items-center gap-0.5">
-                          <Building2 className="w-2 h-2" />{hubs[0]}
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-xs font-semibold text-black truncate">{p.name}</p>
+                    {p.phone && (
+                      <p className="text-[11px] text-black truncate">{p.phone}</p>
+                    )}
+                    {hubs.length > 0 && (
+                      <p className="text-[11px] text-black truncate">{hubs[0]}</p>
+                    )}
                   </div>
-                  {isSelected && <Check className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />}
+                  {isSelected && <Check className="w-3.5 h-3.5 text-black flex-shrink-0 mt-0.5" />}
                 </button>
               );
             })
@@ -1956,7 +1903,7 @@ export default function Orders() {
                   <th className="px-3 py-3 text-left">Time Slot</th>
                   <th className="px-3 py-3 text-left">Location</th>
                   <th className="px-3 py-3 text-left">Status</th>
-                  <th className="px-3 py-3 text-left">Delivery Partner</th>
+                  <th className="px-3 py-3 text-left">Operations</th>
                   <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -2014,23 +1961,22 @@ export default function Orders() {
                       <td className="px-4 py-3">
                         {o.status === "pending" ? (
                           <div className="flex items-center gap-1.5">
-                            <Button
-                              size="sm"
+                            <button
+                              type="button"
                               disabled={acceptingId === String(o._id)}
                               onClick={() => acceptOrder(o)}
-                              className="h-7 px-2.5 gap-1 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                              className="inline-flex items-center justify-center h-6 px-3 rounded-full text-[11px] font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-60"
                             >
-                              <Check className="w-3 h-3" /> Accept
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
+                              Accept
+                            </button>
+                            <button
+                              type="button"
                               disabled={acceptingId === String(o._id)}
                               onClick={() => { setRejectingOrder(o); setRejectReason(""); }}
-                              className="h-7 px-2.5 gap-1 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              className="inline-flex items-center justify-center h-6 px-3 rounded-full text-[11px] font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
                             >
-                              <X className="w-3 h-3" /> Reject
-                            </Button>
+                              Reject
+                            </button>
                           </div>
                         ) : o.status === "cancelled" ? (
                           <div className="flex flex-col">
@@ -2057,38 +2003,34 @@ export default function Orders() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              title="More actions"
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedOrder(o);
-                                setEditStatus(displayStatus(o.status, o.deliveryType));
-                                setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
-                                setShowAllPersons(false);
-                              }}
-                            >
-                              <Eye className="w-4 h-4 mr-2 text-[#1A56DB]" /> View
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEditOrder(o)}>
-                              <Pencil className="w-4 h-4 mr-2 text-emerald-600" /> Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => setDeletingOrder(o)}
-                              className="text-red-600 focus:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" /> Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            title="View"
+                            onClick={() => {
+                              setSelectedOrder(o);
+                              setEditStatus(displayStatus(o.status, o.deliveryType));
+                              setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
+                              setShowAllPersons(false);
+                            }}
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-100 transition-colors"
+                          >
+                            <Eye className="w-4 h-4 text-[#1A56DB]" />
+                          </button>
+                          <button
+                            title="Edit"
+                            onClick={() => openEditOrder(o)}
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-100 transition-colors"
+                          >
+                            <Pencil className="w-4 h-4 text-emerald-600" />
+                          </button>
+                          <button
+                            title="Delete"
+                            onClick={() => setDeletingOrder(o)}
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-100 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
