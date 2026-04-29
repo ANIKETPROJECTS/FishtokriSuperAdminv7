@@ -1,0 +1,985 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.2.0
+  description: FishTokri Admin API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: super-hubs
+    description: Super Hub management
+  - name: sub-hubs
+    description: Sub Hub management
+  - name: users
+    description: Admin & staff user management
+  - name: stats
+    description: Statistics
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Super Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stats/summary:
+    get:
+      operationId: getStatsSummary
+      tags: [stats]
+      summary: Overall dashboard statistics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stats summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsSummaryResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /super-hubs:
+    get:
+      operationId: getSuperHubs
+      tags: [super-hubs]
+      summary: Get all super hubs
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of super hubs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperHubsListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createSuperHub
+      tags: [super-hubs]
+      summary: Create a new super hub
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSuperHubRequest"
+      responses:
+        "201":
+          description: Super hub created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperHubResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /super-hubs/{id}:
+    get:
+      operationId: getSuperHub
+      tags: [super-hubs]
+      summary: Get a super hub by ID (includes sub hubs)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Super hub details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperHubDetailResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateSuperHub
+      tags: [super-hubs]
+      summary: Update a super hub
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSuperHubRequest"
+      responses:
+        "200":
+          description: Super hub updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperHubResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSuperHub
+      tags: [super-hubs]
+      summary: Delete a super hub
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /super-hubs/{id}/toggle-status:
+    patch:
+      operationId: toggleSuperHubStatus
+      tags: [super-hubs]
+      summary: Toggle super hub active/inactive
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperHubResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /super-hubs/{id}/sub-hubs:
+    get:
+      operationId: getSubHubsBySuperHub
+      tags: [sub-hubs]
+      summary: Get all sub hubs of a super hub
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sub hubs list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubHubsListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createSubHub
+      tags: [sub-hubs]
+      summary: Create a sub hub under a super hub
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubHubRequest"
+      responses:
+        "201":
+          description: Sub hub created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubHubResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sub-hubs/{id}:
+    put:
+      operationId: updateSubHub
+      tags: [sub-hubs]
+      summary: Update a sub hub
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSubHubRequest"
+      responses:
+        "200":
+          description: Sub hub updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubHubResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSubHub
+      tags: [sub-hubs]
+      summary: Delete a sub hub
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sub-hubs/{id}/toggle-status:
+    patch:
+      operationId: toggleSubHubStatus
+      tags: [sub-hubs]
+      summary: Toggle sub hub active/inactive
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubHubResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: Get all hub users
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [super_admin, super_hub, sub_hub]
+        - name: superHubId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsersListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a hub user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}:
+    put:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a hub user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete a hub user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}/toggle-status:
+    patch:
+      operationId: toggleUserStatus
+      tags: [users]
+      summary: Toggle user active/inactive
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        admin:
+          $ref: "#/components/schemas/AdminUser"
+      required:
+        - token
+        - admin
+
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+      required:
+        - id
+        - email
+        - name
+
+    SuperHub:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        location:
+          type: string
+        imageUrl:
+          type: string
+        status:
+          type: string
+          enum: [Active, Inactive]
+        subHubCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - location
+        - imageUrl
+        - status
+        - subHubCount
+        - createdAt
+
+    SubHub:
+      type: object
+      properties:
+        id:
+          type: string
+        superHubId:
+          type: string
+        superHubName:
+          type: string
+        name:
+          type: string
+        location:
+          type: string
+        pincodes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [Active, Inactive]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - superHubId
+        - superHubName
+        - name
+        - location
+        - pincodes
+        - status
+        - createdAt
+
+    HubUser:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [super_admin, super_hub, sub_hub]
+        superHubId:
+          type: string
+          nullable: true
+        superHubName:
+          type: string
+          nullable: true
+        subHubId:
+          type: string
+          nullable: true
+        subHubName:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [Active, Inactive]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - phone
+        - role
+        - status
+        - createdAt
+
+    SuperHubResponse:
+      type: object
+      properties:
+        superHub:
+          $ref: "#/components/schemas/SuperHub"
+      required:
+        - superHub
+
+    SuperHubDetailResponse:
+      type: object
+      properties:
+        superHub:
+          $ref: "#/components/schemas/SuperHub"
+        subHubs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubHub"
+      required:
+        - superHub
+        - subHubs
+
+    SuperHubsListResponse:
+      type: object
+      properties:
+        superHubs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuperHub"
+        total:
+          type: integer
+      required:
+        - superHubs
+        - total
+
+    SubHubResponse:
+      type: object
+      properties:
+        subHub:
+          $ref: "#/components/schemas/SubHub"
+      required:
+        - subHub
+
+    SubHubsListResponse:
+      type: object
+      properties:
+        subHubs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubHub"
+        total:
+          type: integer
+      required:
+        - subHubs
+        - total
+
+    UserResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/HubUser"
+      required:
+        - user
+
+    UsersListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/HubUser"
+        total:
+          type: integer
+      required:
+        - users
+        - total
+
+    CreateSuperHubRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        imageUrl:
+          type: string
+        status:
+          type: string
+          enum: [Active, Inactive]
+      required:
+        - name
+        - location
+
+    UpdateSuperHubRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        imageUrl:
+          type: string
+        status:
+          type: string
+          enum: [Active, Inactive]
+
+    CreateSubHubRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        pincodes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [Active, Inactive]
+      required:
+        - name
+        - location
+
+    UpdateSubHubRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        pincodes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [Active, Inactive]
+
+    CreateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [super_admin, super_hub, sub_hub]
+        superHubId:
+          type: string
+          nullable: true
+        subHubId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [Active, Inactive]
+      required:
+        - name
+        - email
+        - phone
+        - role
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [super_admin, super_hub, sub_hub]
+        superHubId:
+          type: string
+          nullable: true
+        subHubId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [Active, Inactive]
+
+    StatsSummaryResponse:
+      type: object
+      properties:
+        totalSuperHubs:
+          type: integer
+        activeSuperHubs:
+          type: integer
+        totalSubHubs:
+          type: integer
+        activeSubHubs:
+          type: integer
+        totalUsers:
+          type: integer
+        activeUsers:
+          type: integer
+        totalPincodes:
+          type: integer
+      required:
+        - totalSuperHubs
+        - activeSuperHubs
+        - totalSubHubs
+        - activeSubHubs
+        - totalUsers
+        - activeUsers
+        - totalPincodes
+
+    DeleteResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message

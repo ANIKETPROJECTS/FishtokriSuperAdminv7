@@ -1,0 +1,189 @@
+/** 
+* Paste one or more documents here
+*/
+{
+  "id": 11,
+  "name": "Shark",
+  "category": "Fish",
+  "price": 550,
+  "unit": "per kg",
+  "status": "available",
+  "isArchived": false,
+  "sectionId": [
+    "69d09c847015e0c8af9c833e",
+    "69d09c847015e0c8af9c833f"
+  ],
+  "description": "Fresh shark meat with firm white flesh — low in fat and high in protein. Popular in South Indian coastal cuisine as a spiced dry masala fry or curry.",
+  "discountPct": 8,
+  "pieces": "3–4 Pieces",
+  "serves": "Serves 3",
+  "subCategory": "Shark",
+  "weight": "500 g",
+  "originalPrice": 598,
+  "quantity": 53,
+  "recipes": [
+    {
+      "title": "Shark Ambotik Curry",
+      "description": "A traditional Goan sweet and sour shark curry made with tamarind, kokum, and whole spices — bold, tangy and deeply satisfying.",
+      "image": "",
+      "totalTime": "45 min",
+      "prepTime": "15 min",
+      "cookTime": "30 min",
+      "servings": 4,
+      "difficulty": "Medium",
+      "ingredients": [
+        "500g shark pieces (cleaned)",
+        "2 onions (sliced)",
+        "4 dried Kashmiri chillies",
+        "1 tsp cumin seeds",
+        "1 tsp coriander seeds",
+        "½ tsp turmeric",
+        "1 marble-sized ball of tamarind",
+        "2 kokum pieces",
+        "1 tbsp ginger-garlic paste",
+        "2 tbsp oil",
+        "Salt to taste",
+        "1 tsp sugar"
+      ],
+      "method": [
+        "Soak tamarind and kokum in ½ cup warm water for 10 minutes; extract the pulp.",
+        "Dry roast cumin, coriander, and Kashmiri chillies until fragrant. Cool and grind to a smooth paste with a little water.",
+        "Heat oil in a pan; sauté onions until golden brown.",
+        "Add ginger-garlic paste and cook for 2 minutes.",
+        "Stir in the ground spice paste and turmeric; fry for 3 minutes.",
+        "Add tamarind-kokum water and bring to a boil.",
+        "Slide in the shark pieces and simmer on low for 20 minutes until the gravy thickens.",
+        "Add sugar, adjust salt, and serve hot with steamed rice."
+      ]
+    },
+    {
+      "title": "Crispy Shark Fry",
+      "description": "Marinate shark steaks in red chilli, turmeric, and ginger-garlic paste, then shallow-fry to a golden, crispy perfection.",
+      "image": "",
+      "totalTime": "35 min",
+      "prepTime": "20 min",
+      "cookTime": "15 min",
+      "servings": 3,
+      "difficulty": "Easy",
+      "ingredients": [
+        "500g shark steaks",
+        "1 tbsp red chilli powder",
+        "½ tsp turmeric",
+        "1 tbsp ginger-garlic paste",
+        "1 tbsp lemon juice",
+        "3 tbsp semolina (rava)",
+        "2 tbsp rice flour",
+        "Salt to taste",
+        "Oil for shallow frying"
+      ],
+      "method": [
+        "Mix red chilli powder, turmeric, ginger-garlic paste, lemon juice, and salt into a thick marinade.",
+        "Score the shark steaks and rub marinade all over. Rest for 20 minutes.",
+        "Mix semolina and rice flour on a flat plate.",
+        "Coat each marinated steak in the semolina-rice flour mix, pressing firmly.",
+        "Heat oil in a flat pan over medium heat.",
+        "Shallow-fry steaks for 5–6 minutes per side until deeply golden and crisp.",
+        "Drain on paper towels and serve with sliced onions and lemon wedges."
+      ]
+    },
+    {
+      "title": "Shark Caldine",
+      "description": "A mild Goan coconut milk curry with shark, green chillies, and fresh spices — delicate, creamy and perfect for a weekday meal.",
+      "image": "",
+      "totalTime": "40 min",
+      "prepTime": "15 min",
+      "cookTime": "25 min",
+      "servings": 4,
+      "difficulty": "Easy",
+      "ingredients": [
+        "500g shark pieces",
+        "1 cup thick coconut milk",
+        "½ cup thin coconut milk",
+        "2 green chillies (slit)",
+        "1 onion (finely sliced)",
+        "1 tsp ginger (grated)",
+        "½ tsp turmeric",
+        "1 tsp cumin seeds",
+        "1 tbsp vinegar",
+        "1 tbsp oil",
+        "Salt to taste",
+        "Fresh coriander for garnish"
+      ],
+      "method": [
+        "Heat oil in a pan and fry cumin seeds until they splutter.",
+        "Add onion and ginger; sauté until soft and translucent.",
+        "Add turmeric and green chillies; stir for 1 minute.",
+        "Pour in the thin coconut milk and bring to a gentle simmer.",
+        "Add shark pieces and cook for 15 minutes on low heat.",
+        "Pour in the thick coconut milk and vinegar; simmer for 5 more minutes — do not boil.",
+        "Adjust salt, garnish with fresh coriander, and serve with white rice."
+      ]
+    }
+  ],
+  "inventoryBatches": [
+    {
+      "_id": {
+        "$oid": "69d734419fc1b59d19895038"
+      },
+      "quantity": 20,
+      "shelfLifeDays": 3,
+      "entryDate": {
+        "$date": "2026-04-07T05:08:17.526Z"
+      },
+      "expiryDate": {
+        "$date": "2026-04-10T05:08:17.526Z"
+      },
+      "remainingTime": "0h"
+    },
+    {
+      "_id": {
+        "$oid": "69d734419fc1b59d19895039"
+      },
+      "quantity": 15,
+      "shelfLifeDays": 2.5,
+      "entryDate": {
+        "$date": "2026-04-08T05:08:17.527Z"
+      },
+      "expiryDate": {
+        "$date": "2026-04-10T17:08:17.527Z"
+      },
+      "remainingTime": "12h"
+    },
+    {
+      "_id": {
+        "$oid": "69d734419fc1b59d1989503a"
+      },
+      "quantity": 18,
+      "shelfLifeDays": 2,
+      "entryDate": {
+        "$date": "2026-04-09T05:08:17.527Z"
+      },
+      "expiryDate": {
+        "$date": "2026-04-11T05:08:17.527Z"
+      },
+      "remainingTime": "1d 0h"
+    }
+  ],
+  "updatedAt": {
+    "$date": "2026-04-09T08:36:16.955Z"
+  },
+  "couponIds": [
+    {
+      "$oid": "69d7491e836b8a2e31f3220c"
+    },
+    {
+      "$oid": "69d7491e836b8a2e31f3220b"
+    },
+    {
+      "$oid": "69d7491e836b8a2e31f32212"
+    },
+    {
+      "$oid": "69d7491e836b8a2e31f32213"
+    },
+    {
+      "$oid": "69d7491e836b8a2e31f32214"
+    }
+  ],
+  "grossWeight": "700 g",
+  "netWeight": "500 g"
+}

@@ -1,0 +1,148 @@
+Here's the updated Replit prompt:
+
+---
+
+**REPLIT PROMPT:**
+
+---
+
+Build a full-stack web application called **FishTokri Admin** using **React (TypeScript) + Node.js/Express + MongoDB**.
+
+## What to build
+
+A **Super Admin dashboard** with the ability to manage Hubs (warehouses/distribution centres). The structure is:
+
+```
+Super Admin
+├── Hub 1 (e.g. Thane)
+├── Hub 2 (e.g. Airoli)
+└── Hub 3 (e.g. Future Zone) ... and so on
+```
+
+---
+
+## Authentication — Login Page
+
+- Single hardcoded Super Admin login (email + password, JWT-based)
+- Protected routes — unauthenticated users redirected to login page
+
+**Login Page UI:**
+- Full-screen background using an **AI-generated image** of a premium, modern seafood/fish market or a dark blue ocean-themed background (deep blues, glowing lights, cinematic feel)
+- Centered frosted-glass login card with a subtle blur backdrop effect
+- **AI-generated 3D icon/logo** of a fish or seafood basket at the top of the card — vibrant, glossy, 3D rendered style
+- Card background: white with 10–15% opacity blur
+- Input fields: white background, rounded corners, blue border on focus (`#1A56DB`)
+- "Login" button: solid blue (`#1A56DB`), white text, rounded, hover darkens to `#1447B4`
+- Heading: "FishTokri Super Admin" in bold dark navy text
+- Subtle red accent line or underline beneath the heading (`#E02424`)
+- Error messages shown in red below input fields
+
+---
+
+## Color Theme
+
+Apply this theme **consistently across all pages:**
+- **Primary Blue:** `#1A56DB` (buttons, active nav, highlights, badges)
+- **Dark Navy:** `#1E3A5F` (sidebar background, headings)
+- **White:** `#FFFFFF` (page background, cards)
+- **Light Blue Tint:** `#EFF6FF` (table row hover, card backgrounds)
+- **Red Accent:** `#E02424` (delete buttons, error states, status badges for Inactive, small decorative underlines/dividers only — use sparingly)
+- **Grey:** `#6B7280` (secondary text, borders)
+
+No dark mode. Keep the overall feel bright, clean, and professional.
+
+---
+
+## Layout & Sidebar
+
+- Fixed left sidebar, full height, **dark navy background (`#1E3A5F`)**
+- Sidebar top: **AI-generated 3D logo/icon** of a fish or seafood crate, small size, next to the text "FishTokri" in white bold
+- Nav item: "Hubs" with a **3D AI-generated warehouse or location pin icon** beside it
+- Active nav item highlighted in `#1A56DB` with a white left border indicator
+- Main content area: white background, generous padding
+- Top header bar: white, shows page title ("Hub Management") on the left, and a Super Admin avatar/name on the right with a **3D AI-generated admin/user avatar icon**
+- Subtle box shadow separating sidebar from content
+
+---
+
+## Hub Management Page (Full CRUD)
+
+Each Hub has:
+- `name` (string, required) — e.g. "Thane Hub"
+- `location` / address (string)
+- `serviceAreas` (array of strings) — e.g. ["Mulund", "Bhandup", "Vikhroli"]
+- `status` — Active / Inactive
+- `createdAt` (auto)
+
+### Hub Cards Layout
+- Display hubs as **large, clean cards** in a responsive grid (3 columns desktop, 2 tablet, 1 mobile)
+- Each card:
+  - **AI-generated 3D warehouse/hub building illustration** at the top of the card as a card header image — vivid, glossy 3D render
+  - Hub name in bold dark navy
+  - Location in grey below
+  - Service area tags as small blue pill badges (`#EFF6FF` background, `#1A56DB` text)
+  - Status badge: green pill for Active, red pill for Inactive
+  - Bottom row: **Edit** button (blue outline), **Delete** button (red outline), **Toggle Status** switch
+  - Soft box shadow, rounded corners (`rounded-2xl`), white background
+  - Hover: card lifts slightly with enhanced shadow
+
+### Add Hub Button
+- Top right of the page: solid blue button ("+ Add Hub") with a **3D AI-generated plus/add icon**
+- Clicking opens a modal
+
+### Add / Edit Modal
+- Centered modal, white background, rounded corners, subtle shadow overlay
+- Modal header: "Add New Hub" or "Edit Hub" in dark navy bold, with a small **3D AI-generated hub icon**
+- Input fields: rounded, blue focus border, labels in dark navy
+- Service Areas: tag-input style — type and press Enter to add tags, each tag shown as a blue pill with an × to remove
+- Status toggle switch (blue when active)
+- Footer buttons: "Cancel" (grey outline) and "Save Hub" (solid blue)
+
+### Delete Confirmation Dialog
+- Small centered dialog
+- **AI-generated 3D warning/alert icon** (red exclamation in 3D style) at the top
+- "Are you sure you want to delete this hub?" text
+- "Cancel" (grey) and "Delete" (solid red) buttons
+
+---
+
+## Toast Notifications
+
+- Bottom-right toast notifications
+- Success: blue background with white text and a **3D AI-generated checkmark icon**
+- Error: red background with white text and a **3D AI-generated error icon**
+- Auto-dismiss after 3 seconds
+
+---
+
+## AI-Generated Visual Assets — Usage Instructions
+
+Use **AI-generated images from sources like Freepik, Shutterstock AI, or embed placeholder URLs from a service like `https://image.pollinations.ai/prompt/`** to generate and embed visuals dynamically. Generate the following:
+
+1. **Login page background** — prompt: `"cinematic deep blue ocean seafood market background, dramatic lighting, ultra realistic"`
+2. **Login page 3D logo icon** — prompt: `"3D glossy fish icon, vibrant blue, isolated on transparent background"`
+3. **Sidebar logo** — prompt: `"3D seafood crate icon, glossy render, blue and white"`
+4. **Hub card header images** — prompt: `"3D modern warehouse building illustration, blue and white, isometric style, glossy render"`
+5. **Add Hub button icon** — prompt: `"3D blue plus button icon, glossy, minimal"`
+6. **Warehouse nav icon** — prompt: `"3D warehouse location pin icon, blue, glossy minimal"`
+7. **Admin avatar** — prompt: `"3D admin user avatar icon, blue suit, friendly, glossy render"`
+8. **Delete warning icon** — prompt: `"3D red warning exclamation icon, glossy, minimal"`
+9. **Toast success icon** — prompt: `"3D blue checkmark icon, glossy, minimal"`
+10. **Toast error icon** — prompt: `"3D red cross error icon, glossy, minimal"`
+
+Use `https://image.pollinations.ai/prompt/{encoded-prompt}` as the `src` for all these images so they render dynamically without any manual uploads.
+
+---
+
+## Tech Stack
+
+- **Frontend:** React + TypeScript + Tailwind CSS
+- **Backend:** Node.js + Express
+- **Database:** MongoDB (Mongoose)
+- **Auth:** JWT (stored in localStorage)
+
+---
+
+Start with a working login page → Super Admin dashboard → Hubs management page. No other modules needed right now.
+
+---
