@@ -272,6 +272,20 @@ PUT|DELETE      /api/sub-hubs/:id/menu/timeslots/:timeslotId
 
 ---
 
+## Brand Palette
+
+The official brand colors live in two complementary places so they can be used from both CSS (Tailwind utilities) and TypeScript code:
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| Primary (pink/coral) | `#F05B4E` | Primary actions, action icons, key highlights |
+| Secondary (deep blue) | `#364F9F` | Secondary buttons, links, headings accents |
+
+- **Tailwind / CSS:** declared in `artifacts/fishtokri-admin/src/index.css` under `@theme inline` as `--color-brand-primary`, `--color-brand-primary-50`, `--color-brand-primary-100`, `--color-brand-primary-600`, and the matching `--color-brand-secondary*` tokens. Use them with utilities such as `bg-brand-primary`, `text-brand-primary`, `border-brand-secondary`, `bg-brand-primary-50`, etc.
+- **TypeScript:** exported from `artifacts/fishtokri-admin/src/lib/brand.ts` as `BRAND_COLORS` (`primary`, `primary50`, `primary100`, `primary600`, `secondary`, `secondary50`, `secondary100`, `secondary600`). Use this when you need a literal hex (e.g. inline `style={{ color: BRAND_COLORS.primary }}` or for canvas/chart libraries).
+
+The orders page action icons are rendered via the small `MaskIcon` helper in `artifacts/fishtokri-admin/src/pages/orders.tsx` which uses CSS `mask-image` to tint the supplied black-silhouette PNGs (`src/assets/icon-view.png`, `icon-edit.png`, `icon-delete.png`) with the brand primary color.
+
 ## Delivery Person Scope (orders endpoint)
 
 `scopeOrderFilter` in `artifacts/api-server/src/routes/orders.ts` now handles `role === "delivery_person"` explicitly: it scopes to `{ assignedDeliveryPersonId: <userId> }` instead of the empty-subHubIds sentinel that would have returned no documents. `isOrderInScope` mirrors this so the delivery person can read/update only their assigned orders. This makes the My Orders page on the delivery panel correctly show Active and History tabs.

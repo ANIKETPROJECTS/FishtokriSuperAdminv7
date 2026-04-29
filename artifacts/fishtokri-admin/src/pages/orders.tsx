@@ -17,6 +17,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
+} from "@/components/ui/sheet";
+import iconView from "@/assets/icon-view.png";
+import iconEdit from "@/assets/icon-edit.png";
+import iconDelete from "@/assets/icon-delete.png";
+import { BRAND_COLORS } from "@/lib/brand";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -26,6 +33,30 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { getCurrentAdminScope } from "@/lib/api";
+
+/**
+ * Tinted PNG icon — uses CSS mask-image so the provided black PNG silhouettes
+ * can be re-coloured with the brand palette (e.g. #F05B4E).
+ */
+function MaskIcon({ src, color = BRAND_COLORS.primary, className = "w-4 h-4" }: { src: string; color?: string; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-block ${className}`}
+      style={{
+        backgroundColor: color,
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+      }}
+    />
+  );
+}
 
 function getToken() {
   return localStorage.getItem("fishtokri_token") || "";
@@ -2003,7 +2034,7 @@ export default function Orders() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex items-center gap-1">
+                        <div className="inline-flex items-center gap-1.5">
                           <button
                             title="View"
                             onClick={() => {
@@ -2012,23 +2043,23 @@ export default function Orders() {
                               setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
                               setShowAllPersons(false);
                             }}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-100 transition-colors"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-brand-primary-50 transition-colors"
                           >
-                            <Eye className="w-4 h-4 text-[#1A56DB]" />
+                            <MaskIcon src={iconView} className="w-[18px] h-[18px]" />
                           </button>
                           <button
                             title="Edit"
                             onClick={() => openEditOrder(o)}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-100 transition-colors"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-brand-primary-50 transition-colors"
                           >
-                            <Pencil className="w-4 h-4 text-emerald-600" />
+                            <MaskIcon src={iconEdit} className="w-[18px] h-[18px]" />
                           </button>
                           <button
                             title="Delete"
                             onClick={() => setDeletingOrder(o)}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-100 transition-colors"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-brand-primary-50 transition-colors"
                           >
-                            <Trash2 className="w-4 h-4 text-red-600" />
+                            <MaskIcon src={iconDelete} className="w-[18px] h-[18px]" />
                           </button>
                         </div>
                       </td>
@@ -3338,124 +3369,149 @@ export default function Orders() {
       </div>
       )}
 
-      {/* Order Detail Modal */}
-      <Dialog open={!!selectedOrder} onOpenChange={(o) => { if (!o) { setSelectedOrder(null); setShowAllPersons(false); } }}>
-        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+      {/* Order Detail Sheet — slides in from the right */}
+      <Sheet open={!!selectedOrder} onOpenChange={(o) => { if (!o) { setSelectedOrder(null); setShowAllPersons(false); } }}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-[640px] p-0 flex flex-col gap-0 bg-gray-50"
+        >
           {selectedOrder && (
             <>
-              <DialogHeader>
-                <DialogTitle className="text-[#162B4D] flex items-center gap-2">
-                  <ClipboardList className="w-4 h-4" />
-                  Order Details
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="space-y-4 pt-1">
-                {/* Hub Info */}
-                {(selectedOrder.superHubName || selectedOrder.subHubName) && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {selectedOrder.superHubName && (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#1A56DB] bg-blue-50 border border-blue-100 rounded-full px-2.5 py-1">
-                        <Building2 className="w-3 h-3" />
-                        {selectedOrder.superHubName}
-                      </span>
-                    )}
-                    {selectedOrder.superHubName && selectedOrder.subHubName && (
-                      <ChevronRight className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-                    )}
-                    {selectedOrder.subHubName && (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#162B4D] bg-gray-100 border border-gray-200 rounded-full px-2.5 py-1">
-                        <Store className="w-3 h-3" />
-                        {selectedOrder.subHubName}
-                      </span>
-                    )}
+              {/* Top header — brand pink band with order id + status */}
+              <SheetHeader className="px-6 pt-6 pb-5 bg-white border-b border-gray-200 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <SheetTitle className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                      Order Details
+                    </SheetTitle>
+                    <p className="text-lg font-bold text-black truncate">
+                      #{String(selectedOrder._id || "").slice(-8).toUpperCase()}
+                    </p>
+                    <p className="text-xs text-gray-500">{formatDate(selectedOrder.createdAt)}</p>
                   </div>
-                )}
-
-                {/* Customer Info */}
-                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Customer</p>
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-gray-400" />
-                    <span className="font-semibold text-[#162B4D]">{selectedOrder.customerName}</span>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <StatusBadge status={selectedOrder.status} deliveryType={selectedOrder.deliveryType} />
+                    <span className="text-[11px] font-semibold text-brand-secondary">
+                      {effectiveOrderTotal(selectedOrder) > 0
+                        ? formatRupees(effectiveOrderTotal(selectedOrder))
+                        : formatRupees(orderTotal(selectedOrder.items))}
+                    </span>
                   </div>
-                  {selectedOrder.phone && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Phone className="w-4 h-4 text-gray-400" />
-                      {selectedOrder.phone}
-                    </div>
-                  )}
-                  {selectedOrder.address && (
-                    <div className="flex items-start gap-2 text-sm text-gray-600">
-                      <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                      <span>{selectedOrder.address}</span>
-                    </div>
-                  )}
-                  {selectedOrder.deliveryArea && (
-                    <div className="text-xs text-gray-400 ml-6">{selectedOrder.deliveryArea}</div>
-                  )}
                 </div>
+              </SheetHeader>
 
-                {/* Order Items */}
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Items ({(selectedOrder.items ?? []).length})</p>
-                  <div className="space-y-2">
-                    {(selectedOrder.items ?? []).map((item: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-xl">
-                        <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                            <ShoppingBag className="w-3.5 h-3.5 text-[#1A56DB]" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-[#162B4D] text-sm">{item.name}</p>
-                            <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
-                          </div>
+              {/* Scrollable body */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+                {/* === Customer card === */}
+                <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <header className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                    <User className="w-3.5 h-3.5 text-brand-primary" />
+                    <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Customer</h3>
+                  </header>
+                  <div className="p-4 flex gap-3">
+                    <div className="w-11 h-11 rounded-full bg-brand-primary-50 flex items-center justify-center flex-shrink-0 border border-brand-primary-100">
+                      <span className="text-sm font-bold text-brand-primary">
+                        {(selectedOrder.customerName || "?").trim().charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <p className="font-semibold text-black text-[15px] leading-tight">{selectedOrder.customerName}</p>
+                      {selectedOrder.phone && (
+                        <a href={`tel:${selectedOrder.phone}`} className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-brand-secondary">
+                          <Phone className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{selectedOrder.phone}</span>
+                        </a>
+                      )}
+                      {selectedOrder.address && (
+                        <div className="flex items-start gap-1.5 text-sm text-gray-700">
+                          <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <span className="leading-snug">
+                            {selectedOrder.address}
+                            {selectedOrder.deliveryArea && (
+                              <span className="block text-xs text-gray-400 mt-0.5">{selectedOrder.deliveryArea}</span>
+                            )}
+                          </span>
                         </div>
-                        <span className="font-bold text-[#162B4D]">{formatRupees(Number(item.price) * Number(item.quantity || 1))}</span>
-                      </div>
-                    ))}
+                      )}
+                    </div>
                   </div>
+                </section>
+
+                {/* === Items + Bill summary card === */}
+                <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <header className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShoppingBag className="w-3.5 h-3.5 text-brand-primary" />
+                      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Order Items</h3>
+                    </div>
+                    <span className="text-[11px] font-semibold text-gray-500">
+                      {(selectedOrder.items ?? []).length} item{(selectedOrder.items ?? []).length !== 1 ? "s" : ""}
+                    </span>
+                  </header>
+
+                  <ul className="divide-y divide-gray-100">
+                    {(selectedOrder.items ?? []).map((item: any, i: number) => {
+                      const qty = Number(item.quantity || 1);
+                      const lineTotal = Number(item.price) * qty;
+                      return (
+                        <li key={i} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-black text-sm truncate">{item.name}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {qty} × {formatRupees(Number(item.price))}
+                            </p>
+                          </div>
+                          <span className="font-semibold text-black text-sm whitespace-nowrap">
+                            {formatRupees(lineTotal)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+
                   {(() => {
                     const subtotal = orderTotal(selectedOrder.items);
                     const discount = Number(selectedOrder.discount) || 0;
                     const slot = Number(selectedOrder.slotCharge) || 0;
                     const grand = effectiveOrderTotal(selectedOrder);
+                    const instant = Number(selectedOrder.instantDeliveryCharge) || 0;
                     return (
-                      <div className="mt-2 px-3 py-2 bg-[#162B4D]/5 rounded-xl space-y-1">
-                        <div className="flex justify-between items-center text-sm">
+                      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-1.5">
+                        <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Subtotal</span>
-                          <span className="font-semibold text-[#162B4D]">{formatRupees(subtotal)}</span>
+                          <span className="text-black">{formatRupees(subtotal)}</span>
                         </div>
                         {discount > 0 && (
-                          <div className="flex justify-between items-center text-sm">
+                          <div className="flex justify-between text-sm">
                             <span className="text-emerald-700">
-                              Coupon Discount{selectedOrder.couponCode ? ` (${selectedOrder.couponCode})` : ""}
+                              Coupon{selectedOrder.couponCode ? ` (${selectedOrder.couponCode})` : ""}
                             </span>
-                            <span className="font-semibold text-emerald-700">− {formatRupees(discount)}</span>
+                            <span className="text-emerald-700">− {formatRupees(discount)}</span>
                           </div>
                         )}
                         {slot > 0 && (
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-600">Slot Charge</span>
-                            <span className="font-semibold text-[#162B4D]">+ {formatRupees(slot)}</span>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Slot charge</span>
+                            <span className="text-black">+ {formatRupees(slot)}</span>
                           </div>
                         )}
-                        <div className="flex justify-between items-center pt-1 border-t border-[#162B4D]/10">
-                          <span className="text-sm font-semibold text-gray-600">Grand Total</span>
-                          <span className="font-bold text-[#162B4D] text-base">{formatRupees(grand)}</span>
+                        {instant > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Instant delivery</span>
+                            <span className="text-black">+ {formatRupees(instant)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center pt-2 mt-1 border-t border-gray-200">
+                          <span className="text-sm font-semibold text-black">Grand Total</span>
+                          <span className="text-base font-bold text-brand-primary">{formatRupees(grand)}</span>
                         </div>
                       </div>
                     );
                   })()}
-                  {selectedOrder.instantDeliveryCharge && (
-                    <div className="flex justify-between items-center px-3 py-1.5 text-orange-600 text-sm">
-                      <span>Instant Delivery Charge</span>
-                      <span className="font-semibold">+{formatRupees(selectedOrder.instantDeliveryCharge)}</span>
-                    </div>
-                  )}
-                </div>
+                </section>
 
-                {/* Payment Info */}
+                {/* === Payment card === */}
                 {(() => {
                   const pays: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
                   const status = String(selectedOrder.paymentStatus || "").toLowerCase();
@@ -3471,269 +3527,292 @@ export default function Orders() {
                   const statusLabel =
                     status === "paid" ? "Fully Paid" : status === "partial" ? "Partial" : status === "unpaid" ? "Unpaid" : "—";
                   return (
-                    <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment</p>
+                    <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                      <header className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Wallet className="w-3.5 h-3.5 text-brand-primary" />
+                          <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Payment</h3>
+                        </div>
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusStyle}`}>
                           {statusLabel}
                         </span>
-                      </div>
+                      </header>
 
-                      {pays.length > 0 ? (
-                        <div className="space-y-1.5">
-                          {pays.map((p, i) => {
-                            const meta = PAYMENT_MODES.find((m) => m.value === String(p?.mode || "").toLowerCase());
-                            const Icon = meta?.Icon || Tag;
-                            const label = meta?.label || (p?.mode ? String(p.mode) : "Payment");
-                            return (
-                              <div
-                                key={i}
-                                className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
-                                    <Icon className="w-3.5 h-3.5 text-[#1A56DB]" />
-                                  </div>
-                                  <span className="text-sm font-medium text-[#162B4D]">{label}</span>
-                                </div>
-                                <span className="text-sm font-semibold text-[#162B4D]">
-                                  {formatRupees(Number(p?.amount) || 0)}
-                                </span>
-                              </div>
-                            );
-                          })}
+                      <div className="p-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                            <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Paid</p>
+                            <p className="text-sm font-semibold text-black mt-0.5">{formatRupees(paid)}</p>
+                          </div>
+                          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                            <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Due</p>
+                            <p className={`text-sm font-semibold mt-0.5 ${due > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                              {formatRupees(due)}
+                            </p>
+                          </div>
                         </div>
-                      ) : (
-                        <p className="text-xs text-gray-500 italic">No payments collected yet.</p>
-                      )}
 
-                      <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-100">
-                        <span className="text-gray-500">
-                          Paid: <span className="font-semibold text-gray-700">{formatRupees(paid)}</span>
-                        </span>
-                        <span className="text-gray-500">
-                          Due:{" "}
-                          <span className={`font-semibold ${due > 0 ? "text-amber-600" : "text-emerald-600"}`}>
-                            {formatRupees(due)}
-                          </span>
-                        </span>
+                        {pays.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Transactions</p>
+                            {pays.map((p, i) => {
+                              const meta = PAYMENT_MODES.find((m) => m.value === String(p?.mode || "").toLowerCase());
+                              const label = meta?.label || (p?.mode ? String(p.mode) : "Payment");
+                              return (
+                                <div
+                                  key={i}
+                                  className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2"
+                                >
+                                  <span className="text-sm text-black">{label}</span>
+                                  <span className="text-sm font-semibold text-black">
+                                    {formatRupees(Number(p?.amount) || 0)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500 italic">No payments collected yet.</p>
+                        )}
                       </div>
-                    </div>
+                    </section>
                   );
                 })()}
 
-                {/* Delivery Info */}
-                <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Delivery</p>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                {/* === Delivery & Hub card === */}
+                <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <header className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                    <Truck className="w-3.5 h-3.5 text-brand-primary" />
+                    <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Delivery & Hub</h3>
+                  </header>
+                  <div className="p-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                     <div>
-                      <p className="text-xs text-gray-400">Type</p>
-                      <p className="font-medium text-[#162B4D] capitalize">{selectedOrder.deliveryType ?? "—"}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Type</p>
+                      <p className="font-medium text-black capitalize mt-0.5">{selectedOrder.deliveryType ?? "—"}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400">Date</p>
-                      <p className="font-medium text-[#162B4D]">{formatDate(selectedOrder.createdAt)}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Date</p>
+                      <p className="font-medium text-black mt-0.5">{formatDate(selectedOrder.createdAt)}</p>
                     </div>
                     {selectedOrder.timeslotLabel && (
                       <div className="col-span-2">
-                        <p className="text-xs text-gray-400">Time Slot</p>
-                        <p className="font-medium text-[#162B4D]">{selectedOrder.timeslotLabel}</p>
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Time Slot</p>
+                        <p className="font-medium text-black mt-0.5">{selectedOrder.timeslotLabel}</p>
+                      </div>
+                    )}
+                    {selectedOrder.superHubName && (
+                      <div>
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Super Hub</p>
+                        <p className="font-medium text-black mt-0.5">{selectedOrder.superHubName}</p>
+                      </div>
+                    )}
+                    {selectedOrder.subHubName && (
+                      <div>
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Sub Hub</p>
+                        <p className="font-medium text-black mt-0.5">{selectedOrder.subHubName}</p>
                       </div>
                     )}
                     {selectedOrder.notes && (
-                      <div className="col-span-2">
-                        <p className="text-xs text-gray-400">Notes</p>
-                        <p className="text-sm text-gray-600 italic">"{selectedOrder.notes}"</p>
+                      <div className="col-span-2 pt-2 border-t border-gray-100">
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Customer Notes</p>
+                        <p className="text-sm text-gray-700 italic mt-0.5">"{selectedOrder.notes}"</p>
                       </div>
                     )}
                   </div>
-                </div>
+                </section>
 
-                {/* Assign Delivery Partner — not applicable for takeaway */}
+                {/* === Delivery Partner card === */}
                 {selectedOrder.deliveryType === "takeaway" ? (
-                  <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                      <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-emerald-700">Takeaway order</p>
-                      <p className="text-[11px] text-emerald-600">No delivery partner needed — customer picks up from {selectedOrder.pickupLocation || selectedOrder.subHubName || "the store"}.</p>
-                    </div>
-                  </div>
-                ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assign Delivery Partner</p>
-                    {modalFiltered && (
-                      <button
-                        onClick={() => setShowAllPersons((v) => !v)}
-                        className="text-[10px] font-semibold text-blue-500 hover:text-blue-700 flex items-center gap-1"
-                      >
-                        <Building2 className="w-3 h-3" />
-                        {showAllPersons ? "Show hub-only" : `Hub: ${modalFilteredCount} partner${modalFilteredCount !== 1 ? "s" : ""} · Show all`}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Hub filter notice */}
-                  {modalFiltered && !showAllPersons && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
-                      <Building2 className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-[11px] text-blue-600">
-                        Showing <strong>{modalFilteredCount}</strong> delivery partner{modalFilteredCount !== 1 ? "s" : ""} assigned to this order's hub.
-                        {modalFilteredCount === 0 && " No partners available for this hub."}
-                      </p>
-                    </div>
-                  )}
-                  {showAllPersons && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <p className="text-[11px] text-amber-700">
-                        Showing all delivery partners. For best practice, assign only hub-specific partners.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Currently assigned */}
-                  {selectedOrder.assignedDeliveryPersonName && (
-                    <div className="flex items-center gap-2 px-3 py-2.5 bg-orange-50 border border-orange-100 rounded-xl">
-                      <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                        <Truck className="w-4 h-4 text-orange-500" />
+                  <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <header className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                      <ShoppingBag className="w-3.5 h-3.5 text-brand-primary" />
+                      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Pickup</h3>
+                    </header>
+                    <div className="p-4 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                        <ShoppingBag className="w-4 h-4 text-emerald-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-orange-700">{selectedOrder.assignedDeliveryPersonName}</p>
-                        <p className="text-[10px] text-orange-400 font-medium">Currently assigned</p>
+                        <p className="text-sm font-semibold text-black">Takeaway order</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Customer picks up from {selectedOrder.pickupLocation || selectedOrder.subHubName || "the store"}.
+                        </p>
                       </div>
-                      <button
-                        onClick={() => {
-                          setSelectedDeliveryPersonId("__none__");
-                          setTimeout(() => handleAssignDelivery(), 0);
-                        }}
-                        disabled={assigningDelivery}
-                        className="text-[10px] font-semibold text-red-400 hover:text-red-600 border border-red-100 hover:border-red-200 bg-white px-2 py-1 rounded-lg transition-colors"
-                      >
-                        Remove
-                      </button>
                     </div>
-                  )}
+                  </section>
+                ) : (
+                  <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <header className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="w-3.5 h-3.5 text-brand-primary" />
+                        <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Delivery Partner</h3>
+                      </div>
+                      {modalFiltered && (
+                        <button
+                          onClick={() => setShowAllPersons((v) => !v)}
+                          className="text-[10px] font-semibold text-brand-secondary hover:text-brand-secondary-600"
+                        >
+                          {showAllPersons ? "Show hub-only" : `Show all`}
+                        </button>
+                      )}
+                    </header>
 
-                  {/* Select + Assign */}
-                  <div className="flex gap-2">
-                    <Select value={selectedDeliveryPersonId} onValueChange={setSelectedDeliveryPersonId}>
-                      <SelectTrigger className="h-10 flex-1 text-sm">
-                        <UserCheck className="w-3.5 h-3.5 text-gray-400 mr-1 flex-shrink-0" />
-                        <SelectValue placeholder="Select delivery partner..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {modalPersons.length === 0 && (
-                          <div className="py-4 text-center text-xs text-gray-400">
-                            No delivery partners {modalFiltered && !showAllPersons ? "for this hub" : "available"}
+                    <div className="p-4 space-y-3">
+                      {/* Currently assigned */}
+                      {selectedOrder.assignedDeliveryPersonName && (
+                        <div className="flex items-center gap-3 px-3 py-2.5 bg-brand-primary-50 border border-brand-primary-100 rounded-lg">
+                          <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center flex-shrink-0 border border-brand-primary-100">
+                            <Truck className="w-4 h-4 text-brand-primary" />
                           </div>
-                        )}
-                        {modalPersons.map((p) => {
-                          const hubs = [
-                            ...(p.superHubNames ?? (p.superHubName ? [p.superHubName] : [])),
-                            ...(p.subHubNames ?? (p.subHubName ? [p.subHubName] : [])),
-                          ].filter(Boolean);
-                          return (
-                            <SelectItem key={p.id} value={p.id}>
-                              <div className="flex items-center gap-2">
-                                <div className="w-5 h-5 rounded-full bg-[#162B4D]/10 flex items-center justify-center flex-shrink-0">
-                                  <User className="w-3 h-3 text-[#162B4D]" />
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="font-medium text-[#162B4D]">{p.name}</span>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    {p.phone && <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{p.phone}</span>}
-                                    {hubs.length > 0 && (
-                                      <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                        <Building2 className="w-2.5 h-2.5" />{hubs.slice(0, 2).join(", ")}{hubs.length > 2 ? ` +${hubs.length - 2}` : ""}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      onClick={handleAssignDelivery}
-                      disabled={assigningDelivery || !selectedDeliveryPersonId}
-                      className="bg-orange-500 hover:bg-orange-600 h-10 px-4 text-white font-semibold"
-                    >
-                      {assigningDelivery ? "Saving..." : "Assign"}
-                    </Button>
-                  </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-black truncate">{selectedOrder.assignedDeliveryPersonName}</p>
+                            <p className="text-[11px] text-gray-500">Currently assigned</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSelectedDeliveryPersonId("__none__");
+                              setTimeout(() => handleAssignDelivery(), 0);
+                            }}
+                            disabled={assigningDelivery}
+                            className="text-[11px] font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 bg-white px-2.5 py-1 rounded-md transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
 
-                  {deliveryPersons.length === 0 && (
-                    <p className="text-[11px] text-gray-400 italic">No delivery persons found. Add them via Admin Users.</p>
-                  )}
-                </div>
+                      {modalFiltered && !showAllPersons && (
+                        <p className="text-[11px] text-gray-500">
+                          Showing <strong className="text-black">{modalFilteredCount}</strong> partner{modalFilteredCount !== 1 ? "s" : ""} from this order's hub.
+                        </p>
+                      )}
+                      {showAllPersons && (
+                        <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <p className="text-[11px] text-amber-700">
+                            Showing all partners. For best practice, assign hub-specific partners only.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Select + Assign */}
+                      <div className="flex gap-2">
+                        <Select value={selectedDeliveryPersonId} onValueChange={setSelectedDeliveryPersonId}>
+                          <SelectTrigger className="h-10 flex-1 text-sm">
+                            <SelectValue placeholder="Select delivery partner..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {modalPersons.length === 0 && (
+                              <div className="py-4 text-center text-xs text-gray-400">
+                                No delivery partners {modalFiltered && !showAllPersons ? "for this hub" : "available"}
+                              </div>
+                            )}
+                            {modalPersons.map((p) => {
+                              const hubs = [
+                                ...(p.superHubNames ?? (p.superHubName ? [p.superHubName] : [])),
+                                ...(p.subHubNames ?? (p.subHubName ? [p.subHubName] : [])),
+                              ].filter(Boolean);
+                              return (
+                                <SelectItem key={p.id} value={p.id}>
+                                  <div className="flex flex-col">
+                                    <span className="font-medium text-black">{p.name}</span>
+                                    <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                                      {p.phone && <span>{p.phone}</span>}
+                                      {hubs.length > 0 && <span>· {hubs.slice(0, 2).join(", ")}{hubs.length > 2 ? ` +${hubs.length - 2}` : ""}</span>}
+                                    </div>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          onClick={handleAssignDelivery}
+                          disabled={assigningDelivery || !selectedDeliveryPersonId}
+                          className="bg-brand-secondary hover:bg-brand-secondary-600 h-10 px-4 text-white font-semibold"
+                        >
+                          {assigningDelivery ? "Saving..." : "Assign"}
+                        </Button>
+                      </div>
+
+                      {deliveryPersons.length === 0 && (
+                        <p className="text-[11px] text-gray-400 italic">No delivery persons found. Add them via Admin Users.</p>
+                      )}
+                    </div>
+                  </section>
                 )}
 
-                {/* Status Update */}
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Update Status</p>
-                  {(() => {
-                    const isTakeaway = selectedOrder.deliveryType === "takeaway";
-                    const hasAssignee = !!selectedOrder.assignedDeliveryPersonId;
-                    const requiresAssignee = (s: string) =>
-                      !isTakeaway && !hasAssignee && (s === "out_for_delivery" || s === "delivered");
-                    const statusOptions = isTakeaway
-                      ? ["takeaway", "cancelled"]
-                      : ALL_STATUSES.filter((s) => s !== "takeaway");
-                    const blocked = requiresAssignee(editStatus);
-                    return (
-                      <>
-                        <div className="flex gap-2">
-                          <Select value={editStatus} onValueChange={setEditStatus}>
-                            <SelectTrigger className="h-9 flex-1 text-sm"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {statusOptions.map((s) => {
-                                const disabled = requiresAssignee(s);
-                                return (
-                                  <SelectItem key={s} value={s} disabled={disabled}>
-                                    <span className="flex items-center gap-2">
-                                      {STATUS_CONFIG[s].label}
-                                      {disabled && <span className="text-[10px] text-gray-400">(assign partner first)</span>}
-                                    </span>
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            onClick={handleStatusUpdate}
-                            disabled={savingStatus || blocked || editStatus === displayStatus(selectedOrder.status, selectedOrder.deliveryType)}
-                            className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-4"
-                          >
-                            {savingStatus ? "Saving..." : "Update"}
-                          </Button>
-                        </div>
-                        {blocked && (
-                          <p className="text-[11px] text-amber-600 font-medium">
-                            Assign a delivery partner above before marking this order as Out for Delivery or Delivered.
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">Current:</span>
+                {/* === Status Update card === */}
+                <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <header className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ClipboardList className="w-3.5 h-3.5 text-brand-primary" />
+                      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Update Status</h3>
+                    </div>
                     <StatusBadge status={selectedOrder.status} deliveryType={selectedOrder.deliveryType} />
+                  </header>
+                  <div className="p-4 space-y-2">
+                    {(() => {
+                      const isTakeaway = selectedOrder.deliveryType === "takeaway";
+                      const hasAssignee = !!selectedOrder.assignedDeliveryPersonId;
+                      const requiresAssignee = (s: string) =>
+                        !isTakeaway && !hasAssignee && (s === "out_for_delivery" || s === "delivered");
+                      const statusOptions = isTakeaway
+                        ? ["takeaway", "cancelled"]
+                        : ALL_STATUSES.filter((s) => s !== "takeaway");
+                      const blocked = requiresAssignee(editStatus);
+                      return (
+                        <>
+                          <div className="flex gap-2">
+                            <Select value={editStatus} onValueChange={setEditStatus}>
+                              <SelectTrigger className="h-10 flex-1 text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {statusOptions.map((s) => {
+                                  const disabled = requiresAssignee(s);
+                                  return (
+                                    <SelectItem key={s} value={s} disabled={disabled}>
+                                      <span className="flex items-center gap-2">
+                                        {STATUS_CONFIG[s].label}
+                                        {disabled && <span className="text-[10px] text-gray-400">(assign partner first)</span>}
+                                      </span>
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              onClick={handleStatusUpdate}
+                              disabled={savingStatus || blocked || editStatus === displayStatus(selectedOrder.status, selectedOrder.deliveryType)}
+                              className="bg-brand-primary hover:bg-brand-primary-600 h-10 px-5 text-white font-semibold"
+                            >
+                              {savingStatus ? "Saving..." : "Update"}
+                            </Button>
+                          </div>
+                          {blocked && (
+                            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2.5 py-1.5">
+                              Assign a delivery partner above before marking as Out for Delivery or Delivered.
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
-                </div>
+                </section>
               </div>
 
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setSelectedOrder(null); setShowAllPersons(false); }} className="h-9">Close</Button>
-              </DialogFooter>
+              <SheetFooter className="px-6 py-4 bg-white border-t border-gray-200 flex-row sm:justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setSelectedOrder(null); setShowAllPersons(false); }}
+                  className="h-9 px-5"
+                >
+                  Close
+                </Button>
+              </SheetFooter>
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       {/* Payment-on-deliver dialog */}
       <Dialog open={deliverPayOpen} onOpenChange={(open) => { if (!savingStatus) setDeliverPayOpen(open); }}>
