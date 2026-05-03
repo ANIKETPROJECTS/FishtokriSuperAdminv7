@@ -2641,8 +2641,12 @@ export default function Orders() {
             ) : (
               <div className="space-y-1.5">
                 <div className="flex gap-1.5">
-                  <Input value={newCustomer.name} onChange={(e) => setNewCustomer((n) => ({ ...n, name: e.target.value }))} placeholder="Full name *" className="h-8 text-xs flex-1" />
-                  <Input value={newCustomer.phone} onChange={(e) => setNewCustomer((n) => ({ ...n, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="Phone *" className="h-8 text-xs w-28" inputMode="numeric" maxLength={10} />
+                  <Input value={newCustomer.name} onChange={(e) => setNewCustomer((n) => ({ ...n, name: e.target.value }))} placeholder="Full name *" className="h-7 text-xs flex-1" />
+                  <Input value={newCustomer.phone} onChange={(e) => setNewCustomer((n) => ({ ...n, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="Phone *" className="h-7 text-xs w-28" inputMode="numeric" maxLength={10} />
+                </div>
+                <div className="flex gap-1.5">
+                  <Input value={newCustomer.email} onChange={(e) => setNewCustomer((n) => ({ ...n, email: e.target.value }))} placeholder="Email (optional)" className="h-7 text-xs flex-1" type="email" />
+                  <Input value={newCustomer.dateOfBirth} onChange={(e) => setNewCustomer((n) => ({ ...n, dateOfBirth: e.target.value }))} placeholder="DOB" className="h-7 text-xs w-28" type="date" title="Date of birth" />
                 </div>
               </div>
             )}
@@ -2672,9 +2676,16 @@ export default function Orders() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-1">
+                    {/* Address label */}
+                    <div className="col-span-2 flex gap-1">
+                      {["Home", "Work", "Other"].map((lbl) => (
+                        <button key={lbl} type="button" onClick={() => setNewAddress((a) => ({ ...a, label: lbl }))} className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-colors ${newAddress.label === lbl ? "bg-[#1A56DB] text-white border-[#1A56DB]" : "border-gray-200 text-gray-500 bg-white hover:bg-gray-50"}`}>{lbl}</button>
+                      ))}
+                    </div>
                     <Input value={newAddress.name} onChange={(e) => setNewAddress((a) => ({ ...a, name: e.target.value }))} placeholder="Recipient name *" className="h-7 text-xs col-span-2" />
                     <Input value={newAddress.phone} onChange={(e) => setNewAddress((a) => ({ ...a, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="Phone *" className="h-7 text-xs col-span-2" inputMode="numeric" />
                     <Input value={newAddress.building} onChange={(e) => setNewAddress((a) => ({ ...a, building: e.target.value }))} placeholder="Building/Flat *" className="h-7 text-xs col-span-2" />
+                    <Input value={newAddress.street} onChange={(e) => setNewAddress((a) => ({ ...a, street: e.target.value }))} placeholder="Street / Landmark" className="h-7 text-xs col-span-2" />
                     <Input value={newAddress.area} onChange={(e) => setNewAddress((a) => ({ ...a, area: e.target.value }))} placeholder="Area *" className="h-7 text-xs" />
                     <Input value={newAddress.pincode} onChange={(e) => setNewAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="Pincode *" className="h-7 text-xs" inputMode="numeric" />
                   </div>
@@ -2682,6 +2693,72 @@ export default function Orders() {
               </div>
             )}
           </div>
+
+          {/* ── Scheduling (delivery only) ── */}
+          {orderDeliveryType === "delivery" && (
+            <div className="flex-shrink-0 border-b border-gray-100 px-3 py-2.5 bg-gray-50 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Delivery Schedule</p>
+                <div className="flex items-center gap-1 bg-white rounded-md border border-gray-200 p-0.5">
+                  <button onClick={() => setOrderScheduleType("instant")} className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${orderScheduleType === "instant" ? "bg-amber-500 text-white" : "text-gray-500"}`}>
+                    Instant
+                  </button>
+                  <button onClick={() => setOrderScheduleType("slot")} className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${orderScheduleType === "slot" ? "bg-[#1A56DB] text-white" : "text-gray-500"}`}>
+                    By Slot
+                  </button>
+                </div>
+              </div>
+              {/* Delivery date */}
+              <div className="flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                <Input
+                  type="date"
+                  value={orderDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => { setOrderDate(e.target.value); setSelectedTimeslotId(""); }}
+                  className="h-7 text-xs flex-1"
+                />
+              </div>
+              {/* Timeslots (only when "slot" mode) */}
+              {orderScheduleType === "slot" && (
+                <div>
+                  {loadingTimeslots ? (
+                    <p className="text-[11px] text-gray-400">Loading slots...</p>
+                  ) : activeTimeslots.length === 0 ? (
+                    <p className="text-[11px] text-amber-600 flex items-center gap-1"><Zap className="w-3 h-3" />No slots — switching to instant</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1 max-h-28 overflow-y-auto">
+                      {activeTimeslots.map((t) => {
+                        const id = String(t._id);
+                        const isSelected = selectedTimeslotId === id;
+                        const extra = Number(t.extraCharge) || 0;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setSelectedTimeslotId(id)}
+                            className={`flex items-start gap-1.5 p-1.5 rounded-lg border text-left transition-all ${isSelected ? "border-[#1A56DB] bg-blue-50" : "border-gray-200 bg-white hover:border-gray-300"}`}
+                          >
+                            <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5 ${isSelected ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-400"}`}>
+                              {t.isInstant ? <Zap className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-bold text-[#162B4D] truncate leading-tight">{t.label}</p>
+                              <p className="text-[10px] text-gray-400">{t.startTime}–{t.endTime}{extra > 0 ? ` +₹${extra}` : ""}</p>
+                            </div>
+                            {isSelected && <Check className="w-3 h-3 text-[#1A56DB] flex-shrink-0 mt-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+              {orderScheduleType === "instant" && (
+                <p className="text-[11px] text-amber-700 flex items-center gap-1"><Zap className="w-3 h-3" />Dispatched as soon as possible</p>
+              )}
+            </div>
+          )}
 
           {/* ── Cart items ── */}
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -2769,6 +2846,12 @@ export default function Orders() {
                   <span>−₹{couponDiscount.toLocaleString("en-IN")}</span>
                 </div>
               )}
+              {slotExtraCharge > 0 && (
+                <div className="flex justify-between text-[11px] text-blue-600">
+                  <span className="flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />Slot charge</span>
+                  <span>+₹{slotExtraCharge.toLocaleString("en-IN")}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center pt-1">
                 <span className="text-sm font-bold text-gray-700">Total</span>
                 <span className="text-lg font-extrabold text-[#162B4D]">₹{newOrderTotal.toLocaleString("en-IN")}</span>
@@ -2812,6 +2895,15 @@ export default function Orders() {
                   );
                 })}
               </div>
+              {/* Reference for paid UPI/card */}
+              {paymentStatus === "paid" && (paymentEntries[0]?.mode === "upi" || paymentEntries[0]?.mode === "card" || paymentEntries[0]?.mode === "bank_transfer") && (
+                <Input
+                  value={paymentEntries[0]?.reference ?? ""}
+                  onChange={(e) => setPaymentEntries((arr) => arr.map((p, i) => i === 0 ? { ...p, reference: e.target.value } : p))}
+                  placeholder="Transaction / Reference ID"
+                  className="h-7 text-xs mt-1.5"
+                />
+              )}
               <div className="flex items-center gap-1.5 mt-1.5">
                 <button
                   type="button"
@@ -2829,14 +2921,19 @@ export default function Orders() {
                 </button>
               </div>
               {paymentStatus === "partial" && (
-                <div className="mt-1.5 flex gap-1.5">
-                  <div className="relative flex-1">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
-                    <Input type="number" inputMode="decimal" value={paymentEntries[0]?.amount ?? ""} onChange={(e) => setPaymentEntries([{ mode: paymentEntries[0]?.mode || "cash", amount: e.target.value, reference: "" }])} placeholder="Paid amount" className="pl-5 h-7 text-xs" />
+                <div className="mt-1.5 space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <div className="relative flex-1">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                      <Input type="number" inputMode="decimal" value={paymentEntries[0]?.amount ?? ""} onChange={(e) => setPaymentEntries((arr) => [{ ...arr[0] ?? { mode: "cash", reference: "" }, amount: e.target.value }])} placeholder="Paid amount" className="pl-5 h-7 text-xs" />
+                    </div>
+                    <select value={paymentEntries[0]?.mode || "cash"} onChange={(e) => setPaymentEntries((arr) => arr.map((p, i) => i === 0 ? { ...p, mode: e.target.value } : p))} className="h-7 px-2 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#1A56DB]/30">
+                      {PAYMENT_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
                   </div>
-                  <select value={paymentEntries[0]?.mode || "cash"} onChange={(e) => setPaymentEntries((arr) => arr.map((p, i) => i === 0 ? { ...p, mode: e.target.value } : p))} className="h-7 px-2 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#1A56DB]/30">
-                    {PAYMENT_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </select>
+                  {(paymentEntries[0]?.mode === "upi" || paymentEntries[0]?.mode === "card" || paymentEntries[0]?.mode === "bank_transfer") && (
+                    <Input value={paymentEntries[0]?.reference ?? ""} onChange={(e) => setPaymentEntries((arr) => arr.map((p, i) => i === 0 ? { ...p, reference: e.target.value } : p))} placeholder="Reference / Transaction ID" className="h-7 text-xs" />
+                  )}
                 </div>
               )}
             </div>
