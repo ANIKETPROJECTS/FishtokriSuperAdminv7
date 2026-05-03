@@ -2597,8 +2597,8 @@ export default function Orders() {
           {/* ── RIGHT: ORDER PANEL — single scroll, no tabs ── */}
           <div className="w-[500px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
 
-            {/* ─── TOP: Customer + Address + Schedule (compact, scrollable up to ~45%) ─── */}
-            <div className="flex-shrink-0 overflow-y-auto border-b border-gray-200" style={{ maxHeight: "46%" }}>
+            {/* ─── TOP: Customer + Address + Schedule (compact, scrollable, capped at 240px) ─── */}
+            <div className="flex-shrink-0 overflow-y-auto border-b border-gray-200" style={{ maxHeight: "240px" }}>
 
               {/* Customer */}
               <div className="px-4 pt-3 pb-3 border-b border-gray-100">
@@ -2754,8 +2754,8 @@ export default function Orders() {
               )}
             </div>
 
-            {/* ─── MIDDLE: Cart items (flex-1, scrollable) ─── */}
-            <div className="flex-1 overflow-y-auto min-h-0">
+            {/* ─── MIDDLE: Cart items (flex-1, always visible) ─── */}
+            <div className="flex-1 overflow-y-auto min-h-[130px]">
               {selectedProducts.length === 0 && orderItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center px-4">
                   <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
