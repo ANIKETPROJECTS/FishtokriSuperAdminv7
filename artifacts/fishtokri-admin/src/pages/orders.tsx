@@ -2439,7 +2439,7 @@ export default function Orders() {
             </button>
             {loadingProducts ? (
               <div className="px-3 py-4 text-[11px] text-gray-400 text-center">Loading...</div>
-            ) : productCategories.map((cat) => (
+            ) : filteredCategories.map((cat) => (
               <button
                 key={cat.name}
                 onClick={() => setPickerCategory(cat.name)}
@@ -2812,25 +2812,79 @@ export default function Orders() {
 
           {/* ── Totals + Payment + Checkout ── */}
           <div className="flex-shrink-0 border-t border-gray-100 bg-white px-3 py-2.5 space-y-2">
-            {/* Coupon code */}
+            {/* Coupon section */}
             {totalItemCount > 0 && (
-              <div className="flex gap-1.5">
-                <div className="relative flex-1">
-                  <Tag className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                  <Input value={couponCode} onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }} placeholder="Coupon code" className="pl-6 h-7 text-xs" />
+              <div className="space-y-1.5">
+                {/* Manual code entry */}
+                <div className="flex gap-1.5">
+                  <div className="relative flex-1">
+                    <Tag className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                    <Input value={couponCode} onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }} placeholder="Enter coupon code" className="pl-6 h-7 text-xs" />
+                  </div>
+                  <Button type="button" variant="outline" onClick={applyCouponByCode} disabled={!couponCode.trim()} className="h-7 text-xs px-3">Apply</Button>
                 </div>
-                <Button type="button" variant="outline" onClick={applyCouponByCode} disabled={!couponCode.trim()} className="h-7 text-xs px-3">Apply</Button>
-              </div>
-            )}
-            {couponError && <p className="text-[10px] text-red-500">{couponError}</p>}
-            {appliedCoupons.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {appliedCoupons.map((c) => (
-                  <span key={String(c._id)} className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
-                    <Ticket className="w-2.5 h-2.5" />{c.code}
-                    <button onClick={() => setAppliedCouponIds((ids) => ids.filter((id) => id !== String(c._id)))} className="hover:text-red-500"><X className="w-2.5 h-2.5" /></button>
-                  </span>
-                ))}
+                {couponError && <p className="text-[10px] text-red-500">{couponError}</p>}
+                {/* Available coupons from sub-hub */}
+                {loadingCoupons ? (
+                  <p className="text-[10px] text-gray-400">Loading offers...</p>
+                ) : activeCoupons.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Available Offers</p>
+                    <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+                      {activeCoupons.map((c) => {
+                        const cid = String(c._id);
+                        const isApplied = appliedCouponIds.includes(cid);
+                        const applicable = isCouponApplicable(c);
+                        const min = Number(c.minOrderAmount) || 0;
+                        const meetsMin = itemsSubtotal >= min;
+                        const canApply = applicable && meetsMin;
+                        const discountLabel = c.type === "percentage"
+                          ? `${Number(c.discountValue)}% OFF`
+                          : `₹${Number(c.discountValue)} OFF`;
+                        return (
+                          <button
+                            key={cid}
+                            type="button"
+                            onClick={() => toggleCoupon(cid)}
+                            disabled={!canApply && !isApplied}
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left transition-all ${
+                              isApplied
+                                ? "border-emerald-300 bg-emerald-50"
+                                : canApply
+                                  ? "border-gray-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/50"
+                                  : "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            <div className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${isApplied ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600"}`}>
+                              {c.code}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-semibold text-[#162B4D] truncate">{discountLabel}</p>
+                              {min > 0 && <p className="text-[10px] text-gray-400">Min ₹{min.toLocaleString("en-IN")}</p>}
+                            </div>
+                            {isApplied
+                              ? <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                              : !meetsMin && min > 0
+                                ? <span className="text-[9px] text-gray-400 flex-shrink-0">Add ₹{(min - itemsSubtotal).toLocaleString("en-IN")} more</span>
+                                : null
+                            }
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {/* Applied coupons badges */}
+                {appliedCoupons.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {appliedCoupons.map((c) => (
+                      <span key={String(c._id)} className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                        <Ticket className="w-2.5 h-2.5" />{c.code}
+                        <button onClick={() => setAppliedCouponIds((ids) => ids.filter((id) => id !== String(c._id)))} className="hover:text-red-500"><X className="w-2.5 h-2.5" /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
