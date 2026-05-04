@@ -2522,7 +2522,7 @@ export default function Orders() {
                     return (
                       <div
                         key={pid}
-                        className={`relative rounded-xl border-2 transition-all select-none ${
+                        className={`rounded-xl border-2 transition-all select-none ${
                           outOfStock
                             ? "border-gray-100 bg-gray-50 opacity-40 cursor-not-allowed"
                             : cartItem
@@ -2539,41 +2539,35 @@ export default function Orders() {
                           });
                         }}
                       >
-                        <div className="p-3 flex flex-col pb-10">
-                          <p className="text-sm font-medium text-[#162B4D] leading-snug line-clamp-2 min-h-[2.5rem]">{p.name}</p>
-                          <p className="text-xs text-gray-400 uppercase tracking-wide mt-1 truncate h-4">{p.category || ""}</p>
-                          <p className="text-base font-semibold text-[#1A56DB] mt-1">₹{Number(p.price).toLocaleString("en-IN")}</p>
-                          {lowStock && !outOfStock && (
-                            <p className="text-xs font-medium text-amber-500 mt-0.5">Only {stock} left</p>
-                          )}
+                        <div className="p-2.5 flex flex-col gap-0.5" onClick={(e) => e.stopPropagation()}>
+                          <p className="text-sm font-medium text-[#162B4D] leading-snug line-clamp-2" onClick={(e) => { e.stopPropagation(); if (!outOfStock && !atMax) { setSelectedProducts((prev) => { const exists = prev.find((sp) => sp.productId === pid); if (exists) return prev.map((sp) => sp.productId === pid ? { ...sp, quantity: sp.quantity + 1 } : sp); return [...prev, { productId: pid, name: p.name, price: Number(p.price) || 0, unit: p.unit ?? "", quantity: 1 }]; }); } }}>{p.name}</p>
+                          <p className="text-xs text-gray-400 uppercase tracking-wide truncate">{p.category || ""}</p>
+                          <div className="flex items-center justify-between mt-1.5 gap-1">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[#1A56DB]">₹{Number(p.price).toLocaleString("en-IN")}</p>
+                              {lowStock && !outOfStock && <p className="text-[10px] font-medium text-amber-500 leading-none">Only {stock} left</p>}
+                              {outOfStock && <p className="text-[10px] font-bold text-red-500 leading-none">Out of stock</p>}
+                            </div>
+                            {cartItem ? (
+                              <div className="flex items-center bg-[#1A56DB] rounded-lg overflow-hidden shadow-sm flex-shrink-0">
+                                <button
+                                  className="w-6 h-6 flex items-center justify-center text-white hover:bg-[#1447B4] font-bold text-sm"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedProducts((arr) => cartItem.quantity <= 1 ? arr.filter((x) => x.productId !== pid) : arr.map((x) => x.productId === pid ? { ...x, quantity: x.quantity - 1 } : x)); }}
+                                >−</button>
+                                <span className="text-xs font-bold text-white min-w-[16px] text-center">{cartItem.quantity}</span>
+                                <button
+                                  className="w-6 h-6 flex items-center justify-center text-white hover:bg-[#1447B4] font-bold text-sm disabled:opacity-40"
+                                  disabled={atMax}
+                                  onClick={(e) => { e.stopPropagation(); if (!atMax) setSelectedProducts((arr) => arr.map((x) => x.productId === pid ? { ...x, quantity: x.quantity + 1 } : x)); }}
+                                >+</button>
+                              </div>
+                            ) : !outOfStock && (
+                              <div className="w-6 h-6 rounded-full bg-[#1A56DB] flex items-center justify-center shadow-sm flex-shrink-0" onClick={(e) => { e.stopPropagation(); setSelectedProducts((prev) => { const exists = prev.find((sp) => sp.productId === pid); if (exists) return prev.map((sp) => sp.productId === pid ? { ...sp, quantity: sp.quantity + 1 } : sp); return [...prev, { productId: pid, name: p.name, price: Number(p.price) || 0, unit: p.unit ?? "", quantity: 1 }]; }); }}>
+                                <Plus className="w-3.5 h-3.5 text-white" />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        {/* Cart qty badge / add button */}
-                        {cartItem ? (
-                          <div
-                            className="absolute bottom-2 right-2 flex items-center bg-[#1A56DB] rounded-lg overflow-hidden shadow-sm"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              className="w-7 h-7 flex items-center justify-center text-white hover:bg-[#1447B4] font-bold text-base"
-                              onClick={(e) => { e.stopPropagation(); setSelectedProducts((arr) => cartItem.quantity <= 1 ? arr.filter((x) => x.productId !== pid) : arr.map((x) => x.productId === pid ? { ...x, quantity: x.quantity - 1 } : x)); }}
-                            >−</button>
-                            <span className="text-xs font-bold text-white min-w-[18px] text-center">{cartItem.quantity}</span>
-                            <button
-                              className="w-7 h-7 flex items-center justify-center text-white hover:bg-[#1447B4] font-bold text-base disabled:opacity-40"
-                              disabled={atMax}
-                              onClick={(e) => { e.stopPropagation(); if (!atMax) setSelectedProducts((arr) => arr.map((x) => x.productId === pid ? { ...x, quantity: x.quantity + 1 } : x)); }}
-                            >+</button>
-                          </div>
-                        ) : !outOfStock && (
-                          <div className="absolute bottom-2 right-2 w-7 h-7 rounded-full bg-[#1A56DB] flex items-center justify-center shadow-sm">
-                            <Plus className="w-4 h-4 text-white" />
-                          </div>
-                        )}
-                        {outOfStock && (
-                          <div className="absolute bottom-2 left-2 right-2 flex justify-center">
-                            <span className="text-[10px] font-bold text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">Out of stock</span>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -2829,74 +2823,70 @@ export default function Orders() {
                   </div>
                 )}
               </div>
+
+              {/* ── Payment ── */}
+              <div className="flex-shrink-0 border-t border-gray-100 px-3 py-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Payment</p>
+                <div className="flex items-center gap-2">
+                  <button type="button"
+                    onClick={() => { setPaymentStatus("paid"); setPaymentEntries([{ mode: "upi", amount: String(newOrderTotal || 0), reference: "" }]); }}
+                    className={`px-4 py-1.5 rounded-lg border-2 text-sm font-semibold transition-all ${paymentStatus === "paid" && paymentEntries[0]?.mode === "upi" ? "border-[#1A56DB] bg-[#1A56DB] text-white" : "border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300"}`}
+                  >UPI</button>
+                  <button type="button"
+                    onClick={() => { setPaymentStatus("unpaid"); setPaymentEntries([{ mode: "cash", amount: "0", reference: "" }]); }}
+                    className={`px-4 py-1.5 rounded-lg border-2 text-sm font-semibold transition-all ${paymentStatus === "unpaid" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300"}`}
+                  >COD</button>
+                </div>
+              </div>
+
+              {/* ── Notes ── */}
+              <div className="flex-shrink-0 border-t border-gray-100 px-3 py-2">
+                <Textarea value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} placeholder="Order notes (optional)..." className="text-xs min-h-[28px] max-h-[32px] resize-none bg-gray-50 border-gray-200 w-full" rows={1} />
+              </div>
+
+              {/* ── Totals + CTA ── */}
+              <div className="flex-shrink-0 border-t border-gray-100 px-3 py-2 space-y-1">
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Subtotal</span>
+                  <span>₹{itemsSubtotal.toLocaleString("en-IN")}</span>
+                </div>
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-xs text-emerald-600 font-medium">
+                    <span>Discount</span>
+                    <span>−₹{couponDiscount.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+                {slotExtraCharge > 0 && (
+                  <div className="flex justify-between text-xs text-[#1A56DB] font-medium">
+                    <span>Slot charge</span>
+                    <span>+₹{slotExtraCharge.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                  <span className="text-sm font-bold text-[#162B4D]">Total</span>
+                  <span className="text-xl font-extrabold text-[#162B4D]">₹{newOrderTotal.toLocaleString("en-IN")}</span>
+                </div>
+                <Button
+                  onClick={handleCreateOrder}
+                  disabled={creatingSaving || totalItemCount === 0}
+                  className="w-full h-9 bg-[#F05B4E] hover:bg-[#d94a3e] text-white font-bold text-sm rounded-xl gap-2 disabled:opacity-50"
+                >
+                  {creatingSaving
+                    ? (editingOrderId ? "Saving..." : "Creating...")
+                    : editingOrderId
+                      ? <><Pencil className="w-4 h-4" />Save Changes</>
+                      : paymentStatus === "paid"
+                        ? <><Zap className="w-4 h-4" />Checkout · ₹{newOrderTotal.toLocaleString("en-IN")}</>
+                        : <><ShoppingBag className="w-4 h-4" />Place Order (COD)</>
+                  }
+                </Button>
+              </div>
+
             </div>{/* end right half */}
 
           </div>{/* end right panel */}
 
         </div>{/* end 3-col body */}
-
-        {/* ══ FULL-WIDTH BOTTOM BAR ══ */}
-        <div className="flex-shrink-0 border-t-2 border-gray-100 bg-white flex items-stretch divide-x divide-gray-100" style={{ minHeight: "76px" }}>
-
-          {/* ── Zone 1: Notes ── */}
-          <div className="flex-1 px-4 py-3 flex flex-col justify-center">
-            <Textarea value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} placeholder="Order notes (optional)..." className="text-xs min-h-[28px] max-h-[40px] resize-none bg-gray-50 border-gray-200" rows={1} />
-          </div>
-
-          {/* ── Zone 2: Payment ── */}
-          <div className="flex-1 px-4 py-3 flex flex-col justify-center gap-2">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment</p>
-            <div className="flex items-center gap-2">
-              <button type="button"
-                onClick={() => { setPaymentStatus("paid"); setPaymentEntries([{ mode: "upi", amount: String(newOrderTotal || 0), reference: "" }]); }}
-                className={`px-4 py-1.5 rounded-lg border-2 text-sm font-semibold transition-all ${paymentStatus === "paid" && paymentEntries[0]?.mode === "upi" ? "border-[#1A56DB] bg-[#1A56DB] text-white" : "border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300"}`}
-              >UPI</button>
-              <button type="button"
-                onClick={() => { setPaymentStatus("unpaid"); setPaymentEntries([{ mode: "cash", amount: "0", reference: "" }]); }}
-                className={`px-4 py-1.5 rounded-lg border-2 text-sm font-semibold transition-all ${paymentStatus === "unpaid" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300"}`}
-              >COD</button>
-            </div>
-          </div>
-
-          {/* ── Zone 3: Totals + CTA ── */}
-          <div className="w-64 flex-shrink-0 px-4 py-3 flex flex-col justify-center gap-1.5">
-            <div className="flex justify-between text-xs text-gray-400">
-              <span>Subtotal</span>
-              <span>₹{itemsSubtotal.toLocaleString("en-IN")}</span>
-            </div>
-            {couponDiscount > 0 && (
-              <div className="flex justify-between text-xs text-emerald-600 font-medium">
-                <span>Discount</span>
-                <span>−₹{couponDiscount.toLocaleString("en-IN")}</span>
-              </div>
-            )}
-            {slotExtraCharge > 0 && (
-              <div className="flex justify-between text-xs text-[#1A56DB] font-medium">
-                <span>Slot charge</span>
-                <span>+₹{slotExtraCharge.toLocaleString("en-IN")}</span>
-              </div>
-            )}
-            <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-              <span className="text-sm font-bold text-[#162B4D]">Total</span>
-              <span className="text-xl font-extrabold text-[#162B4D]">₹{newOrderTotal.toLocaleString("en-IN")}</span>
-            </div>
-            <Button
-              onClick={handleCreateOrder}
-              disabled={creatingSaving || totalItemCount === 0}
-              className="w-full h-9 bg-[#F05B4E] hover:bg-[#d94a3e] text-white font-bold text-sm rounded-xl gap-2 disabled:opacity-50"
-            >
-              {creatingSaving
-                ? (editingOrderId ? "Saving..." : "Creating...")
-                : editingOrderId
-                  ? <><Pencil className="w-4 h-4" />Save Changes</>
-                  : paymentStatus === "paid"
-                    ? <><Zap className="w-4 h-4" />Checkout · ₹{newOrderTotal.toLocaleString("en-IN")}</>
-                    : <><ShoppingBag className="w-4 h-4" />Place Order (COD)</>
-              }
-            </Button>
-          </div>
-
-        </div>{/* end full-width bottom bar */}
       </div>,
       document.body
       )}
