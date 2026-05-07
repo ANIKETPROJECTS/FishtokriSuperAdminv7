@@ -263,7 +263,10 @@ async function enrichCustomers(customers: any[], log?: any) {
 
   return customers.map((customer) => {
     const linkedOrders = liveOrders.filter((order) => matchesCustomer(order, customer));
-    const combined = [...(Array.isArray(customer.orders) ? customer.orders : []), ...linkedOrders];
+    // Live orders come FIRST so their full data (status, orderNumber, discount, etc.)
+    // wins deduplication over the minimal stored refs in customer.orders.
+    const storedRefs = Array.isArray(customer.orders) ? customer.orders : [];
+    const combined = [...linkedOrders, ...storedRefs];
     const seen = new Set<string>();
     const orders = combined.filter((order) => {
       const id = getOrderId(order);

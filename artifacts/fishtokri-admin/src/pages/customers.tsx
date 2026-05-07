@@ -1178,19 +1178,24 @@ function OrderCard({ order, index }: { order: any; index: number }) {
   const subtotal = order.subtotal ?? order.subTotal;
   const deliveryFee = order.deliveryFee ?? order.deliveryCharge ?? null;
   const slotCharge = order.slotCharge ?? order.timeslotCharge ?? null;
-  const instantDelivery = order.instantDelivery ?? order.instantDeliveryCharge ?? null;
-  const couponDiscount = order.couponDiscount ?? order.discount ?? 0;
-  const couponCode = order.couponCode ?? order.coupon ?? "";
+  const instantDelivery = order.instantDeliveryCharge ?? order.instantDelivery ?? null;
+  const couponDiscount = Number(order.couponDiscount ?? order.discount ?? 0);
+  const couponCode = (
+    order.couponCode
+    ?? (Array.isArray(order.couponCodes) && order.couponCodes.length ? order.couponCodes.join(", ") : null)
+    ?? order.coupon
+    ?? ""
+  );
   const tax = order.tax ?? order.gst ?? order.taxAmount ?? null;
   const notes = order.notes ?? order.orderNotes ?? "";
   const billName = order.customerName ?? order.name ?? "";
   const billPhone = order.phone ?? order.customerPhone ?? order.mobile ?? "";
   const billAddr = getOrderBillAddress(order);
-  const paymentMethod = order.paymentMethod ?? order.payment ?? "";
+  const paymentMethod = order.paymentMethod ?? order.paymentMode ?? order.payment ?? "";
   const paymentStatus = order.paymentStatus ?? "";
   const paidAmount = Number(order.paidAmount ?? order.paid ?? 0);
   const totalAmt = Number(grandTotal ?? getOrderTotal(order));
-  const dueAmount = Math.max(0, totalAmt - paidAmount);
+  const dueAmount = order.dueAmount != null ? Number(order.dueAmount) : Math.max(0, totalAmt - paidAmount);
   const subHubName = order.subHubName ?? order.subHub ?? order.location ?? "";
   const isPaid = paymentStatus && normalize(paymentStatus) === "paid";
   const isUnpaid = paymentStatus && ["unpaid", "pending", "due"].includes(normalize(paymentStatus));
