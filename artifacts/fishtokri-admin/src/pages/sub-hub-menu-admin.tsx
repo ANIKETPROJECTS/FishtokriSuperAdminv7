@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useParams } from "wouter";
 import {
   ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket,
@@ -86,6 +87,7 @@ function TabToolbar({
   layout, onLayout,
   addLabel, onAdd,
   resultCount, totalCount,
+  hideLayoutToggle,
 }: {
   search: string; onSearch: (v: string) => void;
   sortOptions: SortOption[]; sortValue: string; onSortChange: (v: string) => void;
@@ -93,6 +95,7 @@ function TabToolbar({
   layout: Layout; onLayout: (v: Layout) => void;
   addLabel: string; onAdd: () => void;
   resultCount: number; totalCount: number;
+  hideLayoutToggle?: boolean;
 }) {
   const activeFilters = filterGroups.filter((g) => filterValues[g.key] && filterValues[g.key] !== "all");
   const currentSort = sortOptions.find((s) => s.value === sortValue);
@@ -193,22 +196,24 @@ function TabToolbar({
         )}
 
         {/* Layout toggle */}
-        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden ml-auto">
-          <button
-            onClick={() => onLayout("list")}
-            className={`w-9 h-9 flex items-center justify-center transition-colors ${layout === "list" ? "bg-[#1A56DB] text-white" : "text-gray-400 hover:bg-gray-50"}`}
-            title="List view"
-          >
-            <List className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => onLayout("grid")}
-            className={`w-9 h-9 flex items-center justify-center transition-colors border-l border-gray-200 ${layout === "grid" ? "bg-[#1A56DB] text-white" : "text-gray-400 hover:bg-gray-50"}`}
-            title="Grid view"
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </button>
-        </div>
+        {!hideLayoutToggle && (
+          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden ml-auto">
+            <button
+              onClick={() => onLayout("list")}
+              className={`w-9 h-9 flex items-center justify-center transition-colors ${layout === "list" ? "bg-[#1A56DB] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="List view"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onLayout("grid")}
+              className={`w-9 h-9 flex items-center justify-center transition-colors border-l border-gray-200 ${layout === "grid" ? "bg-[#1A56DB] text-white" : "text-gray-400 hover:bg-gray-50"}`}
+              title="Grid view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Add button */}
         <Button onClick={onAdd} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold">
@@ -337,6 +342,14 @@ async function buildAndDownloadExcel(
   URL.revokeObjectURL(url);
 }
 
+type ExcelBarConfig = {
+  busy: boolean;
+  onImport: () => void;
+  onEdit: () => void;
+  onExport: () => void;
+  count: number;
+} | null;
+
 function ExcelBar({ busy, onImport, onEdit, onExport, count }: {
   busy: boolean;
   onImport: () => void;
@@ -372,6 +385,7 @@ export default function SubHubMenuAdmin() {
   const [dbName, setDbName] = useState("");
   const [loadingStats, setLoadingStats] = useState(true);
   const [statsError, setStatsError] = useState("");
+  const [excelBar, setExcelBar] = useState<ExcelBarConfig>(null);
 
   const loadStats = useCallback(async () => {
     setLoadingStats(true);
@@ -405,28 +419,61 @@ export default function SubHubMenuAdmin() {
     { label: "Time Slots", value: stats?.timeslots ?? 0, icon: Clock, color: "text-cyan-600", bg: "bg-cyan-50" },
   ];
 
+  const headerSlot = document.getElementById("page-header-slot");
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => history.back()}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-[#162B4D] transition-colors flex-shrink-0"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-bold text-[#162B4D]">{subHubName || "Thane"} — Digital Menu</h2>
-          {dbName && (
-            <p className="text-gray-400 text-xs flex items-center gap-1 mt-0.5">
-              <Database className="w-3 h-3" />
-              Database: <span className="font-mono">{dbName}</span>
-            </p>
+      {headerSlot && createPortal(
+        <div className="flex items-center w-full gap-3 min-w-0">
+          <button
+            onClick={() => history.back()}
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-[#162B4D] transition-colors flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <h2 className="text-sm font-bold text-[#162B4D] whitespace-nowrap flex-shrink-0">
+            {subHubName || "Sub Hub"} Sub Hub
+          </h2>
+          {excelBar && (
+            <div className="flex items-center gap-2 ml-3 pl-3 border-l border-gray-200">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide hidden sm:inline">Excel</span>
+              <button
+                disabled={excelBar.busy}
+                onClick={excelBar.onImport}
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+              >
+                {excelBar.busy ? <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> : <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 8l-4-4-4 4M12 4v12" /></svg>}
+                Import
+              </button>
+              <button
+                disabled={excelBar.busy}
+                onClick={excelBar.onEdit}
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 disabled:opacity-50 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                Edit
+              </button>
+              <button
+                disabled={excelBar.busy}
+                onClick={excelBar.onExport}
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg>
+                Export ({excelBar.count})
+              </button>
+            </div>
           )}
-        </div>
-        <button onClick={loadStats} className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-[#162B4D] transition-colors" title="Refresh stats">
-          <RefreshCw className="w-4 h-4" />
-        </button>
-      </div>
+          <div className="flex-1" />
+          <button
+            onClick={loadStats}
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-[#162B4D] transition-colors flex-shrink-0"
+            title="Refresh stats"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>,
+        headerSlot
+      )}
 
       {statsError && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
@@ -457,27 +504,14 @@ export default function SubHubMenuAdmin() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex border-b border-gray-100 overflow-x-auto">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 -mb-px flex-shrink-0 ${tab === key ? "border-[#1A56DB] text-[#1A56DB] bg-blue-50/50" : "border-transparent text-gray-500 hover:text-[#162B4D]"}`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
-
         <div className="p-5">
-          {!statsError && tab === "products" && <ProductsTab subHubId={subHubId} />}
-          {!statsError && tab === "categories" && <CategoriesTab subHubId={subHubId} onRefreshStats={loadStats} />}
-          {!statsError && tab === "combos" && <CombosTab subHubId={subHubId} />}
-          {!statsError && tab === "coupons" && <CouponsTab subHubId={subHubId} />}
+          {!statsError && tab === "products" && <ProductsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
+          {!statsError && tab === "categories" && <CategoriesTab subHubId={subHubId} onRefreshStats={loadStats} onSetExcel={setExcelBar} />}
+          {!statsError && tab === "combos" && <CombosTab subHubId={subHubId} onSetExcel={setExcelBar} />}
+          {!statsError && tab === "coupons" && <CouponsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
           {!statsError && tab === "carousels" && <CarouselsTab subHubId={subHubId} />}
-          {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} />}
-          {!statsError && tab === "timeslots" && <TimeSlotsTab subHubId={subHubId} />}
+          {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
+          {!statsError && tab === "timeslots" && <TimeSlotsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
           {statsError && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
         </div>
       </div>
@@ -504,7 +538,7 @@ const PRODUCT_COLS = [
   { key: "limitedStockNote", header: "Limited Stock Note" },
 ];
 
-function ProductsTab({ subHubId }: { subHubId: string }) {
+function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (cfg: ExcelBarConfig) => void }) {
   const { toast } = useToast();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -512,7 +546,7 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
   const [search, setSearch] = useState("");
   const [sortValue, setSortValue] = useState("name_asc");
   const [filters, setFilters] = useState<Record<string, string>>({ status: "all", category: "all" });
-  const [layout, setLayout] = useState<Layout>("list");
+  const layout: Layout = "list";
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -872,41 +906,36 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
     return <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded-full"><CheckCircle className="w-2.5 h-2.5" /> Available</span>;
   };
 
+  const _prodImportClick = useCallback(() => importRef.current?.click(), []);
+  const _prodEditClick = useCallback(() => editRef.current?.click(), []);
+  const _prodExportRef = useRef(handleExport);
+  _prodExportRef.current = handleExport;
+  const _prodStableExport = useCallback(() => { _prodExportRef.current(); }, []);
+  useEffect(() => {
+    onSetExcel({ busy: xlsxBusy, onImport: _prodImportClick, onEdit: _prodEditClick, onExport: _prodStableExport, count: processed.length });
+    return () => onSetExcel(null);
+  }, [xlsxBusy, processed.length, _prodImportClick, _prodEditClick, _prodStableExport, onSetExcel]);
+
   return (
     <div className="space-y-4">
-      {/* Excel action bar */}
-      <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-100 rounded-xl">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide mr-1">Excel</span>
-        <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
-        <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleEditFile} />
-        <Button size="sm" variant="outline" disabled={xlsxBusy} onClick={() => importRef.current?.click()}
-          className="h-8 gap-1.5 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300">
-          <Upload className="w-3.5 h-3.5" /> Import New Products
-        </Button>
-        <Button size="sm" variant="outline" disabled={xlsxBusy} onClick={() => editRef.current?.click()}
-          className="h-8 gap-1.5 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300">
-          <FilePen className="w-3.5 h-3.5" /> Edit Products
-        </Button>
-        <Button size="sm" variant="outline" disabled={xlsxBusy || processed.length === 0} onClick={handleExport}
-          className="h-8 gap-1.5 text-xs border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 ml-auto">
-          <Download className="w-3.5 h-3.5" /> Export Products {processed.length < products.length ? `(${processed.length} filtered)` : `(${products.length})`}
-        </Button>
-      </div>
+      <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
+      <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleEditFile} />
 
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
+        layout={layout} onLayout={() => {}}
         addLabel="Add Product" onAdd={() => { setEditing(null); setModalOpen(true); }}
         resultCount={processed.length} totalCount={products.length}
+        hideLayoutToggle
       />
 
       {loading ? (
         <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>
       ) : processed.length === 0 ? (
         <EmptyState icon={Package} message="No products found" sub="Try adjusting your search or filters" />
-      ) : layout === "list" ? (
+      ) : (
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-sm">
             <thead>
@@ -980,75 +1009,6 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pagedProducts.pageItems.map((p) => (
-            <div key={String(p._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
-              <div className="p-4 space-y-3">
-                {/* Header */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-[#162B4D] text-sm leading-tight">{p.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{p.category}{p.subCategory ? ` › ${p.subCategory}` : ""}</p>
-                  </div>
-                  {statusBadge(p)}
-                </div>
-
-                {/* Description */}
-                {p.description && <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{p.description}</p>}
-
-                {/* Pricing row */}
-                <div className="flex items-center gap-3 bg-blue-50/60 rounded-lg px-3 py-2">
-                  <div>
-                    <p className="text-[10px] text-gray-400 font-medium">PRICE</p>
-                    <p className="font-black text-[#1A56DB] text-base leading-tight">₹{p.price}</p>
-                  </div>
-                  {p.originalPrice > p.price && (
-                    <>
-                      <div className="w-px h-8 bg-blue-200" />
-                      <div>
-                        <p className="text-[10px] text-gray-400 font-medium">MRP</p>
-                        <p className="text-xs text-gray-400 line-through">₹{p.originalPrice}</p>
-                      </div>
-                      <div className="ml-auto">
-                        <span className="text-xs font-black text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">{p.discountPct}% off</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Details grid */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  {p.unit && <div><span className="text-gray-400">Unit: </span><span className="font-medium text-gray-600">{p.unit}</span></div>}
-                  {p.pieces && <div><span className="text-gray-400">Pieces: </span><span className="font-medium text-gray-600">{p.pieces}</span></div>}
-                  {p.serves && <div><span className="text-gray-400">Serves: </span><span className="font-medium text-gray-600">{p.serves}</span></div>}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400">Stock: </span>
-                    <span className={`font-bold ${(p.quantity ?? 0) === 0 ? "text-red-500" : (p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold) ? "text-amber-500" : "text-gray-700"}`}>{p.quantity ?? 0}</span>
-                    {p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold && (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded-full leading-none">
-                        <AlertCircle className="w-2.5 h-2.5" /> Low
-                      </span>
-                    )}
-                  </div>
-                  {Array.isArray(p.recipes) && p.recipes.length > 0 && (
-                    <div><span className="text-gray-400">Recipes: </span><span className="font-medium text-blue-600">{p.recipes.length}</span></div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-1.5 pt-1 border-t border-gray-50">
-                  <button onClick={() => { setEditing(p); setModalOpen(true); }} className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors text-xs font-medium">
-                    <Edit2 className="w-3 h-3" /> Edit
-                  </button>
-                  <button onClick={() => setDeleteId(String(p._id))} className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors text-xs font-medium">
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       )}
 
       <PaginationBar
@@ -1066,14 +1026,14 @@ function ProductsTab({ subHubId }: { subHubId: string }) {
 }
 
 // ─── CATEGORIES TAB ───────────────────────────────────────────────────────────
-function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefreshStats: () => void }) {
+function CategoriesTab({ subHubId, onRefreshStats, onSetExcel }: { subHubId: string; onRefreshStats: () => void; onSetExcel: (cfg: ExcelBarConfig) => void }) {
   const { toast } = useToast();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortValue, setSortValue] = useState("sort_asc");
   const [filters, setFilters] = useState<Record<string, string>>({ status: "all" });
-  const [layout, setLayout] = useState<Layout>("grid");
+  const layout: Layout = "list";
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1183,44 +1143,33 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
     finally { setDeleteId(null); }
   };
 
+  const _catImportClick = useCallback(() => importRef.current?.click(), []);
+  const _catEditClick = useCallback(() => editRef.current?.click(), []);
+  const _catExportRef = useRef(handleCatExport);
+  _catExportRef.current = handleCatExport;
+  const _catStableExport = useCallback(() => { _catExportRef.current(); }, []);
+  useEffect(() => {
+    onSetExcel({ busy: xlsxBusy, onImport: _catImportClick, onEdit: _catEditClick, onExport: _catStableExport, count: processed.length });
+    return () => onSetExcel(null);
+  }, [xlsxBusy, processed.length, _catImportClick, _catEditClick, _catStableExport, onSetExcel]);
+
   return (
     <div className="space-y-4">
       <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCatImport} />
       <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCatEdit} />
-      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleCatExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
+        layout={layout} onLayout={() => {}}
         addLabel="Add Category" onAdd={() => { setEditing(null); setModalOpen(true); }}
         resultCount={processed.length} totalCount={categories.length}
+        hideLayoutToggle
       />
 
-      {loading ? <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[1,2,3,4].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
+      {loading ? <div className="space-y-2">{[1,2,3,4].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
       : processed.length === 0 ? <EmptyState icon={Tag} message="No categories found" />
-      : layout === "grid" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {pagedCategories.pageItems.map((c) => (
-            <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
-              {c.imageUrl ? <img src={c.imageUrl} alt={c.name} className="w-full h-24 object-cover" /> : <div className="w-full h-24 bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center"><Tag className="w-7 h-7 text-purple-200" /></div>}
-              <div className="p-3 space-y-2">
-                <div className="flex items-center justify-between gap-1">
-                  <p className="font-semibold text-[#162B4D] text-sm truncate">{c.name}</p>
-                  <StatusBadge active={c.isActive !== false} />
-                </div>
-                {Array.isArray(c.subCategories) && c.subCategories.length > 0 && (
-                  <p className="text-xs text-gray-400">{c.subCategories.length} sub-categories</p>
-                )}
-                <div className="flex gap-1">
-                  <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
+      : (
         <div className="space-y-2">
           {pagedCategories.pageItems.map((c) => {
             const expanded = expandedId === String(c._id);
@@ -1273,14 +1222,14 @@ function CategoriesTab({ subHubId, onRefreshStats }: { subHubId: string; onRefre
 }
 
 // ─── COMBOS TAB ───────────────────────────────────────────────────────────────
-function CombosTab({ subHubId }: { subHubId: string }) {
+function CombosTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (cfg: ExcelBarConfig) => void }) {
   const { toast } = useToast();
   const [combos, setCombos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortValue, setSortValue] = useState("sort_asc");
   const [filters, setFilters] = useState<Record<string, string>>({ status: "all" });
-  const [layout, setLayout] = useState<Layout>("grid");
+  const layout: Layout = "list";
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1405,50 +1354,33 @@ function CombosTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
+  const _comboImportClick = useCallback(() => importRef.current?.click(), []);
+  const _comboEditClick = useCallback(() => editRef.current?.click(), []);
+  const _comboExportRef = useRef(handleComboExport);
+  _comboExportRef.current = handleComboExport;
+  const _comboStableExport = useCallback(() => { _comboExportRef.current(); }, []);
+  useEffect(() => {
+    onSetExcel({ busy: xlsxBusy, onImport: _comboImportClick, onEdit: _comboEditClick, onExport: _comboStableExport, count: processed.length });
+    return () => onSetExcel(null);
+  }, [xlsxBusy, processed.length, _comboImportClick, _comboEditClick, _comboStableExport, onSetExcel]);
+
   return (
     <div className="space-y-4">
       <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleComboImport} />
       <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleComboEdit} />
-      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleComboExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
+        layout={layout} onLayout={() => {}}
         addLabel="Add Combo" onAdd={() => { setEditing(null); setModalOpen(true); }}
         resultCount={processed.length} totalCount={combos.length}
+        hideLayoutToggle
       />
 
       {loading ? <div className="space-y-2">{[1,2].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
       : processed.length === 0 ? <EmptyState icon={ShoppingBag} message="No combos found" />
-      : layout === "grid" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pagedCombos.pageItems.map((c) => {
-            const img = Array.isArray(c.images) && c.images.length > 0 ? c.images[0] : null;
-            return (
-              <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
-                {c.imageUrl ? <img src={c.imageUrl} alt={c.name} className="w-full h-32 object-cover" /> : <div className="w-full h-32 bg-gradient-to-br from-indigo-50 to-blue-100 flex items-center justify-center"><ShoppingBag className="w-9 h-9 text-indigo-200" /></div>}
-                <div className="p-3 space-y-1.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-[#162B4D] text-sm">{c.name}</p>
-                    <StatusBadge active={c.isActive !== false} />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-[#1A56DB]">₹{c.discountedPrice ?? c.price}</span>
-                    {c.originalPrice > (c.discountedPrice ?? c.price) && <span className="text-xs text-gray-400 line-through">₹{c.originalPrice}</span>}
-                    {c.discount > 0 && <span className="text-xs bg-green-50 text-green-600 font-semibold px-1.5 py-0.5 rounded-full">{c.discount}% off</span>}
-                  </div>
-                  {Array.isArray(c.includes) && c.includes.length > 0 && <p className="text-xs text-gray-400">{c.includes.length} items included</p>}
-                  <div className="flex gap-1 pt-1">
-                    <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
-                    <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
+      : (
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-sm">
             <thead><tr className="bg-gray-50 text-left">
@@ -1501,14 +1433,14 @@ function CombosTab({ subHubId }: { subHubId: string }) {
 }
 
 // ─── COUPONS TAB ──────────────────────────────────────────────────────────────
-function CouponsTab({ subHubId }: { subHubId: string }) {
+function CouponsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (cfg: ExcelBarConfig) => void }) {
   const { toast } = useToast();
   const [coupons, setCoupons] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortValue, setSortValue] = useState("code_asc");
   const [filters, setFilters] = useState<Record<string, string>>({ status: "all", type: "all" });
-  const [layout, setLayout] = useState<Layout>("list");
+  const layout: Layout = "list";
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1632,23 +1564,33 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
+  const _couponImportClick = useCallback(() => importRef.current?.click(), []);
+  const _couponEditClick = useCallback(() => editRef.current?.click(), []);
+  const _couponExportRef = useRef(handleCouponExport);
+  _couponExportRef.current = handleCouponExport;
+  const _couponStableExport = useCallback(() => { _couponExportRef.current(); }, []);
+  useEffect(() => {
+    onSetExcel({ busy: xlsxBusy, onImport: _couponImportClick, onEdit: _couponEditClick, onExport: _couponStableExport, count: processed.length });
+    return () => onSetExcel(null);
+  }, [xlsxBusy, processed.length, _couponImportClick, _couponEditClick, _couponStableExport, onSetExcel]);
+
   return (
     <div className="space-y-4">
       <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCouponImport} />
       <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleCouponEdit} />
-      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleCouponExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
+        layout={layout} onLayout={() => {}}
         addLabel="Add Coupon" onAdd={() => { setEditing(null); setModalOpen(true); }}
         resultCount={processed.length} totalCount={coupons.length}
+        hideLayoutToggle
       />
 
       {loading ? <div className="space-y-2">{[1,2,3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
       : processed.length === 0 ? <EmptyState icon={Ticket} message="No coupons found" />
-      : layout === "list" ? (
+      : (
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-sm">
             <thead><tr className="bg-gray-50 text-left">
@@ -1680,36 +1622,6 @@ function CouponsTab({ subHubId }: { subHubId: string }) {
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {pagedCoupons.pageItems.map((c) => (
-            <div key={String(c._id)} className="border border-dashed border-orange-200 rounded-xl bg-orange-50/30 p-4 hover:shadow-sm transition-shadow relative overflow-hidden">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-400 rounded-l-xl" />
-              <div className="pl-2 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="font-mono font-black text-[#162B4D] text-base tracking-widest">{c.code}</span>
-                    {c.isFirstTimeOnly && <span className="ml-2 text-[10px] text-purple-600 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded-full font-semibold">1st Time</span>}
-                  </div>
-                  <StatusBadge active={c.isActive !== false} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-black text-orange-500">{c.type === "percentage" ? `${c.discountValue}%` : `₹${c.discountValue}`}</span>
-                  <span className="text-xs text-gray-500 capitalize">{c.type} off</span>
-                </div>
-                <div className="flex gap-3 text-xs text-gray-500">
-                  <span>Min: ₹{c.minOrderAmount}</span>
-                  <span>Used: {c.usedCount ?? 0}{c.maxUsage ? `/${c.maxUsage}` : ""}</span>
-                </div>
-                {c.expiresAt && <p className="text-xs text-gray-400">Expires: {new Date(c.expiresAt).toLocaleDateString("en-IN")}</p>}
-                <div className="flex gap-1 pt-1">
-                  <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       )}
 
       <PaginationBar
@@ -1734,7 +1646,7 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
   const [search, setSearch] = useState("");
   const [sortValue, setSortValue] = useState("order_asc");
   const [filters, setFilters] = useState<Record<string, string>>({ status: "all" });
-  const [layout, setLayout] = useState<Layout>("grid");
+  const layout: Layout = "list";
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1801,36 +1713,15 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
+        layout={layout} onLayout={() => {}}
         addLabel="Add Banner" onAdd={() => { setEditing(null); setModalOpen(true); }}
         resultCount={processed.length} totalCount={carousels.length}
+        hideLayoutToggle
       />
 
       {loading ? <div className="space-y-2">{[1,2].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
       : processed.length === 0 ? <EmptyState icon={Image} message="No banners found" />
-      : layout === "grid" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pagedCarousels.pageItems.map((c) => (
-            <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden bg-white hover:shadow-md transition-shadow">
-              <div className="relative h-36 bg-gray-100">
-                {c.imageUrl ? <img src={c.imageUrl} alt={c.title ?? "Banner"} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Image className="w-8 h-8 text-gray-300" /></div>}
-                <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full font-semibold">#{c.order}</div>
-                <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
-                  <Switch checked={c.isActive !== false} onCheckedChange={() => toggleStatus(c)} className="data-[state=checked]:bg-[#1A56DB] data-[state=unchecked]:bg-gray-400 scale-90" />
-                </div>
-              </div>
-              <div className="p-3 space-y-1.5">
-                <p className="font-semibold text-[#162B4D] text-sm">{c.title || <span className="text-gray-400 font-normal italic">No title</span>}</p>
-                {c.linkUrl && <p className="text-xs text-gray-400 truncate">{c.linkUrl}</p>}
-                <div className="flex gap-1 pt-0.5">
-                  <button onClick={() => { setEditing(c); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteId(String(c._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
+      : (
         <div className="space-y-3">
           {pagedCarousels.pageItems.map((c) => (
             <div key={String(c._id)} className="border border-gray-100 rounded-xl overflow-hidden flex gap-3 bg-white p-3 hover:shadow-sm transition-shadow items-center">
@@ -1867,14 +1758,14 @@ function CarouselsTab({ subHubId }: { subHubId: string }) {
 }
 
 // ─── SECTIONS TAB ─────────────────────────────────────────────────────────────
-function SectionsTab({ subHubId }: { subHubId: string }) {
+function SectionsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (cfg: ExcelBarConfig) => void }) {
   const { toast } = useToast();
   const [sections, setSections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortValue, setSortValue] = useState("sort_asc");
   const [filters, setFilters] = useState<Record<string, string>>({ status: "all", type: "all" });
-  const [layout, setLayout] = useState<Layout>("list");
+  const layout: Layout = "list";
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1983,23 +1874,33 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
+  const _sectionImportClick = useCallback(() => importRef.current?.click(), []);
+  const _sectionEditClick = useCallback(() => editRef.current?.click(), []);
+  const _sectionExportRef = useRef(handleSectionExport);
+  _sectionExportRef.current = handleSectionExport;
+  const _sectionStableExport = useCallback(() => { _sectionExportRef.current(); }, []);
+  useEffect(() => {
+    onSetExcel({ busy: xlsxBusy, onImport: _sectionImportClick, onEdit: _sectionEditClick, onExport: _sectionStableExport, count: processed.length });
+    return () => onSetExcel(null);
+  }, [xlsxBusy, processed.length, _sectionImportClick, _sectionEditClick, _sectionStableExport, onSetExcel]);
+
   return (
     <div className="space-y-4">
       <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSectionImport} />
       <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSectionEdit} />
-      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleSectionExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
+        layout={layout} onLayout={() => {}}
         addLabel="Add Section" onAdd={() => { setEditing(null); setModalOpen(true); }}
         resultCount={processed.length} totalCount={sections.length}
+        hideLayoutToggle
       />
 
       {loading ? <div className="space-y-2">{[1,2,3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
       : processed.length === 0 ? <EmptyState icon={LayoutList} message="No sections found" />
-      : layout === "list" ? (
+      : (
         <div className="space-y-2">
           {pagedSections.pageItems.map((s) => (
             <div key={String(s._id)} className="flex items-center gap-3 border border-gray-100 rounded-xl px-4 py-3 bg-white hover:bg-gray-50/50 transition-colors">
@@ -2011,25 +1912,6 @@ function SectionsTab({ subHubId }: { subHubId: string }) {
               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize border flex-shrink-0 ${TYPE_COLORS[s.type] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>{s.type}</span>
               <StatusBadge active={s.isActive !== false} />
               <ActionButtons onEdit={() => { setEditing(s); setModalOpen(true); }} onDelete={() => setDeleteId(String(s._id))} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {pagedSections.pageItems.map((s) => (
-            <div key={String(s._id)} className="border border-gray-100 rounded-xl p-4 bg-white hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div>
-                  <p className="font-semibold text-[#162B4D] text-sm">{s.title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Order #{s.sortOrder}</p>
-                </div>
-                <StatusBadge active={s.isActive !== false} />
-              </div>
-              <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-semibold capitalize border mb-3 ${TYPE_COLORS[s.type] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>{s.type}</span>
-              <div className="flex gap-1">
-                <button onClick={() => { setEditing(s); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
-                <button onClick={() => setDeleteId(String(s._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
-              </div>
             </div>
           ))}
         </div>
@@ -3374,14 +3256,14 @@ function SectionModal({ isOpen, onClose, section, subHubId, onSaved }: any) {
 }
 
 // ─── TIME SLOTS TAB ────────────────────────────────────────────────────────────
-function TimeSlotsTab({ subHubId }: { subHubId: string }) {
+function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (cfg: ExcelBarConfig) => void }) {
   const { toast } = useToast();
   const [timeslots, setTimeslots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortValue, setSortValue] = useState("sort_asc");
   const [filters, setFilters] = useState<Record<string, string>>({ status: "all", type: "all" });
-  const [layout, setLayout] = useState<Layout>("list");
+  const layout: Layout = "list";
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -3487,25 +3369,35 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
     finally { setDeleteId(null); }
   };
 
+  const _slotImportClick = useCallback(() => importRef.current?.click(), []);
+  const _slotEditClick = useCallback(() => editRef.current?.click(), []);
+  const _slotExportRef = useRef(handleSlotExport);
+  _slotExportRef.current = handleSlotExport;
+  const _slotStableExport = useCallback(() => { _slotExportRef.current(); }, []);
+  useEffect(() => {
+    onSetExcel({ busy: xlsxBusy, onImport: _slotImportClick, onEdit: _slotEditClick, onExport: _slotStableExport, count: processed.length });
+    return () => onSetExcel(null);
+  }, [xlsxBusy, processed.length, _slotImportClick, _slotEditClick, _slotStableExport, onSetExcel]);
+
   return (
     <div className="space-y-4">
       <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSlotImport} />
       <input ref={editRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSlotEdit} />
-      <ExcelBar busy={xlsxBusy} onImport={() => importRef.current?.click()} onEdit={() => editRef.current?.click()} onExport={handleSlotExport} count={processed.length} />
       <TabToolbar
         search={search} onSearch={setSearch}
         sortOptions={sortOptions} sortValue={sortValue} onSortChange={setSortValue}
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
-        layout={layout} onLayout={setLayout}
+        layout={layout} onLayout={() => {}}
         addLabel="Add Slot" onAdd={() => { setEditing(null); setModalOpen(true); }}
         resultCount={processed.length} totalCount={timeslots.length}
+        hideLayoutToggle
       />
 
       {loading ? (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
       ) : processed.length === 0 ? (
         <EmptyState icon={Clock} message="No time slots found" sub="Try adjusting your search or filters" />
-      ) : layout === "list" ? (
+      ) : (
         <div className="space-y-2">
           {pagedTimeslots.pageItems.map((s) => (
             <div key={String(s._id)} className="flex items-center gap-4 p-3.5 bg-white border border-gray-100 rounded-xl hover:shadow-sm transition-shadow">
@@ -3522,32 +3414,6 @@ function TimeSlotsTab({ subHubId }: { subHubId: string }) {
               </div>
               <span className="text-xs text-gray-300 font-mono hidden sm:block">#{s.sortOrder ?? 0}</span>
               <ActionButtons onEdit={() => { setEditing(s); setModalOpen(true); }} onDelete={() => setDeleteId(String(s._id))} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pagedTimeslots.pageItems.map((s) => (
-            <div key={String(s._id)} className="border border-gray-100 rounded-xl p-4 bg-white hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
-                  <Clock className="w-5 h-5 text-cyan-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[#162B4D] text-sm leading-tight">{s.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{s.startTime} – {s.endTime}</p>
-                </div>
-                <span className="text-xs text-gray-300 font-mono">#{s.sortOrder ?? 0}</span>
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                <StatusBadge active={s.isActive !== false} />
-                {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
-                {s.extraCharge > 0 && <span className="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-1.5 py-0.5 rounded-full">+₹{s.extraCharge}</span>}
-              </div>
-              <div className="flex gap-1">
-                <button onClick={() => { setEditing(s); setModalOpen(true); }} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors"><Edit2 className="w-3 h-3" /></button>
-                <button onClick={() => setDeleteId(String(s._id))} className="flex-1 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3" /></button>
-              </div>
             </div>
           ))}
         </div>
