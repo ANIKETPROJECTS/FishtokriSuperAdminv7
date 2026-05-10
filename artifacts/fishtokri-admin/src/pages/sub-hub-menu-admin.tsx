@@ -16,6 +16,10 @@ import iconMenuCoupons from "@/assets/icon-menu-coupons.png";
 import iconMenuBanners from "@/assets/icon-menu-banners.png";
 import iconMenuSections from "@/assets/icon-menu-sections.png";
 import iconMenuTimeslots from "@/assets/icon-menu-timeslots.png";
+import iconView from "@/assets/icon-view.png";
+import iconEdit from "@/assets/icon-edit.png";
+import iconDelete from "@/assets/icon-delete.png";
+import { BRAND_COLORS } from "@/lib/brand";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import { Button } from "@/components/ui/button";
@@ -29,6 +33,9 @@ import { usePaginated } from "@/hooks/use-paginated";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -257,20 +264,45 @@ function TabToolbar({
 }
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
-function StatusBadge({ active }: { active: boolean }) {
-  return active
-    ? <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded-full"><CheckCircle className="w-2.5 h-2.5" /> Active</span>
-    : <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 font-semibold bg-gray-100 px-1.5 py-0.5 rounded-full"><XCircle className="w-2.5 h-2.5" /> Inactive</span>;
+function MaskIcon({ src, color = BRAND_COLORS.primary, className = "w-4 h-4" }: { src: string; color?: string; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-block ${className}`}
+      style={{
+        backgroundColor: color,
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+      }}
+    />
+  );
 }
 
-function ActionButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+function StatusBadge({ active }: { active: boolean }) {
+  return active
+    ? <span className="inline-flex items-center text-xs font-semibold bg-green-500 text-white px-3 py-1 rounded-full">Active</span>
+    : <span className="inline-flex items-center text-xs font-semibold bg-gray-400 text-white px-3 py-1 rounded-full">Inactive</span>;
+}
+
+function ActionButtons({ onView, onEdit, onDelete }: { onView?: () => void; onEdit: () => void; onDelete: () => void }) {
   return (
-    <div className="flex items-center gap-1">
-      <button onClick={onEdit} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-[#1A56DB] hover:border-blue-200 hover:bg-blue-50 transition-colors">
-        <Edit2 className="w-3 h-3" />
+    <div className="inline-flex items-center gap-1.5">
+      {onView && (
+        <button title="View" onClick={onView} className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-blue-50 transition-colors">
+          <MaskIcon src={iconView} color="#1A56DB" className="w-[18px] h-[18px]" />
+        </button>
+      )}
+      <button title="Edit" onClick={onEdit} className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-blue-50 transition-colors">
+        <MaskIcon src={iconEdit} color="#1A56DB" className="w-[18px] h-[18px]" />
       </button>
-      <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors">
-        <Trash2 className="w-3 h-3" />
+      <button title="Delete" onClick={onDelete} className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-red-50 transition-colors">
+        <MaskIcon src={iconDelete} color="#1A56DB" className="w-[18px] h-[18px]" />
       </button>
     </div>
   );
@@ -921,9 +953,9 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
   };
 
   const statusBadge = (p: any) => {
-    if (p.isArchived) return <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 font-semibold bg-gray-100 px-1.5 py-0.5 rounded-full"><XCircle className="w-2.5 h-2.5" /> Archived</span>;
-    if (p.status === "out_of_stock") return <span className="inline-flex items-center gap-1 text-[10px] text-orange-500 font-semibold bg-orange-50 px-1.5 py-0.5 rounded-full"><AlertCircle className="w-2.5 h-2.5" /> Out of Stock</span>;
-    return <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded-full"><CheckCircle className="w-2.5 h-2.5" /> Available</span>;
+    if (p.isArchived) return <span className="inline-flex items-center text-sm font-semibold bg-gray-500 text-white px-4 py-1.5 rounded-full">Archived</span>;
+    if (p.status === "out_of_stock" || (p.quantity ?? 0) === 0) return <span className="inline-flex items-center text-sm font-semibold bg-red-500 text-white px-4 py-1.5 rounded-full">Out of Stock</span>;
+    return <span className="inline-flex items-center text-sm font-semibold bg-green-500 text-white px-4 py-1.5 rounded-full">Available</span>;
   };
 
   const _prodImportClick = useCallback(() => importRef.current?.click(), []);
@@ -956,10 +988,10 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
       ) : processed.length === 0 ? (
         <EmptyState icon={Package} message="No products found" sub="Try adjusting your search or filters" />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-100" style={{ fontFamily: "Poppins, sans-serif" }}>
+        <div className="overflow-x-auto" style={{ fontFamily: "Poppins, sans-serif" }}>
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
+              <tr className="text-left border-b border-gray-200">
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide min-w-[220px]">Product</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Category</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Price</th>
@@ -968,7 +1000,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide text-center">Stock</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide text-center">Recipes</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Status</th>
-                <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide w-20">Actions</th>
+                <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1004,9 +1036,9 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
                       <span className={`text-base font-bold ${(p.quantity ?? 0) === 0 ? "text-red-500" : (p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold) ? "text-amber-500" : "text-black"}`}>
                         {p.quantity ?? 0}
                       </span>
-                      {p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold && (
+                      {p.lowStockThreshold > 0 && (p.quantity ?? 0) <= p.lowStockThreshold && (p.quantity ?? 0) > 0 && (
                         <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap">
-                          <AlertCircle className="w-3 h-3" /> Low Stock
+                          Low Stock
                         </span>
                       )}
                     </div>
@@ -1017,7 +1049,13 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
                       : <span className="text-black text-sm">—</span>}
                   </td>
                   <td className="px-5 py-4">{statusBadge(p)}</td>
-                  <td className="px-5 py-4"><ActionButtons onEdit={() => { setEditing(p); setModalOpen(true); }} onDelete={() => setDeleteId(String(p._id))} /></td>
+                  <td className="px-5 py-4">
+                    <ActionButtons
+                      onView={() => { setEditing(p); setModalOpen(true); }}
+                      onEdit={() => { setEditing(p); setModalOpen(true); }}
+                      onDelete={() => setDeleteId(String(p._id))}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2251,12 +2289,12 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[760px] max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Product" : "Add Product"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-5 pt-1">
+    <Sheet open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-[760px] overflow-y-auto p-0 flex flex-col">
+        <SheetHeader className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <SheetTitle className="text-[#162B4D]">{isEditing ? "Edit Product" : "Add Product"}</SheetTitle>
+        </SheetHeader>
+        <form onSubmit={handleSubmit} className="space-y-5 px-6 py-4 flex-1 overflow-y-auto">
 
           {/* ── BASIC INFO ─────────────────────────────────── */}
           <section>
@@ -2529,15 +2567,15 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                 </div>}
           </section>
 
-          <DialogFooter className="pt-2 border-t border-gray-100">
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 mt-2">
             <Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button>
             <Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9 px-6">
               {saving ? "Saving..." : isEditing ? "Save Changes" : "Add Product"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
