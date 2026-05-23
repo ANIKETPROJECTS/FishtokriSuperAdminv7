@@ -848,16 +848,14 @@ export default function Orders() {
 
   useEffect(() => {
     if (selectedSuperHubId) return;
-    if (adminScope.role !== "super_hub") return;
-    if (superHubs.length !== 1) return;
+    if (superHubs.length === 0) return;
     setSelectedSuperHubId(superHubs[0].id);
-  }, [superHubs, selectedSuperHubId, adminScope]);
+  }, [superHubs, selectedSuperHubId]);
   useEffect(() => {
     if (selectedSubHubId) return;
-    if (adminScope.role !== "super_hub") return;
-    if (subHubs.length !== 1) return;
+    if (subHubs.length === 0) return;
     setSelectedSubHubId(subHubs[0].id);
-  }, [subHubs, selectedSubHubId, adminScope]);
+  }, [subHubs, selectedSubHubId]);
 
   useEffect(() => {
     if (!selectedSuperHubId) { setSubHubs([]); setSelectedSubHubId(""); return; }
