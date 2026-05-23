@@ -747,6 +747,8 @@ export default function Orders() {
   type PaymentEntry = { mode: string; amount: string; reference: string };
   const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
+  const [mainPaymentMode, setMainPaymentMode] = useState<"upi" | "cash">("cash");
+  const [useWallet, setUseWallet] = useState(false);
 
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
@@ -769,6 +771,8 @@ export default function Orders() {
     setOrderDate(new Date().toISOString().slice(0, 10));
     setPaymentStatus("unpaid");
     setPaymentEntries([]);
+    setMainPaymentMode("cash");
+    setUseWallet(false);
     setEditingOrderId("");
   }, []);
 
@@ -1038,23 +1042,33 @@ export default function Orders() {
     { value: "other", label: "Other", Icon: Tag },
   ];
 
-  // Auto-populate / clear entries on status change
+  // Recompute paymentStatus + paymentEntries whenever the user changes main mode, wallet toggle, or total
   useEffect(() => {
-    if (paymentStatus === "unpaid") {
-      if (paymentEntries.length > 0) setPaymentEntries([]);
-      return;
-    }
-    if (paymentEntries.length === 0) {
+    const walletBal = Number(chosenCustomer?.walletBalance) || 0;
+    const walletApplied = useWallet && walletBal > 0 ? Math.min(walletBal, newOrderTotal) : 0;
+    const remaining = Math.max(0, newOrderTotal - walletApplied);
+
+    if (walletApplied > 0 && remaining > 0) {
+      // Partial wallet + remaining via main mode
+      setPaymentStatus(mainPaymentMode === "upi" ? "paid" : "partial");
       setPaymentEntries([
-        {
-          mode: "cash",
-          amount: paymentStatus === "paid" ? String(newOrderTotal || 0) : "",
-          reference: "",
-        },
+        { mode: "wallet", amount: String(walletApplied), reference: "" },
+        { mode: mainPaymentMode, amount: String(remaining), reference: "" },
       ]);
+    } else if (walletApplied >= newOrderTotal && newOrderTotal > 0) {
+      // Wallet covers everything
+      setPaymentStatus("paid");
+      setPaymentEntries([{ mode: "wallet", amount: String(walletApplied), reference: "" }]);
+    } else if (mainPaymentMode === "upi") {
+      setPaymentStatus("paid");
+      setPaymentEntries([{ mode: "upi", amount: String(newOrderTotal || 0), reference: "" }]);
+    } else {
+      // Cash / COD
+      setPaymentStatus("unpaid");
+      setPaymentEntries([{ mode: "cash", amount: "0", reference: "" }]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentStatus]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainPaymentMode, useWallet, newOrderTotal, chosenCustomer?.walletBalance]);
 
   const toggleCoupon = (id: string) => {
     setAppliedCouponIds((ids) => (ids.includes(id) ? [] : [id]));
@@ -2889,32 +2903,53 @@ export default function Orders() {
 
               {/* ── Payment ── */}
               <div className="flex-shrink-0 border-t border-gray-100 px-3 py-2">
-                <p className="text-sm font-normal text-gray-900 flex items-center gap-1.5 mb-1.5"><img src="/icon-payment.png" className="w-4 h-4 object-contain" alt="" />Payment</p>
-                <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-normal text-gray-900 flex items-center gap-1.5 mb-2"><img src="/icon-payment.png" className="w-4 h-4 object-contain" alt="" />Payment</p>
+                {/* Main mode: UPI or Cash */}
+                <div className="flex items-center gap-2 mb-2">
                   <button type="button"
-                    onClick={() => { setPaymentStatus("paid"); setPaymentEntries([{ mode: "upi", amount: String(newOrderTotal || 0), reference: "" }]); }}
-                    className={`px-4 py-1.5 rounded-lg border-2 text-sm font-semibold transition-all ${paymentStatus === "paid" && paymentEntries[0]?.mode === "upi" ? "border-[#1A56DB] bg-[#1A56DB] text-white" : "border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300"}`}
-                  >UPI</button>
+                    onClick={() => setMainPaymentMode("upi")}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${mainPaymentMode === "upi" ? "border-[#1A56DB] bg-[#1A56DB] text-white shadow-sm" : "border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300"}`}
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    UPI
+                  </button>
                   <button type="button"
-                    onClick={() => { setPaymentStatus("unpaid"); setPaymentEntries([{ mode: "cash", amount: "0", reference: "" }]); }}
-                    className={`px-4 py-1.5 rounded-lg border-2 text-sm font-semibold transition-all ${paymentStatus === "unpaid" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300"}`}
-                  >COD</button>
-                  {Number(chosenCustomer?.walletBalance) > 0 && (
-                    <button type="button"
-                      onClick={() => {
-                        const walletAmt = Math.min(Number(chosenCustomer!.walletBalance), newOrderTotal);
-                        setPaymentStatus(walletAmt >= newOrderTotal ? "paid" : "partial");
-                        setPaymentEntries([{ mode: "wallet", amount: String(walletAmt), reference: "" }]);
-                      }}
-                      className={`px-4 py-1.5 rounded-lg border-2 text-sm font-semibold transition-all leading-tight ${paymentEntries[0]?.mode === "wallet" ? "border-blue-500 bg-blue-500 text-white" : "border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300"}`}
-                    >
-                      <span className="block">Wallet</span>
-                      <span className={`block text-[10px] font-normal ${paymentEntries[0]?.mode === "wallet" ? "text-blue-100" : "text-blue-500"}`}>
-                        ₹{Number(chosenCustomer!.walletBalance).toLocaleString("en-IN")} avail.
-                      </span>
-                    </button>
-                  )}
+                    onClick={() => setMainPaymentMode("cash")}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${mainPaymentMode === "cash" ? "border-amber-400 bg-amber-50 text-amber-700 shadow-sm" : "border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-300"}`}
+                  >
+                    <Banknote className="w-4 h-4" />
+                    Cash
+                  </button>
                 </div>
+                {/* Wallet checkbox — only shown when customer has balance */}
+                {Number(chosenCustomer?.walletBalance) > 0 && (() => {
+                  const walletBal = Number(chosenCustomer!.walletBalance);
+                  const walletApplied = Math.min(walletBal, newOrderTotal);
+                  const remaining = Math.max(0, newOrderTotal - walletApplied);
+                  return (
+                    <label className={`flex items-start gap-2.5 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all ${useWallet ? "border-[#364F9F] bg-blue-50" : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/40"}`}>
+                      <input
+                        type="checkbox"
+                        checked={useWallet}
+                        onChange={(e) => setUseWallet(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 accent-[#364F9F] cursor-pointer flex-shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className={`text-sm font-semibold ${useWallet ? "text-[#364F9F]" : "text-gray-700"}`}>Use FishTokri Wallet</span>
+                          <span className={`text-xs font-bold tabular-nums ${useWallet ? "text-[#364F9F]" : "text-gray-500"}`}>₹{walletBal.toLocaleString("en-IN")}</span>
+                        </div>
+                        {useWallet && (
+                          <p className="text-[11px] text-[#364F9F]/70 mt-0.5">
+                            {walletApplied >= newOrderTotal
+                              ? `₹${walletApplied.toLocaleString("en-IN")} from wallet · Order fully covered`
+                              : `₹${walletApplied.toLocaleString("en-IN")} from wallet · ₹${remaining.toLocaleString("en-IN")} via ${mainPaymentMode === "upi" ? "UPI" : "Cash"}`}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })()}
               </div>
 
               {/* ── Notes ── */}
@@ -2961,7 +2996,9 @@ export default function Orders() {
                       ? <><Pencil className="w-4 h-4" />Save Changes</>
                       : paymentStatus === "paid"
                         ? <><Zap className="w-4 h-4" />Checkout · ₹{newOrderTotal.toLocaleString("en-IN")}</>
-                        : <><ShoppingBag className="w-4 h-4" />Place Order (COD)</>
+                        : paymentStatus === "partial"
+                          ? <><ShoppingBag className="w-4 h-4" />Place Order · ₹{Math.max(0, newOrderTotal - Math.min(Number(chosenCustomer?.walletBalance) || 0, newOrderTotal)).toLocaleString("en-IN")} due</>
+                          : <><ShoppingBag className="w-4 h-4" />Place Order (Cash)</>
                   }
                 </Button>
               </div>
