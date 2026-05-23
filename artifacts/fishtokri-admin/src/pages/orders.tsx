@@ -1049,8 +1049,10 @@ export default function Orders() {
     const remaining = Math.max(0, newOrderTotal - walletApplied);
 
     if (walletApplied > 0 && remaining > 0) {
-      // Partial wallet + remaining via main mode
-      setPaymentStatus(mainPaymentMode === "upi" ? "paid" : "partial");
+      // Wallet covers part + remaining via main mode.
+      // Wallet+cash together = full total (wallet deducted now, cash on delivery) → "paid".
+      // Wallet+UPI together = full total paid immediately → "paid".
+      setPaymentStatus("paid");
       setPaymentEntries([
         { mode: "wallet", amount: String(walletApplied), reference: "" },
         { mode: mainPaymentMode, amount: String(remaining), reference: "" },
