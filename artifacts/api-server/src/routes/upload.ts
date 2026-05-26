@@ -3,12 +3,6 @@ import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { requireAuth } from "../middlewares/auth.js";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
 const router: IRouter = Router();
 router.use(requireAuth as any);
 
@@ -28,6 +22,24 @@ router.post("/", upload.single("image"), async (req, res) => {
       res.status(400).json({ error: "ValidationError", message: "No image file provided" });
       return;
     }
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      req.log.error({ cloudName: !!cloudName, apiKey: !!apiKey, apiSecret: !!apiSecret }, "Cloudinary credentials missing");
+      res.status(500).json({ error: "ConfigError", message: "Image upload service is not configured" });
+      return;
+    }
+
+    const instance = cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+    });
+
+    req.log.info({ cloud_name: instance.cloud_name, api_key: instance.api_key, has_secret: !!instance.api_secret }, "Cloudinary config loaded");
 
     const folder = (req.query.folder as string) || "fishtokri";
 
