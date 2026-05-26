@@ -389,7 +389,15 @@ router.post("/coupons", async (req, res) => {
     if (maxUsage) doc.maxUsage = Number(maxUsage);
     if (expiresAt) doc.expiresAt = new Date(expiresAt);
     const result = await ctx.conn.db.collection("coupons").insertOne(doc);
-    res.status(201).json({ coupon: { ...doc, _id: result.insertedId } });
+    const couponOid = result.insertedId;
+    if (doc.applicableProducts.length > 0) {
+      const productOids = doc.applicableProducts.map((p: any) => toId(typeof p === "string" ? p : String(p))).filter(Boolean);
+      await ctx.conn.db.collection("products").updateMany(
+        { _id: { $in: productOids } },
+        { $addToSet: { couponIds: couponOid } }
+      );
+    }
+    res.status(201).json({ coupon: { ...doc, _id: couponOid } });
   } catch (err) {
     req.log.error({ err }, "Failed to create coupon");
     res.status(500).json({ error: "InternalError", message: "Failed to create coupon" });
@@ -417,8 +425,28 @@ router.put("/coupons/:couponId", async (req, res) => {
     if (color !== undefined) update.color = color;
     if (isActive !== undefined) update.isActive = isActive;
     if (expiresAt !== undefined) update.expiresAt = expiresAt ? new Date(expiresAt) : null;
+    const existing = await ctx.conn.db.collection("coupons").findOne({ _id: oid });
+    if (!existing) { res.status(404).json({ error: "NotFound", message: "Coupon not found" }); return; }
     const result = await ctx.conn.db.collection("coupons").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Coupon not found" }); return; }
+    if (applicableProducts !== undefined) {
+      const oldIds: string[] = (existing.applicableProducts ?? []).map((p: any) => String(p));
+      const newIds: string[] = (Array.isArray(applicableProducts) ? applicableProducts : []).map((p: any) => String(p));
+      const removedIds = oldIds.filter((id) => !newIds.includes(id)).map((id) => toId(id)).filter(Boolean);
+      const addedIds = newIds.filter((id) => !oldIds.includes(id)).map((id) => toId(id)).filter(Boolean);
+      if (removedIds.length > 0) {
+        await ctx.conn.db.collection("products").updateMany(
+          { _id: { $in: removedIds } },
+          { $pull: { couponIds: oid } }
+        );
+      }
+      if (addedIds.length > 0) {
+        await ctx.conn.db.collection("products").updateMany(
+          { _id: { $in: addedIds } },
+          { $addToSet: { couponIds: oid } }
+        );
+      }
+    }
     res.json({ coupon: result });
   } catch (err) {
     req.log.error({ err }, "Failed to update coupon");
@@ -432,6 +460,16 @@ router.delete("/coupons/:couponId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.couponId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid coupon ID" }); return; }
+    const existing = await ctx.conn.db.collection("coupons").findOne({ _id: oid });
+    if (existing) {
+      const productOids = (existing.applicableProducts ?? []).map((p: any) => toId(String(p))).filter(Boolean);
+      if (productOids.length > 0) {
+        await ctx.conn.db.collection("products").updateMany(
+          { _id: { $in: productOids } },
+          { $pull: { couponIds: oid } }
+        );
+      }
+    }
     await ctx.conn.db.collection("coupons").deleteOne({ _id: oid });
     res.json({ message: "Coupon deleted" });
   } catch (err) {
