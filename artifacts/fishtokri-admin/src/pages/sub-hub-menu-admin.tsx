@@ -4120,7 +4120,8 @@ function TimeslotModal({ isOpen, onClose, timeslot, subHubId, onSaved, nextOrder
   useEffect(() => {
     if (isOpen) {
       if (timeslot) {
-        setStartTime(timeslot.startTime ?? ""); setEndTime(timeslot.endTime ?? "");
+        setStartTime(timeslot.startTime ? displayTime(timeslot.startTime) : "");
+        setEndTime(timeslot.endTime ? displayTime(timeslot.endTime) : "");
         setIsActive(timeslot.isActive !== false); setSortOrder(String(timeslot.sortOrder ?? 0));
       } else {
         setStartTime(""); setEndTime(""); setIsActive(true); setSortOrder(String(nextOrder));
