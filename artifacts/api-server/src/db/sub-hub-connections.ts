@@ -33,3 +33,17 @@ export function generateDbName(name: string): string {
     .replace(/\s+/g, "_")
     .replace(/[^a-zA-Z0-9_]/g, "");
 }
+
+export async function dropSubHubDb(dbName: string): Promise<void> {
+  if (!dbName) return;
+  try {
+    const conn = await getSubHubDbConnection(dbName);
+    await conn.dropDatabase();
+    await conn.close();
+    connectionCache.delete(dbName);
+    logger.info({ dbName }, "Dropped sub hub DB");
+  } catch (err) {
+    logger.error({ err, dbName }, "Failed to drop sub hub DB");
+    throw err;
+  }
+}

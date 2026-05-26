@@ -9,6 +9,7 @@ import {
   rejectIfNotMaster,
   type ScopedRequest,
 } from "../middlewares/scope.js";
+import { dropSubHubDb } from "../db/sub-hub-connections.js";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
@@ -85,6 +86,9 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
     const sub = await SubHub.findById(req.params.id);
     if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
     await SubHub.findByIdAndDelete(req.params.id);
+    if (sub.dbName) {
+      await dropSubHubDb(sub.dbName);
+    }
     res.json({ message: "Sub hub deleted successfully" });
   } catch (err) {
     req.log.error({ err }, "Failed to delete sub hub");
