@@ -3511,13 +3511,55 @@ function SectionModal({ isOpen, onClose, section, subHubId, onSaved, nextOrder =
   const [title, setTitle] = useState(""); const [type, setType] = useState("products");
   const [sortOrder, setSortOrder] = useState("1"); const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [availableItems, setAvailableItems] = useState<any[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [itemSearch, setItemSearch] = useState("");
+  const [loadingItems, setLoadingItems] = useState(false);
+
+  const fetchItems = useCallback(async (contentType: string, sectionId?: string) => {
+    setLoadingItems(true);
+    try {
+      const endpoint = contentType === "combos" ? "combos" : "products";
+      const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/${endpoint}`);
+      const items: any[] = data[endpoint] ?? [];
+      setAvailableItems(items);
+      if (sectionId) {
+        const preSelected = items
+          .filter((item: any) => {
+            const ids = (item.sectionId ?? []).map((id: any) => String(id?.$oid ?? id?._id ?? id));
+            return ids.includes(sectionId);
+          })
+          .map((item: any) => String(item._id));
+        setSelectedItemIds(preSelected);
+      } else {
+        setSelectedItemIds([]);
+      }
+    } catch { setAvailableItems([]); setSelectedItemIds([]); }
+    finally { setLoadingItems(false); }
+  }, [subHubId]);
 
   useEffect(() => {
-    if (isOpen) {
-      if (section) { setTitle(section.title ?? ""); setType(section.type ?? "products"); setSortOrder(String(section.sortOrder ?? 0)); setIsActive(section.isActive !== false); }
-      else { setTitle(""); setType("products"); setSortOrder(String(nextOrder)); setIsActive(true); }
+    if (!isOpen) return;
+    if (section) {
+      setTitle(section.title ?? ""); setType(section.type ?? "products");
+      setSortOrder(String(section.sortOrder ?? 0)); setIsActive(section.isActive !== false);
+      fetchItems(section.type ?? "products", String(section._id));
+    } else {
+      setTitle(""); setType("products"); setSortOrder(String(nextOrder)); setIsActive(true);
+      fetchItems("products");
     }
-  }, [isOpen, section, nextOrder]);
+    setItemSearch("");
+  }, [isOpen, section, nextOrder, fetchItems]);
+
+  const handleTypeChange = (val: string) => {
+    setType(val);
+    fetchItems(val, section ? String(section._id) : undefined);
+    setItemSearch("");
+  };
+
+  const toggleItem = (id: string) => {
+    setSelectedItemIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
@@ -3526,24 +3568,85 @@ function SectionModal({ isOpen, onClose, section, subHubId, onSaved, nextOrder =
     if (dup) { toast({ title: "Duplicate order number", description: `Sort order ${soNum} is already used by another section.`, variant: "destructive" }); setSaving(false); return; }
     const payload = { title, type, sortOrder: soNum, isActive };
     try {
-      if (isEditing) { await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/${section._id}`, { method: "PUT", body: JSON.stringify(payload) }); toast({ title: "Section updated" }); }
-      else { await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections`, { method: "POST", body: JSON.stringify(payload) }); toast({ title: "Section added" }); }
+      let sectionId: string;
+      if (isEditing) {
+        await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/${section._id}`, { method: "PUT", body: JSON.stringify(payload) });
+        sectionId = String(section._id);
+        toast({ title: "Section updated" });
+      } else {
+        const res = await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections`, { method: "POST", body: JSON.stringify(payload) });
+        sectionId = String(res.section._id);
+        toast({ title: "Section added" });
+      }
+      await apiFetch(`/api/sub-hubs/${subHubId}/menu/sections/${sectionId}/items`, {
+        method: "PUT",
+        body: JSON.stringify({ type, itemIds: selectedItemIds }),
+      });
       onSaved(); onClose();
     } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
     finally { setSaving(false); }
   };
 
+  const filteredItems = availableItems.filter((item) =>
+    !itemSearch || item.name?.toLowerCase().includes(itemSearch.toLowerCase())
+  );
+
+  const itemLabel = type === "combos" ? "Combos" : "Products";
+
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-[520px] max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="text-[#162B4D]">{isEditing ? "Edit Section" : "Add Section"}</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
           <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Section Title *</Label><Input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Today's Special" className="h-9" /></div>
-          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Content Type</Label><Select value={type} onValueChange={setType}><SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="products">Products</SelectItem><SelectItem value="combos">Combos</SelectItem></SelectContent></Select></div>
+          <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Content Type</Label><Select value={type} onValueChange={handleTypeChange}><SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="products">Products</SelectItem><SelectItem value="combos">Combos</SelectItem></SelectContent></Select></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Sort Order</Label><Input type="number" min="0" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" /></div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
           </div>
+
+          {/* Item selection */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-gray-600">{itemLabel} ({selectedItemIds.length} selected)</Label>
+              {selectedItemIds.length > 0 && (
+                <button type="button" onClick={() => setSelectedItemIds([])} className="text-xs text-gray-400 hover:text-red-500 transition-colors">Clear all</button>
+              )}
+            </div>
+            <Input
+              value={itemSearch}
+              onChange={(e) => setItemSearch(e.target.value)}
+              placeholder={`Search ${itemLabel.toLowerCase()}...`}
+              className="h-8 text-xs"
+            />
+            <div className="border border-gray-200 rounded-lg max-h-52 overflow-y-auto">
+              {loadingItems ? (
+                <div className="py-6 text-center text-xs text-gray-400">Loading {itemLabel.toLowerCase()}…</div>
+              ) : filteredItems.length === 0 ? (
+                <div className="py-6 text-center text-xs text-gray-400">No {itemLabel.toLowerCase()} found</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {filteredItems.map((item) => {
+                    const id = String(item._id);
+                    const checked = selectedItemIds.includes(id);
+                    return (
+                      <label key={id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
+                        <input type="checkbox" checked={checked} onChange={() => toggleItem(id)} className="w-4 h-4 accent-[#1A56DB] shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
+                          {item.category && <p className="text-[10px] text-gray-400">{item.category}</p>}
+                        </div>
+                        {(item.discountedPrice ?? item.price) != null && (
+                          <span className="ml-auto text-xs text-gray-500 shrink-0">₹{item.discountedPrice ?? item.price}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Section"}</Button></DialogFooter>
         </form>
       </DialogContent>

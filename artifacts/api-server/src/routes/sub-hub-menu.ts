@@ -495,7 +495,7 @@ router.post("/combos", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
-    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder } = req.body;
+    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder, sectionId } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
     const dp = Number(discountedPrice) || 0;
     const op = Number(originalPrice) || 0;
@@ -513,6 +513,7 @@ router.post("/combos", async (req, res) => {
       nutrition: Array.isArray(nutrition) ? nutrition : [],
       isActive: isActive !== false,
       sortOrder: Number(sortOrder) || 0,
+      sectionId: normalizeIdList(sectionId),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -549,7 +550,7 @@ router.put("/combos/:comboId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.comboId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid combo ID" }); return; }
-    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder } = req.body;
+    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder, sectionId } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
@@ -564,6 +565,7 @@ router.put("/combos/:comboId", async (req, res) => {
     if (nutrition !== undefined) update.nutrition = nutrition;
     if (isActive !== undefined) update.isActive = isActive;
     if (sortOrder !== undefined) update.sortOrder = Number(sortOrder) || 0;
+    if (sectionId !== undefined) update.sectionId = normalizeIdList(sectionId);
     const result = await ctx.conn.db.collection("combos").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Combo not found" }); return; }
     res.json({ combo: result });
@@ -746,6 +748,26 @@ router.put("/sections/:sectionId", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to update section");
     res.status(500).json({ error: "InternalError", message: "Failed to update section" });
+  }
+});
+
+router.put("/sections/:sectionId/items", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
+    if (!ctx) return;
+    const sectionOid = toId(req.params.sectionId);
+    if (!sectionOid) { res.status(400).json({ error: "InvalidId", message: "Invalid section ID" }); return; }
+    const { type, itemIds } = req.body;
+    const col = type === "combos" ? "combos" : "products";
+    const newOids = Array.isArray(itemIds) ? itemIds.map((id: any) => toId(String(id))).filter(Boolean) : [];
+    await ctx.conn.db.collection(col).updateMany({ sectionId: sectionOid }, { $pull: { sectionId: sectionOid } } as any);
+    if (newOids.length > 0) {
+      await ctx.conn.db.collection(col).updateMany({ _id: { $in: newOids } }, { $addToSet: { sectionId: sectionOid } });
+    }
+    res.json({ ok: true, assigned: newOids.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to assign section items");
+    res.status(500).json({ error: "InternalError", message: "Failed to assign section items" });
   }
 });
 
