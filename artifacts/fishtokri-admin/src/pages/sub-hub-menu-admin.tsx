@@ -2985,13 +2985,17 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
 
   useEffect(() => {
     if (includes.length === 0) return;
-    const total = includes.reduce((sum, inc) => {
+    let origTotal = 0;
+    let discTotal = 0;
+    for (const inc of includes) {
       const prod = availableProducts.find((p) => String(p._id) === inc.productId);
-      if (!prod) return sum;
-      const unitPrice = Number(prod.originalPrice) || Number(prod.price) || 0;
-      return sum + unitPrice * Math.max(1, Number(inc.quantity) || 1);
-    }, 0);
-    if (total > 0) setOriginalPrice(String(total));
+      if (!prod) continue;
+      const qty = Math.max(1, Number(inc.quantity) || 1);
+      origTotal += (Number(prod.originalPrice) || Number(prod.price) || 0) * qty;
+      discTotal += (Number(prod.discountedPrice) || Number(prod.price) || 0) * qty;
+    }
+    if (origTotal > 0) setOriginalPrice(String(origTotal));
+    if (discTotal > 0) setDiscountedPrice(String(discTotal));
   }, [includes, availableProducts]);
 
   const toggleProduct = (product: any) => {
@@ -3070,29 +3074,50 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
               <div className="space-y-1.5 mb-3">
                 {includes.map((item, i) => {
                   const prod = availableProducts.find((p) => String(p._id) === item.productId);
+                  const qty = Math.max(1, Number(item.quantity) || 1);
+                  const unitDisc = Number(prod?.discountedPrice) || Number(prod?.price) || 0;
+                  const unitOrig = Number(prod?.originalPrice) || Number(prod?.price) || 0;
                   return (
-                    <div key={item.productId} className="flex items-center gap-2 p-2 bg-[#EEF3FB] border border-[#C5D5F5] rounded-lg">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] flex-shrink-0" />
-                      <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 truncate">{prod?.category ?? ""}</span>
-                      <div className="flex-1 min-w-0">
-                        <Input
-                          value={item.label}
-                          onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))}
-                          placeholder="Label shown to customer"
-                          className="h-7 text-xs border-[#C5D5F5] bg-white"
-                        />
+                    <div key={item.productId} className="flex flex-col gap-1.5 p-2 bg-[#EEF3FB] border border-[#C5D5F5] rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] flex-shrink-0" />
+                        <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 truncate">{prod?.category ?? ""}</span>
+                        <div className="flex-1 min-w-0">
+                          <Input
+                            value={item.label}
+                            onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))}
+                            placeholder="Label shown to customer"
+                            className="h-7 text-xs border-[#C5D5F5] bg-white"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-[10px] text-gray-500 whitespace-nowrap">Qty:</span>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x))}
+                            className="h-7 w-14 text-xs border-[#C5D5F5] bg-white text-center"
+                          />
+                        </div>
+                        <button type="button" onClick={() => setIncludes(includes.filter((_, idx) => idx !== i))} className="text-blue-200 hover:text-red-500 flex-shrink-0 transition-colors"><X className="w-3.5 h-3.5" /></button>
                       </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <span className="text-[10px] text-gray-500 whitespace-nowrap">Qty:</span>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x))}
-                          className="h-7 w-14 text-xs border-[#C5D5F5] bg-white text-center"
-                        />
-                      </div>
-                      <button type="button" onClick={() => setIncludes(includes.filter((_, idx) => idx !== i))} className="text-blue-200 hover:text-red-500 flex-shrink-0 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                      {prod && (
+                        <div className="flex items-center gap-3 pl-5">
+                          <span className="text-[10px] text-gray-400">Per unit:</span>
+                          <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
+                            ₹{unitDisc.toLocaleString("en-IN")} discounted
+                          </span>
+                          {unitOrig > 0 && unitOrig !== unitDisc && (
+                            <span className="text-[10px] text-gray-400 line-through">₹{unitOrig.toLocaleString("en-IN")}</span>
+                          )}
+                          {qty > 1 && (
+                            <span className="text-[10px] text-[#1A56DB] font-semibold">
+                              × {qty} = ₹{(unitDisc * qty).toLocaleString("en-IN")}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
