@@ -2713,7 +2713,17 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                         <Input
                           type="number" min="0"
                           value={b.shelfLifeDays}
-                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, shelfLifeDays: e.target.value } : x))}
+                          onChange={(e) => {
+                            const days = e.target.value;
+                            const base = b.receivedDate;
+                            let expiry = b.expiryDate;
+                            if (days !== "" && base) {
+                              const d = new Date(base);
+                              d.setDate(d.getDate() + Number(days));
+                              expiry = d.toISOString().slice(0, 10);
+                            }
+                            setBatches(batches.map((x, idx) => idx === i ? { ...x, shelfLifeDays: days, expiryDate: expiry } : x));
+                          }}
                           placeholder="e.g. 3"
                           className="h-8 text-xs"
                         />
@@ -2725,7 +2735,17 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                         <Input
                           type="date"
                           value={b.receivedDate}
-                          onChange={(e) => setBatches(batches.map((x, idx) => idx === i ? { ...x, receivedDate: e.target.value } : x))}
+                          onChange={(e) => {
+                            const base = e.target.value;
+                            const days = b.shelfLifeDays;
+                            let expiry = b.expiryDate;
+                            if (base && days !== "") {
+                              const d = new Date(base);
+                              d.setDate(d.getDate() + Number(days));
+                              expiry = d.toISOString().slice(0, 10);
+                            }
+                            setBatches(batches.map((x, idx) => idx === i ? { ...x, receivedDate: base, expiryDate: expiry } : x));
+                          }}
                           className="h-8 text-xs"
                         />
                       </div>
