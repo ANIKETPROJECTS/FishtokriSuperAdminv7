@@ -127,7 +127,13 @@ function consumeBatches(batches: Batch[], qty: number, now: Date = new Date()): 
  * Sync a product document so `quantity` matches the sum of its batches,
  * keeps batches normalized and persisted.
  */
-async function persistBatches(productsCol: any, productId: any, batches: Batch[], extra: Record<string, any> = {}) {
+async function persistBatches(
+  productsCol: any,
+  productId: any,
+  batches: Batch[],
+  extra: Record<string, any> = {},
+  combosCol?: any,
+) {
   const normalized = batches.map((b) => normalizeBatch(b));
   // quantity = only non-expired stock (expired batches are kept for admin visibility but not available for sale)
   const nowMs = Date.now();
@@ -143,6 +149,26 @@ async function persistBatches(productsCol: any, productId: any, batches: Batch[]
   } else {
     logger.info({ productId: String(productId), newTotal: total, batchCount: normalized.length }, "persistBatches: stock updated successfully");
   }
+
+  // If all batches have an expiry date and every one of them is expired, deactivate any combos that include this product.
+  if (combosCol && normalized.length > 0) {
+    const allExpired = normalized.every(
+      (b) => b.expiryDate && new Date(b.expiryDate).getTime() < nowMs,
+    );
+    if (allExpired) {
+      const deactivated = await combosCol.updateMany(
+        { "includes.productId": String(productId), isActive: true },
+        { $set: { isActive: false, updatedAt: new Date() } },
+      );
+      if (deactivated.modifiedCount > 0) {
+        logger.info(
+          { productId: String(productId), combosDeactivated: deactivated.modifiedCount },
+          "persistBatches: all batches expired — deactivated combos containing this product",
+        );
+      }
+    }
+  }
+
   return { batches: normalized, quantity: total };
 }
 
@@ -494,7 +520,7 @@ router.post("/adjustments", async (req, res) => {
         }
       }
 
-      const persisted = await persistBatches(products, pid, newBatches);
+      const persisted = await persistBatches(products, pid, newBatches, {}, ctx.conn.db.collection("combos"));
 
       adjustmentItems.push({
         productId: String(pid),
@@ -588,7 +614,7 @@ router.delete("/products/:productId/batches/:batchId", async (req, res) => {
     if (!product) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
     const batches: Batch[] = Array.isArray(product.batches) ? product.batches.map((b: any) => normalizeBatch(b)) : [];
     const remaining = batches.filter((b) => String(b._id) !== String(req.params.batchId));
-    const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, remaining);
+    const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, remaining, {}, ctx.conn.db.collection("combos"));
     res.json({ productId: String(pid), quantity: persisted.quantity, batches: persisted.batches });
   } catch (err) {
     req.log.error({ err }, "Failed to delete batch");
@@ -608,7 +634,7 @@ router.put("/products/:productId/batches", async (req, res) => {
     const product = await ctx.conn.db.collection("products").findOne({ _id: pid });
     if (!product) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
     const batches: Batch[] = Array.isArray(req.body.batches) ? req.body.batches : [];
-    const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, batches);
+    const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, batches, {}, ctx.conn.db.collection("combos"));
     res.json({ productId: String(pid), quantity: persisted.quantity, batches: persisted.batches });
   } catch (err) {
     req.log.error({ err }, "Failed to update batches");
@@ -874,7 +900,7 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore"):
       }
     }
 
-    const persisted = await persistBatches(products, pid, newBatches);
+    const persisted = await persistBatches(products, pid, newBatches, {}, combos);
     await movements.insertOne({
       type: direction === "deduct" ? "order_deduct" : "order_restore",
       productId: String(pid),
