@@ -2409,18 +2409,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   useEffect(() => {
     if (!isOpen) return;
     apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons`).then((d) => {
-      const coupons = d.coupons ?? [];
-      setAvailableCoupons(coupons);
-      if (product) {
-        const pid = String(product._id);
-        const assignedIds = coupons
-          .filter((c: any) =>
-            Array.isArray(c.applicableProducts) &&
-            c.applicableProducts.some((ap: any) => String(ap?.$oid ?? ap) === pid)
-          )
-          .map((c: any) => String(c._id));
-        if (assignedIds.length > 0) setCouponIds(assignedIds);
-      }
+      setAvailableCoupons(d.coupons ?? []);
     }).catch(() => {});
     if (product) {
       setName(product.name ?? "");
