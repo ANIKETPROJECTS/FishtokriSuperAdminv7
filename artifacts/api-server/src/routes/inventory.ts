@@ -662,7 +662,9 @@ function orderShouldDeduct(order: OrderForSync) {
 }
 
 /** Expand raw order items so that any combo productId is replaced by its constituent products.
- * Quantities are aggregated per product so that two combos sharing a product get combined. */
+ * Quantities are aggregated per product so that two combos sharing a product get combined.
+ * Each combo include may carry a `quantity` field specifying how many units of that product
+ * are contained in one combo (defaults to 1). The final deduction is orderedQty × includeQty. */
 async function expandOrderItems(
   productsCol: any,
   combosCol: any,
@@ -684,21 +686,30 @@ async function expandOrderItems(
       if (entry) entry.quantity += qty;
       else aggregated.set(key, { productId: key, name: it.name ?? "", quantity: qty, unit: it.unit ?? "" });
     } else {
-      // Not found in products — check if it is a combo and expand its includes
+      // Not found in products — check if it is a combo and expand its constituent products
       const combo = await combosCol.findOne({ _id: pid });
-      if (combo && Array.isArray(combo.includes)) {
+      if (combo && Array.isArray(combo.includes) && combo.includes.length > 0) {
+        logger.info({ comboId: String(pid), comboName: combo.name, includeCount: combo.includes.length }, "expandOrderItems: expanding combo into constituent products");
         for (const inc of combo.includes) {
           if (!inc.productId) continue;
           const incPid = toId(String(inc.productId));
           if (!incPid) continue;
           const incProduct = await productsCol.findOne({ _id: incPid }, { projection: { name: 1, unit: 1 } });
-          if (!incProduct) continue;
+          if (!incProduct) {
+            logger.warn({ comboId: String(pid), includeProductId: String(inc.productId) }, "expandOrderItems: included product not found in sub-hub products — skipping");
+            continue;
+          }
           const key = String(incPid);
           const entry = aggregated.get(key);
-          // Each combo ordered deducts 1 unit of each included product × ordered qty
-          if (entry) entry.quantity += qty;
-          else aggregated.set(key, { productId: key, name: incProduct.name ?? inc.label ?? "", quantity: qty, unit: incProduct.unit ?? "" });
+          // Each included product has its own quantity-per-combo (defaults to 1 if not set).
+          // Total deduction = orderedComboQty × quantityPerCombo
+          const qtyPerCombo = Math.max(1, Number(inc.quantity) || 1);
+          const totalDeduct = qty * qtyPerCombo;
+          if (entry) entry.quantity += totalDeduct;
+          else aggregated.set(key, { productId: key, name: incProduct.name ?? inc.label ?? "", quantity: totalDeduct, unit: incProduct.unit ?? "" });
         }
+      } else {
+        logger.warn({ productId: String(pid), comboFound: !!combo, includeCount: combo?.includes?.length ?? 0 }, "expandOrderItems: item not found as product or combo with includes — skipping");
       }
     }
   }

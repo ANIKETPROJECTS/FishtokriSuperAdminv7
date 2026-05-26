@@ -2937,7 +2937,7 @@ function CategoryModal({ isOpen, onClose, category, subHubId, onSaved, nextOrder
   );
 }
 
-type ComboInclude = { productId: string; label: string };
+type ComboInclude = { productId: string; label: string; quantity: number };
 
 function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, allItems = [] }: any) {
   const { toast } = useToast();
@@ -2972,6 +2972,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
       setIncludes(Array.isArray(combo.includes) ? combo.includes.map((i: any) => ({
         productId: String(i.productId ?? ""),
         label: i.label ?? "",
+        quantity: Math.max(1, Number(i.quantity) || 1),
       })) : []);
       setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
     } else {
@@ -2996,7 +2997,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
     if (includes.find((i) => i.productId === id)) {
       setIncludes(includes.filter((i) => i.productId !== id));
     } else {
-      setIncludes([...includes, { productId: id, label: product.name }]);
+      setIncludes([...includes, { productId: id, label: product.name, quantity: 1 }]);
     }
   };
 
@@ -3070,13 +3071,23 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
                   return (
                     <div key={item.productId} className="flex items-center gap-2 p-2 bg-[#EEF3FB] border border-[#C5D5F5] rounded-lg">
                       <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] flex-shrink-0" />
-                      <span className="text-[10px] text-gray-400 flex-shrink-0 w-20 truncate">{prod?.category ?? ""}</span>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 truncate">{prod?.category ?? ""}</span>
                       <div className="flex-1 min-w-0">
                         <Input
                           value={item.label}
                           onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))}
                           placeholder="Label shown to customer"
                           className="h-7 text-xs border-[#C5D5F5] bg-white"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="text-[10px] text-gray-500 whitespace-nowrap">Qty:</span>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => setIncludes(includes.map((x, idx) => idx === i ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) } : x))}
+                          className="h-7 w-14 text-xs border-[#C5D5F5] bg-white text-center"
                         />
                       </div>
                       <button type="button" onClick={() => setIncludes(includes.filter((_, idx) => idx !== i))} className="text-blue-200 hover:text-red-500 flex-shrink-0 transition-colors"><X className="w-3.5 h-3.5" /></button>
