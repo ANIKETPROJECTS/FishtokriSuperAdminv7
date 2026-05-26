@@ -2987,6 +2987,16 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
     setProductSearch(""); setSelectedCategory("all");
   }, [isOpen, combo, nextOrder]);
 
+  useEffect(() => {
+    if (includes.length === 0) return;
+    const total = includes.reduce((sum, inc) => {
+      const prod = availableProducts.find((p) => String(p._id) === inc.productId);
+      if (!prod) return sum;
+      return sum + (Number(prod.originalPrice) || Number(prod.price) || 0);
+    }, 0);
+    if (total > 0) setOriginalPrice(String(total));
+  }, [includes, availableProducts]);
+
   const toggleProduct = (product: any) => {
     const id = String(product._id);
     if (includes.find((i) => i.productId === id)) {
