@@ -462,17 +462,16 @@ export default function SubHubMenuAdmin() {
   const [statsError, setStatsError] = useState("");
   const [excelBar, setExcelBar] = useState<ExcelBarConfig>(null);
 
-  const loadStats = useCallback(async () => {
-    setLoadingStats(true);
-    setStatsError("");
+  const loadStats = useCallback(async (silent = false) => {
+    if (!silent) { setLoadingStats(true); setStatsError(""); }
     try {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/stats`);
       setStats(data.stats);
       setDbName(data.stats.dbName ?? "");
     } catch (err: any) {
-      setStatsError(err.message);
+      if (!silent) setStatsError(err.message);
     } finally {
-      setLoadingStats(false);
+      if (!silent) setLoadingStats(false);
     }
   }, [subHubId]);
 
@@ -483,6 +482,11 @@ export default function SubHubMenuAdmin() {
     }).catch(() => {});
     loadStats();
   }, [subHubId, loadStats]);
+
+  useEffect(() => {
+    const id = setInterval(() => { loadStats(true); }, 5000);
+    return () => clearInterval(id);
+  }, [loadStats]);
 
   const statCards = [
     { label: "Products", value: stats?.products ?? 0, img: iconMenuProducts },
