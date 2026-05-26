@@ -898,10 +898,10 @@ router.post("/timeslots", async (req, res) => {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const { label, startTime, endTime, isInstant, extraCharge, isActive, sortOrder } = req.body;
-    if (!label) { res.status(400).json({ error: "ValidationError", message: "Label is required" }); return; }
     if (!startTime || !endTime) { res.status(400).json({ error: "ValidationError", message: "Start time and end time are required" }); return; }
+    const resolvedLabel = label && String(label).trim() ? String(label).trim() : `${startTime} - ${endTime}`;
     const doc = {
-      label,
+      label: resolvedLabel,
       startTime,
       endTime,
       isInstant: isInstant === true,

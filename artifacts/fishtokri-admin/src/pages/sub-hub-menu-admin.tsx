@@ -2988,7 +2988,8 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
     const total = includes.reduce((sum, inc) => {
       const prod = availableProducts.find((p) => String(p._id) === inc.productId);
       if (!prod) return sum;
-      return sum + (Number(prod.originalPrice) || Number(prod.price) || 0);
+      const unitPrice = Number(prod.originalPrice) || Number(prod.price) || 0;
+      return sum + unitPrice * Math.max(1, Number(inc.quantity) || 1);
     }, 0);
     if (total > 0) setOriginalPrice(String(total));
   }, [includes, availableProducts]);

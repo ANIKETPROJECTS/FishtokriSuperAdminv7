@@ -1434,6 +1434,11 @@ export default function Orders() {
   useEffect(() => { setPage(1); }, [activeTab, search, statusFilter, deliveryTypeFilter, dateFrom, dateTo, sortField, sortDir, subHubFilter]);
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    const id = setInterval(() => { load(); loadStats(); }, 5000);
+    return () => clearInterval(id);
+  }, [load, loadStats]);
+
   const handleStatusUpdate = async () => {
     if (!selectedOrder || !editStatus) return;
 

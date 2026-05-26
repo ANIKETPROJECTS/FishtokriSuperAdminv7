@@ -153,6 +153,11 @@ export default function Dashboard() {
 
   useEffect(() => { loadExtra(); }, [loadExtra]);
 
+  useEffect(() => {
+    const id = setInterval(() => { loadExtra(); refetchStats(); refetchHubs(); }, 5000);
+    return () => clearInterval(id);
+  }, [loadExtra, refetchStats, refetchHubs]);
+
   const handleRefresh = () => {
     refetchStats();
     refetchHubs();
