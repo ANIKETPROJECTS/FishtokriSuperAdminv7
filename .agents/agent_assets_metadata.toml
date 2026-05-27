@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "779uEmI9Qk4Fypc0wRGM9"
 uri = "file://artifacts/fishtokri-admin/public/login-bg.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "_ULFns-qV2pt3QMkRUZNN"
+uri = "file://prompt.md"
+type = "text"
+title = "Coupon Logic Implementation Prompt"
