@@ -804,6 +804,26 @@ export default function Orders() {
     setEditingOrderId("");
   }, []);
 
+  // When a customer is picked from the dropdown, immediately show them for
+  // responsive UX, then re-fetch their document so activeCoupons / usedCoupons
+  // are always up-to-date. This prevents exhausted coupons from showing.
+  const handleSelectCustomer = useCallback((c: any) => {
+    setChosenCustomer(c);
+    setAppliedCouponIds([]); setCouponCode(""); setCouponError("");
+    const addrs = Array.isArray(c.addresses) ? c.addresses : [];
+    const defaultIdx = addrs.findIndex((a: any) => getAddressFields(a)?.isDefault);
+    setSelectedAddressIdx(addrs.length ? (defaultIdx >= 0 ? defaultIdx : 0) : null);
+    setOrderAddressMode(addrs.length ? "saved" : "new");
+    setCustomerSearch("");
+    setNewAddress((a: any) => ({ ...a, name: c.name || "", phone: c.phone || "" }));
+    // Fetch fresh customer data in the background to get current coupon usage
+    if (c.id) {
+      apiFetch(`/api/customers/${c.id}`)
+        .then((d) => { if (d?.customer) setChosenCustomer(d.customer); })
+        .catch(() => {}); // silently ignore; stale data is fine as fallback
+    }
+  }, []);
+
   // Load all customers when create-order modal opens
   useEffect(() => {
     if (!isCreatePage) return;
@@ -2803,7 +2823,7 @@ export default function Orders() {
                         <div className="mt-1.5 border border-gray-200 rounded-lg overflow-hidden">
                           {allMatches.slice(0, 4).map((c: any) => (
                             <button key={c.id} type="button"
-                              onClick={() => { setChosenCustomer(c); const addrs = Array.isArray(c.addresses) ? c.addresses : []; const defaultIdx = addrs.findIndex((a: any) => getAddressFields(a)?.isDefault); setSelectedAddressIdx(addrs.length ? (defaultIdx >= 0 ? defaultIdx : 0) : null); setOrderAddressMode(addrs.length ? "saved" : "new"); setCustomerSearch(""); setNewAddress((a) => ({ ...a, name: c.name || "", phone: c.phone || "" })); }}
+                              onClick={() => handleSelectCustomer(c)}
                               className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left border-b border-gray-100 last:border-0"
                             >
                               <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0">{c.name?.charAt(0).toUpperCase() || "?"}</div>
