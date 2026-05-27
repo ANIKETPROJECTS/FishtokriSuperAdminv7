@@ -106,16 +106,97 @@ function extractOrderCoupons(order: any): Array<{ couponId: string; couponCode: 
 const ACTIVE_ORDER_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "takeaway"]);
 
 /**
+ * Upserts an activeCoupons entry for a customer.
+ * Each coupon gets ONE entry (keyed by couponId) with usedCount tracking
+ * how many active orders are using it, and orderIds[] listing those orders.
+ * If an entry already exists for this couponId, increments usedCount and
+ * appends the orderId. Otherwise, creates a new entry with usedCount=1.
+ */
+async function upsertActiveCoupon(
+  cCol: any,
+  customerId: string,
+  coupon: { couponId: string; couponCode: string; couponTitle: string },
+  orderId: string,
+  subHubId: string,
+  log: any,
+) {
+  const cid = toId(customerId);
+  if (!cid) return;
+  try {
+    const updateResult = await cCol.updateOne(
+      { _id: cid, "activeCoupons.couponId": coupon.couponId },
+      {
+        $inc: { "activeCoupons.$.usedCount": 1 },
+        $addToSet: { "activeCoupons.$.orderIds": orderId },
+      },
+    );
+    if (updateResult.matchedCount === 0) {
+      await cCol.updateOne(
+        { _id: cid },
+        {
+          $push: {
+            activeCoupons: {
+              couponId: coupon.couponId,
+              couponCode: coupon.couponCode,
+              couponTitle: coupon.couponTitle,
+              subHubId: subHubId ?? "",
+              usedCount: 1,
+              orderIds: [orderId],
+              appliedAt: new Date(),
+            },
+          },
+        },
+      );
+    }
+  } catch (e) {
+    log.error({ err: e, customerId, orderId }, "Failed to upsert activeCoupon");
+  }
+}
+
+/**
+ * Decrements usedCount for an activeCoupons entry and removes the orderId.
+ * If usedCount drops to 0 (or below), removes the entire entry so the
+ * coupon becomes available again.
+ */
+async function decrementActiveCoupon(
+  cCol: any,
+  customerId: string,
+  couponId: string,
+  orderId: string,
+  log: any,
+) {
+  const cid = toId(customerId);
+  if (!cid) return;
+  try {
+    await cCol.updateOne(
+      { _id: cid, "activeCoupons.couponId": couponId },
+      { $inc: { "activeCoupons.$.usedCount": -1 } },
+    );
+    await cCol.updateOne(
+      { _id: cid },
+      { $pull: { "activeCoupons.$[elem].orderIds": orderId } as any },
+      { arrayFilters: [{ "elem.couponId": couponId }] },
+    );
+    await cCol.updateOne(
+      { _id: cid },
+      { $pull: { activeCoupons: { couponId, usedCount: { $lte: 0 } } } as any },
+    );
+  } catch (e) {
+    log.error({ err: e, customerId, orderId, couponId }, "Failed to decrement activeCoupon");
+  }
+}
+
+/**
  * Syncs a customer's activeCoupons / usedCoupons arrays whenever an order's
  * status changes. All coupon state transitions live here so the logic is in
  * one place and easy to audit.
  *
- *  active   → delivered  : activeCoupons → usedCoupons  (coupon permanently consumed)
- *  active   → cancelled  : remove from activeCoupons    (coupon released)
- *  delivered→ active     : usedCoupons → activeCoupons  (un-deliver edge-case)
- *  delivered→ cancelled  : remove from usedCoupons      (order voided after delivery)
- *  cancelled→ active     : add back to activeCoupons    (un-cancel)
- *  cancelled→ delivered  : add directly to usedCoupons  (rare direct jump)
+ *  active   → delivered  : decrement activeCoupons usedCount → add to usedCoupons
+ *  active   → cancelled  : decrement activeCoupons usedCount (entry removed if 0)
+ *  delivered→ active     : remove from usedCoupons → re-upsert into activeCoupons
+ *  delivered→ cancelled  : remove from usedCoupons
+ *  cancelled→ active     : re-upsert into activeCoupons
+ *  cancelled→ delivered  : add directly to usedCoupons
  */
 async function syncCustomerCouponsOnStatusChange(
   cCol: any,
@@ -140,27 +221,33 @@ async function syncCustomerCouponsOnStatusChange(
 
   try {
     if ((prevActive || prevDelivered) && newDelivered && !prevDelivered) {
-      // ✅ Order delivered → lock coupon permanently in usedCoupons
-      await cCol.updateOne({ _id: cid }, { $pull: { activeCoupons: { orderId } } });
+      // ✅ Order delivered → decrement activeCoupons, lock permanently in usedCoupons
+      for (const c of orderCoupons) {
+        await decrementActiveCoupon(cCol, customerId, c.couponId, orderId, log);
+      }
       const entries = orderCoupons.map((c) => ({ ...c, orderId, subHubId: subHubId ?? "", usedAt: new Date() }));
       await cCol.updateOne({ _id: cid }, { $push: { usedCoupons: { $each: entries } } });
-      log.info({ customerId, orderId }, "Coupon lifecycle: activeCoupons → usedCoupons (delivered)");
+      log.info({ customerId, orderId }, "Coupon lifecycle: activeCoupons decremented → usedCoupons (delivered)");
     } else if (prevDelivered && newActive) {
-      // ↩️ Un-deliver → move coupon back to activeCoupons so it's still blocked
+      // ↩️ Un-deliver → remove from usedCoupons, re-upsert into activeCoupons
       await cCol.updateOne({ _id: cid }, { $pull: { usedCoupons: { orderId } } });
-      const entries = orderCoupons.map((c) => ({ ...c, orderId, subHubId: subHubId ?? "", appliedAt: new Date() }));
-      await cCol.updateOne({ _id: cid }, { $push: { activeCoupons: { $each: entries } } });
-      log.info({ customerId, orderId }, "Coupon lifecycle: usedCoupons → activeCoupons (un-delivered)");
+      for (const c of orderCoupons) {
+        await upsertActiveCoupon(cCol, customerId, c, orderId, subHubId, log);
+      }
+      log.info({ customerId, orderId }, "Coupon lifecycle: usedCoupons removed → activeCoupons upserted (un-delivered)");
     } else if ((prevActive || prevDelivered) && newCancelled) {
-      // ❌ Order cancelled → release the coupon entirely
-      await cCol.updateOne({ _id: cid }, { $pull: { activeCoupons: { orderId } } });
+      // ❌ Order cancelled → decrement activeCoupons, remove from usedCoupons
+      for (const c of orderCoupons) {
+        await decrementActiveCoupon(cCol, customerId, c.couponId, orderId, log);
+      }
       await cCol.updateOne({ _id: cid }, { $pull: { usedCoupons: { orderId } } });
-      log.info({ customerId, orderId }, "Coupon lifecycle: removed from activeCoupons/usedCoupons (cancelled)");
+      log.info({ customerId, orderId }, "Coupon lifecycle: activeCoupons decremented (cancelled)");
     } else if (prevCancelled && newActive) {
-      // 🔄 Un-cancel → re-lock coupon in activeCoupons
-      const entries = orderCoupons.map((c) => ({ ...c, orderId, subHubId: subHubId ?? "", appliedAt: new Date() }));
-      await cCol.updateOne({ _id: cid }, { $push: { activeCoupons: { $each: entries } } });
-      log.info({ customerId, orderId }, "Coupon lifecycle: added back to activeCoupons (un-cancelled)");
+      // 🔄 Un-cancel → re-upsert into activeCoupons
+      for (const c of orderCoupons) {
+        await upsertActiveCoupon(cCol, customerId, c, orderId, subHubId, log);
+      }
+      log.info({ customerId, orderId }, "Coupon lifecycle: activeCoupons upserted (un-cancelled)");
     } else if (prevCancelled && newDelivered) {
       // Rare: cancelled → delivered directly
       const entries = orderCoupons.map((c) => ({ ...c, orderId, subHubId: subHubId ?? "", usedAt: new Date() }));
@@ -774,75 +861,130 @@ router.post("/", async (req: ScopedRequest, res) => {
 
     Object.keys(orderDoc).forEach((k) => orderDoc[k] === undefined && delete orderDoc[k]);
 
-    // --- Coupon conflict check (BEFORE insert) ---
-    // If the customer already has this coupon locked in a LIVE active order
-    // (i.e. it's in activeCoupons AND the referenced order still exists),
-    // reject the new order. Stale entries (order was force-deleted) are
-    // automatically pruned here so they don't block reuse forever.
+    // --- Coupon maxUsage enforcement (BEFORE insert) ---
+    // Check the coupon's maxUsage limit against the customer's total usage
+    // (active orders + historically delivered orders). Blocks if the limit
+    // has been reached. Also prunes any stale activeCoupons entries whose
+    // referenced orders no longer exist.
     const preCheckCoupons = extractOrderCoupons(orderDoc);
     if (preCheckCoupons.length > 0 && resolvedCustomerId) {
       const cColPre = await getCustomersCollection();
       const customerDoc = await cColPre.findOne(
         { _id: toId(resolvedCustomerId) },
-        { projection: { activeCoupons: 1 } },
+        { projection: { activeCoupons: 1, usedCoupons: 1 } },
       );
-      if (customerDoc && Array.isArray(customerDoc.activeCoupons) && customerDoc.activeCoupons.length > 0) {
-        const requestedCouponIds = new Set(preCheckCoupons.map((c) => c.couponId));
 
-        // Separate active-coupon entries that overlap with the requested coupons.
-        const overlapping = customerDoc.activeCoupons.filter((ac: any) =>
-          requestedCouponIds.has(String(ac.couponId).trim()),
+      for (const reqCoupon of preCheckCoupons) {
+        // Count how many times this coupon is currently locked in active orders.
+        const activeEntry = (customerDoc?.activeCoupons ?? []).find(
+          (ac: any) => String(ac.couponId).trim() === reqCoupon.couponId,
         );
+        // For old-format entries (no usedCount field), assume usedCount=1 if any entry exists.
+        const activeUsedCount = activeEntry
+          ? (activeEntry.usedCount != null ? (Number(activeEntry.usedCount) || 0) : 1)
+          : 0;
 
-        if (overlapping.length > 0) {
-          // Verify each overlapping entry against the orders DB.
-          // An entry is "live" only when its order document still exists.
+        // Build the orderIds list — handle both new format (orderIds[]) and old format (orderId string).
+        const rawOrderIds: string[] = activeEntry
+          ? (Array.isArray(activeEntry.orderIds) && activeEntry.orderIds.length > 0
+              ? activeEntry.orderIds
+              : activeEntry.orderId
+                ? [String(activeEntry.orderId)]
+                : [])
+          : [];
+
+        // Prune stale orderIds from this entry (orders that no longer exist).
+        if (activeEntry && rawOrderIds.length > 0) {
           const ordersConn = await getOrdersDb();
-          const overlappingOrderIds = overlapping
-            .map((ac: any) => ac.orderId)
-            .filter(Boolean)
-            .map((id: string) => { try { return toId(id); } catch { return null; } })
+          const parsedIds = rawOrderIds
+            .map((id: string) => { try { return toId(String(id)); } catch { return null; } })
             .filter(Boolean);
-
-          const existingOrders = overlappingOrderIds.length > 0
+          const existingOrders = parsedIds.length > 0
             ? await ordersConn.db.collection(COLLECTION)
-                .find({ _id: { $in: overlappingOrderIds } }, { projection: { _id: 1 } })
+                .find({ _id: { $in: parsedIds } }, { projection: { _id: 1 } })
                 .toArray()
             : [];
-
           const existingOrderIdSet = new Set(existingOrders.map((o: any) => String(o._id)));
-
-          // Split overlapping into live vs stale.
-          const liveConflicts = overlapping.filter((ac: any) => existingOrderIdSet.has(String(ac.orderId)));
-          const staleEntries  = overlapping.filter((ac: any) => !existingOrderIdSet.has(String(ac.orderId)));
-
-          // Prune stale entries so they never block again.
-          if (staleEntries.length > 0) {
-            const staleOrderIds = staleEntries.map((ac: any) => String(ac.orderId));
-            await cColPre.updateOne(
-              { _id: toId(resolvedCustomerId) },
-              { $pull: { activeCoupons: { orderId: { $in: staleOrderIds } } } as any },
-            );
-            req.log.info({ customerId: resolvedCustomerId, staleOrderIds }, "Pruned stale activeCoupons entries");
+          const staleOrderIds = rawOrderIds.filter((id: string) => !existingOrderIdSet.has(String(id)));
+          if (staleOrderIds.length > 0) {
+            for (const staleId of staleOrderIds) {
+              await decrementActiveCoupon(cColPre, resolvedCustomerId!, reqCoupon.couponId, staleId, req.log);
+            }
+            req.log.info({ customerId: resolvedCustomerId, staleOrderIds }, "Pruned stale activeCoupons orderIds");
           }
+          // Recompute activeUsedCount after pruning
+          const refreshed = await cColPre.findOne(
+            { _id: toId(resolvedCustomerId) },
+            { projection: { activeCoupons: 1 } },
+          );
+          const refreshedEntry = (refreshed?.activeCoupons ?? []).find(
+            (ac: any) => String(ac.couponId).trim() === reqCoupon.couponId,
+          );
+          // Use refreshed count going forward
+          const liveActiveCount = refreshedEntry ? (Number(refreshedEntry.usedCount) || 0) : 0;
 
-          // Block only if there is a genuinely live conflict.
-          if (liveConflicts.length > 0) {
-            const conflictingCouponIds = new Set(liveConflicts.map((ac: any) => String(ac.couponId)));
-            const codes = preCheckCoupons
-              .filter((c) => conflictingCouponIds.has(c.couponId))
-              .map((c) => c.couponCode || c.couponId)
-              .join(", ");
-            res.status(400).json({
-              error: "CouponAlreadyActive",
-              message: `Coupon ${codes} is already applied to an active order for this customer. It will be available again once that order is delivered or cancelled.`,
-            });
-            return;
+          // Count past (delivered) uses
+          const historicalCount = (customerDoc?.usedCoupons ?? []).filter(
+            (uc: any) => String(uc.couponId).trim() === reqCoupon.couponId,
+          ).length;
+
+          const totalUsage = liveActiveCount + historicalCount;
+
+          // Fetch the coupon from the sub-hub DB to get maxUsage
+          if (orderDoc.subHubName) {
+            try {
+              const subHubConn = await getSubHubDbConnection(String(orderDoc.subHubName));
+              const couponDoc = await subHubConn.db.collection("coupons").findOne(
+                { _id: toId(reqCoupon.couponId) },
+                { projection: { maxUsage: 1, isActive: 1 } },
+              );
+              if (couponDoc && couponDoc.maxUsage != null) {
+                const maxUsage = Number(couponDoc.maxUsage);
+                if (maxUsage > 0 && totalUsage >= maxUsage) {
+                  res.status(400).json({
+                    error: "CouponUsageLimitReached",
+                    message: `Coupon "${reqCoupon.couponCode || reqCoupon.couponId}" has reached its maximum usage limit for this customer.`,
+                  });
+                  return;
+                }
+              }
+            } catch (e) {
+              req.log.warn({ err: e, couponId: reqCoupon.couponId }, "Could not fetch coupon for maxUsage check — allowing");
+            }
+          }
+          continue;
+        }
+
+        // No active entry with orderIds to prune — just check usage counts directly
+        const historicalCount = (customerDoc?.usedCoupons ?? []).filter(
+          (uc: any) => String(uc.couponId).trim() === reqCoupon.couponId,
+        ).length;
+        const totalUsage = activeUsedCount + historicalCount;
+
+        if (orderDoc.subHubName) {
+          try {
+            const subHubConn = await getSubHubDbConnection(String(orderDoc.subHubName));
+            const couponDoc = await subHubConn.db.collection("coupons").findOne(
+              { _id: toId(reqCoupon.couponId) },
+              { projection: { maxUsage: 1, isActive: 1 } },
+            );
+            if (couponDoc && couponDoc.maxUsage != null) {
+              const maxUsage = Number(couponDoc.maxUsage);
+              if (maxUsage > 0 && totalUsage >= maxUsage) {
+                res.status(400).json({
+                  error: "CouponUsageLimitReached",
+                  message: `Coupon "${reqCoupon.couponCode || reqCoupon.couponId}" has reached its maximum usage limit for this customer.`,
+                });
+                return;
+              }
+            }
+          } catch (e) {
+            req.log.warn({ err: e, couponId: reqCoupon.couponId }, "Could not fetch coupon for maxUsage check — allowing");
           }
         }
       }
     }
-    // --- End coupon conflict check ---
+    // --- End coupon maxUsage enforcement ---
 
     const conn = await getOrdersDb();
     orderDoc.orderId = await generateOrderId(conn.db);
@@ -900,33 +1042,16 @@ router.post("/", async (req: ScopedRequest, res) => {
       }
     }
 
-    // Track coupon in customer's activeCoupons so it can't be reused on the next order.
+    // Track coupon in customer's activeCoupons using the aggregated structure
+    // (one entry per coupon, usedCount incremented per order).
     const orderCouponsOnCreate = extractOrderCoupons(orderDoc);
-    req.log.info({
-      couponCount: orderCouponsOnCreate.length,
-      resolvedCustomerId: resolvedCustomerId ?? null,
-      orderStatus: orderDoc.status,
-      hasCouponId: !!orderDoc.couponId,
-      hasCouponsArray: Array.isArray(orderDoc.coupons) && orderDoc.coupons.length > 0,
-    }, "Coupon lifecycle: pre-check on order create");
     if (orderCouponsOnCreate.length > 0 && resolvedCustomerId && orderDoc.status !== "cancelled") {
-      try {
-        const cCol = await getCustomersCollection();
-        const orderId = String(result.insertedId);
-        const entries = orderCouponsOnCreate.map((c) => ({
-          ...c,
-          orderId,
-          subHubId: orderDoc.subHubId ?? "",
-          appliedAt: new Date(),
-        }));
-        await cCol.updateOne(
-          { _id: toId(resolvedCustomerId) },
-          { $push: { activeCoupons: { $each: entries } } },
-        );
-        req.log.info({ customerId: resolvedCustomerId, orderId, coupons: entries.length }, "Coupon lifecycle: added to activeCoupons on order create");
-      } catch (e) {
-        req.log.error({ err: e }, "Failed to add coupon to activeCoupons on order create");
+      const cCol = await getCustomersCollection();
+      const orderId = String(result.insertedId);
+      for (const c of orderCouponsOnCreate) {
+        await upsertActiveCoupon(cCol, resolvedCustomerId, c, orderId, orderDoc.subHubId ?? "", req.log);
       }
+      req.log.info({ customerId: resolvedCustomerId, orderId, coupons: orderCouponsOnCreate.length }, "Coupon lifecycle: upserted activeCoupons on order create");
     }
 
     res.status(201).json({ order: { ...orderDoc, _id: result.insertedId } });
@@ -1222,8 +1347,8 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
     }
 
     // Release coupon locks when an order is deleted.
-    // If the order was already delivered, keep the usedCoupons entry (it's history).
-    // For any other status, remove from activeCoupons so the coupon can be reused.
+    // Decrement usedCount in activeCoupons (removes entry if count reaches 0).
+    // If the order was already delivered, usedCoupons history is preserved.
     if ((existing as any).customerId) {
       try {
         const deletedCoupons = extractOrderCoupons(existing);
@@ -1232,11 +1357,10 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
           const orderId = req.params.id;
           const wasDelivered = (existing as any).status === "delivered";
           if (!wasDelivered) {
-            await cCol.updateOne(
-              { _id: toId(String((existing as any).customerId)) },
-              { $pull: { activeCoupons: { orderId } } },
-            );
-            req.log.info({ customerId: (existing as any).customerId, orderId }, "Coupon lifecycle: removed from activeCoupons on order delete");
+            for (const c of deletedCoupons) {
+              await decrementActiveCoupon(cCol, String((existing as any).customerId), c.couponId, orderId, req.log);
+            }
+            req.log.info({ customerId: (existing as any).customerId, orderId }, "Coupon lifecycle: activeCoupons decremented on order delete");
           }
         }
       } catch (e) {
