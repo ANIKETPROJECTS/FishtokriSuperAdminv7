@@ -1282,6 +1282,67 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       }
     }
 
+    // Handle wallet refund/re-deduction based on status-only transitions.
+    // These cases are separate from explicit payment-array updates handled above.
+    if (status !== undefined && String(status) !== String(prev.status ?? "") && (result as any).customerId) {
+      const prevStatus = String(prev.status ?? "");
+      const newStatus = String(status);
+      const wasNotCancelled = prevStatus !== "cancelled";
+      const isNowCancelled = newStatus === "cancelled";
+      const wasCancelled = prevStatus === "cancelled";
+      try {
+        // Case 1: Order just cancelled — refund any wallet payments back to the customer.
+        // Only fires when payments array is not explicitly provided (that case is handled above).
+        if (isNowCancelled && wasNotCancelled && !Array.isArray(payments)) {
+          const walletToRefund = ((prev as any).payments ?? [])
+            .filter((p: any) => p.mode === "wallet")
+            .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+          if (walletToRefund > 0) {
+            const cCol = await getCustomersCollection();
+            await cCol.updateOne(
+              { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
+              { $inc: { walletBalance: walletToRefund } }
+            );
+            req.log.info({ customerId: (result as any).customerId, refunded: walletToRefund }, "Wallet refunded on order cancellation");
+          }
+        }
+
+        // Case 2: Order un-cancelled (moved from cancelled → active) — re-deduct wallet payments.
+        // Only fires when payments array is not explicitly provided.
+        if (wasCancelled && !isNowCancelled && !Array.isArray(payments)) {
+          const walletToDeduct = ((result as any).payments ?? [])
+            .filter((p: any) => p.mode === "wallet")
+            .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+          if (walletToDeduct > 0) {
+            const cCol = await getCustomersCollection();
+            await cCol.updateOne(
+              { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
+              { $inc: { walletBalance: -walletToDeduct } }
+            );
+            req.log.info({ customerId: (result as any).customerId, deducted: walletToDeduct }, "Wallet re-deducted on order re-activation from cancelled");
+          }
+        }
+
+        // Case 3: Order moved OUT of "delivered" (payments cleared) — refund any wallet used.
+        // clearPayments wipes the payments array so we look at prev.payments for the amount.
+        if (clearPayments && !isNowCancelled && !Array.isArray(payments)) {
+          const walletToRefund = ((prev as any).payments ?? [])
+            .filter((p: any) => p.mode === "wallet")
+            .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+          if (walletToRefund > 0) {
+            const cCol = await getCustomersCollection();
+            await cCol.updateOne(
+              { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
+              { $inc: { walletBalance: walletToRefund } }
+            );
+            req.log.info({ customerId: (result as any).customerId, refunded: walletToRefund }, "Wallet refunded when order moved out of delivered status");
+          }
+        }
+      } catch (e) {
+        req.log.error({ err: e }, "Failed to update wallet on order status transition");
+      }
+    }
+
     // Sync customer's activeCoupons / usedCoupons when order status changes.
     if (status !== undefined && status !== prev.status && (result as any).customerId) {
       const orderCouponsOnUpdate = extractOrderCoupons(prev);
@@ -1344,6 +1405,26 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
       await syncOrderBankPayments({ orderId: req.params.id, payments: [] });
     } catch (e) {
       req.log.error({ err: e }, "Failed to remove order payments from banking");
+    }
+
+    // Refund wallet if the deleted order had wallet payments and was NOT already cancelled.
+    // Cancelled orders already had their wallet refunded at the time of cancellation.
+    if ((existing as any).customerId && (existing as any).status !== "cancelled") {
+      try {
+        const walletToRefund = ((existing as any).payments ?? [])
+          .filter((p: any) => p.mode === "wallet")
+          .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        if (walletToRefund > 0) {
+          const cCol = await getCustomersCollection();
+          await cCol.updateOne(
+            { _id: new mongoose.Types.ObjectId(String((existing as any).customerId)) },
+            { $inc: { walletBalance: walletToRefund } }
+          );
+          req.log.info({ customerId: (existing as any).customerId, refunded: walletToRefund }, "Wallet refunded on order delete");
+        }
+      } catch (e) {
+        req.log.error({ err: e }, "Failed to refund wallet on order delete");
+      }
     }
 
     // Release coupon locks when an order is deleted.
