@@ -4186,7 +4186,7 @@ function TimeslotModal({ isOpen, onClose, timeslot, subHubId, onSaved, nextOrder
               className="h-9"
               placeholder="0"
             />
-            <p className="text-[11px] text-gray-400">Set to 0 for no limit. When active (non-cancelled) orders for this slot reach the limit, it will automatically become inactive. It reactivates when orders drop below the limit.</p>
+            <p className="text-[11px] text-gray-400">Set to 0 for no limit.</p>
           </div>
           <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Slot"}</Button></DialogFooter>
         </form>
