@@ -3896,6 +3896,11 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                           {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
                           <StatusBadge active={s.isActive !== false} />
                           {s.limitedByOrders && <span className="text-[10px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Limit Reached</span>}
+                          {(s.orderLimit ?? 0) > 0 && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${(s.activeOrderCount ?? 0) >= s.orderLimit ? "bg-red-50 text-red-500" : (s.activeOrderCount ?? 0) > 0 ? "bg-amber-50 text-amber-600" : "bg-gray-100 text-gray-400"}`}>
+                              {s.activeOrderCount ?? 0} / {s.orderLimit} used
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-gray-400">{displayTime(s.startTime)} – {displayTime(s.endTime)}{s.extraCharge > 0 ? ` · +₹${s.extraCharge} extra` : ""}{(s.orderLimit ?? 0) > 0 ? ` · Limit: ${s.orderLimit} orders` : ""}</p>
                       </div>
@@ -3921,6 +3926,11 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                   {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
                   <StatusBadge active={s.isActive !== false} />
                   {s.limitedByOrders && <span className="text-[10px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Limit Reached</span>}
+                  {(s.orderLimit ?? 0) > 0 && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${(s.activeOrderCount ?? 0) >= s.orderLimit ? "bg-red-50 text-red-500" : (s.activeOrderCount ?? 0) > 0 ? "bg-amber-50 text-amber-600" : "bg-gray-100 text-gray-400"}`}>
+                      {s.activeOrderCount ?? 0} / {s.orderLimit} used
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-gray-400">{displayTime(s.startTime)} – {displayTime(s.endTime)}{s.extraCharge > 0 ? ` · +₹${s.extraCharge} extra` : ""}{(s.orderLimit ?? 0) > 0 ? ` · Limit: ${s.orderLimit} orders` : ""}</p>
               </div>

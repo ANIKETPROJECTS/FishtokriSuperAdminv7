@@ -935,6 +935,25 @@ router.get("/timeslots", async (req, res) => {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const timeslots = await ctx.conn.db.collection("timeslots").find({}).sort({ sortOrder: 1, startTime: 1 }).toArray();
+
+    // Enrich each timeslot with the count of currently active (non-delivered, non-cancelled) orders
+    try {
+      const subHubId = String(ctx.sub._id);
+      const timeslotIds = timeslots.filter(s => (s.orderLimit ?? 0) > 0).map(s => String(s._id));
+      if (timeslotIds.length > 0) {
+        const ordersConn = await getSubHubDbConnection("orders");
+        const agg = await ordersConn.db.collection("orders").aggregate([
+          { $match: { subHubId, timeslotId: { $in: timeslotIds }, status: { $in: ["pending", "confirmed", "out_for_delivery", "takeaway"] } } },
+          { $group: { _id: "$timeslotId", count: { $sum: 1 } } },
+        ]).toArray();
+        const countMap: Record<string, number> = {};
+        for (const row of agg) countMap[String(row._id)] = row.count;
+        for (const s of timeslots) {
+          if ((s.orderLimit ?? 0) > 0) s.activeOrderCount = countMap[String(s._id)] ?? 0;
+        }
+      }
+    } catch (_e) { /* non-fatal — counts are best-effort */ }
+
     res.json({ timeslots, total: timeslots.length });
   } catch (err) {
     req.log.error({ err }, "Failed to get timeslots");
