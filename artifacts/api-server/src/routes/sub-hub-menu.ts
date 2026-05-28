@@ -1000,10 +1000,9 @@ router.get("/timeslots", async (req, res) => {
         }
 
         // Persist computed counts back to MongoDB so the DB reflects reality.
-        const { ObjectId } = await import("mongodb");
         const bulkOps = (timeslots as any[]).map((slot) => ({
           updateOne: {
-            filter: { _id: new ObjectId(slot._id) },
+            filter: { _id: new mongoose.Types.ObjectId(slot._id) },
             update: {
               $set: {
                 todaysOrderCount: slot.todaysOrderCount,

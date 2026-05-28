@@ -340,9 +340,8 @@ async function syncTimeslotOrderCounts(
     }
 
     const subHubConn = await getSubHubDbConnection(subHubName);
-    const { ObjectId } = await import("mongodb");
     await subHubConn.db.collection("timeslots").updateOne(
-      { _id: new ObjectId(timeslotId) },
+      { _id: new mongoose.Types.ObjectId(timeslotId) },
       {
         $set: { todaysOrderCount, nextDayOrderCount },
         $unset: { todaysOrderDate: "", nextDayOrderDate: "" },
