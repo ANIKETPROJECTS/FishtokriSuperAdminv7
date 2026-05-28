@@ -1,0 +1,1 @@
+- [API server has no watch mode](api-server-no-watch.md) — always restart `Start API` workflow after editing any `api-server/src/` TypeScript file or changes won't take effect.
