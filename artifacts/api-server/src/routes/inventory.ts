@@ -533,9 +533,37 @@ router.post("/adjustments", async (req, res) => {
       } else if (mode === "remove") {
         const rmQty = Math.max(0, Number(it.removeQuantity) || 0);
         if (rmQty <= 0) continue;
-        const consumed = consumeBatches(currentBatches, rmQty);
-        newBatches = consumed.batches;
-        delta = -(rmQty - consumed.remaining);
+
+        // If a specific batchId is provided, reduce from that batch first then FIFO for remainder
+        if (it.batchId) {
+          const targetIdx = currentBatches.findIndex((b) => String(b._id) === String(it.batchId));
+          if (targetIdx >= 0) {
+            const working = currentBatches.map((b) => ({ ...b }));
+            const target = working[targetIdx];
+            const take = Math.min(target.quantity, rmQty);
+            target.quantity -= take;
+            const remaining = rmQty - take;
+            if (remaining > 0) {
+              // FIFO consume from the rest
+              const others = working.filter((_, i) => i !== targetIdx);
+              const consumed = consumeBatches(others, remaining);
+              newBatches = [working[targetIdx], ...consumed.batches];
+              delta = -(rmQty - consumed.remaining);
+            } else {
+              newBatches = working;
+              delta = -take;
+            }
+          } else {
+            // batchId not found — fall back to FIFO
+            const consumed = consumeBatches(currentBatches, rmQty);
+            newBatches = consumed.batches;
+            delta = -(rmQty - consumed.remaining);
+          }
+        } else {
+          const consumed = consumeBatches(currentBatches, rmQty);
+          newBatches = consumed.batches;
+          delta = -(rmQty - consumed.remaining);
+        }
         if (delta === 0) continue;
       } else {
         // legacy "set" mode (no batch info) — keep behaviour for backward compat
