@@ -150,7 +150,6 @@ function getOrderId(order: any) {
 function matchesCustomer(order: any, customer: any) {
   const phone = normalize(customer.phone);
   const email = normalize(customer.email);
-  const name = normalize(customer.name);
   const id = normalize(customer.id);
 
   const orderPhones = [
@@ -167,12 +166,6 @@ function matchesCustomer(order: any, customer: any) {
     order.customer?.email,
   ].map(normalize).filter(Boolean);
 
-  const orderNames = [
-    order.customerName,
-    order.name,
-    order.customer?.name,
-  ].map(normalize).filter(Boolean);
-
   const orderCustomerIds = [
     order.customerId,
     order.userId,
@@ -183,15 +176,13 @@ function matchesCustomer(order: any, customer: any) {
   return (
     (phone && orderPhones.includes(phone)) ||
     (email && orderEmails.includes(email)) ||
-    (id && orderCustomerIds.includes(id)) ||
-    (name && orderNames.includes(name))
+    (id && orderCustomerIds.includes(id))
   );
 }
 
 function buildOrdersQuery(customers: any[]) {
   const phones = [...new Set(customers.map((c) => normalize(c.phone)).filter(Boolean))];
   const emails = [...new Set(customers.map((c) => normalize(c.email)).filter(Boolean))];
-  const names = [...new Set(customers.map((c) => normalize(c.name)).filter(Boolean))];
   const ids = [...new Set(customers.map((c) => String(c.id)).filter(Boolean))];
   const orderIds = customers
     .flatMap((c) => (Array.isArray(c.orders) ? c.orders : []))
@@ -213,9 +204,6 @@ function buildOrdersQuery(customers: any[]) {
   }
   if (emails.length) {
     or.push({ email: { $in: emails } }, { customerEmail: { $in: emails } }, { "customer.email": { $in: emails } });
-  }
-  if (names.length) {
-    or.push({ customerName: { $in: names } }, { name: { $in: names } }, { "customer.name": { $in: names } });
   }
   if (ids.length) {
     or.push({ customerId: { $in: ids } }, { userId: { $in: ids } }, { "customer.id": { $in: ids } });
