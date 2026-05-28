@@ -296,6 +296,65 @@ async function generateOrderId(db: any): Promise<string> {
   return `#FTS${dateStr}${seq}`;
 }
 
+/**
+ * Re-aggregates today's and tomorrow's order counts for a given timeslot and
+ * writes them back to the timeslot document in the sub-hub's MongoDB database.
+ * Called fire-and-forget after every order mutation that could affect a slot count.
+ */
+async function syncTimeslotOrderCounts(
+  timeslotId: string,
+  subHubName: string,
+  log: any,
+): Promise<void> {
+  try {
+    const now = new Date();
+    const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const todayISO = `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())}`;
+    const tomDate = new Date(ist.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowISO = `${tomDate.getUTCFullYear()}-${pad(tomDate.getUTCMonth() + 1)}-${pad(tomDate.getUTCDate())}`;
+
+    const ordersConn = await getOrdersDb();
+    const agg = await ordersConn.db.collection(COLLECTION).aggregate([
+      {
+        $match: {
+          timeslotId,
+          scheduleType: "slot",
+          deliveryDate: { $in: [todayISO, tomorrowISO] },
+          status: { $ne: "cancelled" },
+        },
+      },
+      {
+        $group: {
+          _id: "$deliveryDate",
+          count: { $sum: 1 },
+        },
+      },
+    ]).toArray();
+
+    let todaysOrderCount = 0;
+    let nextDayOrderCount = 0;
+    for (const row of agg as any[]) {
+      if (row._id === todayISO) todaysOrderCount = row.count;
+      else if (row._id === tomorrowISO) nextDayOrderCount = row.count;
+    }
+
+    const subHubConn = await getSubHubDbConnection(subHubName);
+    const { ObjectId } = await import("mongodb");
+    await subHubConn.db.collection("timeslots").updateOne(
+      { _id: new ObjectId(timeslotId) },
+      {
+        $set: { todaysOrderCount, nextDayOrderCount },
+        $unset: { todaysOrderDate: "", nextDayOrderDate: "" },
+      },
+    );
+
+    log.info({ timeslotId, subHubName, todaysOrderCount, nextDayOrderCount }, "Timeslot order counts synced to DB");
+  } catch (e) {
+    log.warn({ err: e, timeslotId, subHubName }, "Failed to sync timeslot order counts (non-fatal)");
+  }
+}
+
 // GET /api/orders — list with search, filter, sort, pagination
 router.get("/", async (req: ScopedRequest, res) => {
   try {
@@ -1115,6 +1174,11 @@ router.post("/", async (req: ScopedRequest, res) => {
     }
 
     res.status(201).json({ order: { ...orderDoc, _id: result.insertedId } });
+
+    // Sync timeslot order counts to MongoDB immediately after creating an order.
+    if (scheduleType === "slot" && timeslotId && orderDoc.subHubName) {
+      syncTimeslotOrderCounts(String(timeslotId), String(orderDoc.subHubName), req.log);
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to create order");
     res.status(500).json({ error: "InternalError", message: "Failed to create order" });
@@ -1433,6 +1497,11 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     }
 
     res.json({ order: result });
+
+    // Sync timeslot order counts to MongoDB after any status change on a slot order.
+    if ((result as any).scheduleType === "slot" && (result as any).timeslotId && (result as any).subHubName) {
+      syncTimeslotOrderCounts(String((result as any).timeslotId), String((result as any).subHubName), req.log);
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to update order");
     res.status(500).json({ error: "InternalError", message: "Failed to update order" });
@@ -1510,6 +1579,11 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
     }
 
     res.json({ success: true });
+
+    // Sync timeslot order counts to MongoDB after deleting a slot order.
+    if ((existing as any).scheduleType === "slot" && (existing as any).timeslotId && (existing as any).subHubName) {
+      syncTimeslotOrderCounts(String((existing as any).timeslotId), String((existing as any).subHubName), req.log);
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to delete order");
     res.status(500).json({ error: "InternalError", message: "Failed to delete order" });
