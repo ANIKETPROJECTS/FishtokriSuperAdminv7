@@ -1114,6 +1114,12 @@ export default function Orders() {
     const isToday = orderDate === todayISO;
     return timeslots.filter((t) => {
       if (t.isActive === false) return false;
+      // Hide slots that have hit their order limit for the selected date
+      const limit = Number(t.orderLimit) || 0;
+      if (limit > 0) {
+        if (isToday && t.todaysOrderDate === todayISO && (t.todaysOrderCount ?? 0) >= limit) return false;
+        if (!isToday && t.nextDayOrderDate === orderDate && (t.nextDayOrderCount ?? 0) >= limit) return false;
+      }
       if (!isToday) return true;
       const match = (t.startTime ?? "").match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
       if (!match) return true;

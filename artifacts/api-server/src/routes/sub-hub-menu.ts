@@ -960,6 +960,10 @@ router.post("/timeslots", async (req, res) => {
       sortOrder: Number(sortOrder) || 0,
       orderLimit: Number(orderLimit) || 0,
       limitedByOrders: false,
+      todaysOrderDate: "",
+      todaysOrderCount: 0,
+      nextDayOrderDate: "",
+      nextDayOrderCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

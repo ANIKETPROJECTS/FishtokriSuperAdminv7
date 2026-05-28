@@ -3896,8 +3896,14 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                           {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
                           <StatusBadge active={s.isActive !== false} />
                         </div>
-                        <p className="text-xs text-gray-400">{displayTime(s.startTime)} – {displayTime(s.endTime)}{s.extraCharge > 0 ? ` · +₹${s.extraCharge} extra` : ""}{(s.orderLimit ?? 0) > 0 ? ` · Limit: ${s.orderLimit} orders` : ""}</p>
+                        <p className="text-xs text-gray-400">{displayTime(s.startTime)} – {displayTime(s.endTime)}{s.extraCharge > 0 ? ` · +₹${s.extraCharge} extra` : ""}</p>
                       </div>
+                      {(s.orderLimit ?? 0) > 0 && (
+                        <div className="flex items-center gap-1 mr-1 flex-shrink-0">
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">T: {s.todaysOrderCount ?? 0}/{s.orderLimit}</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600">N: {s.nextDayOrderCount ?? 0}/{s.orderLimit}</span>
+                        </div>
+                      )}
                       <span className="text-xs font-bold text-gray-400">#{s.sortOrder ?? 0}</span>
                       <ActionButtons onEdit={() => { setEditing(s); setModalOpen(true); }} onDelete={() => setDeleteId(String(s._id))} />
                     </div>
@@ -3920,8 +3926,14 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                   {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
                   <StatusBadge active={s.isActive !== false} />
                 </div>
-                <p className="text-xs text-gray-400">{displayTime(s.startTime)} – {displayTime(s.endTime)}{s.extraCharge > 0 ? ` · +₹${s.extraCharge} extra` : ""}{(s.orderLimit ?? 0) > 0 ? ` · Limit: ${s.orderLimit} orders` : ""}</p>
+                <p className="text-xs text-gray-400">{displayTime(s.startTime)} – {displayTime(s.endTime)}{s.extraCharge > 0 ? ` · +₹${s.extraCharge} extra` : ""}</p>
               </div>
+              {(s.orderLimit ?? 0) > 0 && (
+                <div className="flex items-center gap-1 mr-1 flex-shrink-0">
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">T: {s.todaysOrderCount ?? 0}/{s.orderLimit}</span>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600">N: {s.nextDayOrderCount ?? 0}/{s.orderLimit}</span>
+                </div>
+              )}
               <span className="text-xs text-gray-300 font-mono hidden sm:block">#{s.sortOrder ?? 0}</span>
               <ActionButtons onEdit={() => { setEditing(s); setModalOpen(true); }} onDelete={() => setDeleteId(String(s._id))} />
             </div>
