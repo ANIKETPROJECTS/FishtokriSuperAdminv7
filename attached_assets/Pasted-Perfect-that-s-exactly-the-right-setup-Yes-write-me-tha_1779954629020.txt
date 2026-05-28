@@ -1,0 +1,28 @@
+Perfect, that's exactly the right setup. Yes, write me that complete prompt.
+
+Here it is:
+
+---
+
+I want to integrate QZ Tray for silent printing on the Print Invoice button. QZ Tray 2.2.6 is already installed on the local PC of the operator who uses the admin panel. The admin panel will be hosted on a VPS with HTTPS/SSL.
+
+Please do the following:
+
+1. Find the Print Invoice button and its print logic (likely using `window.print()`)
+
+2. Replace it with QZ Tray silent printing logic that works over HTTPS:
+   - Load the QZ Tray JavaScript library from `https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.min.js`
+   - Use `wss://` (secure websocket) instead of `ws://` since the site will be on HTTPS — otherwise the browser will block the connection as mixed content
+   - Set `qz.security.setCertificatePromise` and `qz.security.setSignaturePromise` with proper certificate handling so QZ Tray does not show the "Untrusted website" popup every time
+   - Generate or embed a self-signed certificate approach: store the public certificate in the app code and use it to sign requests silently
+   - Connect to QZ Tray only once, reuse the connection, disconnect only after printing is done — do NOT create multiple connections as it causes multiple security popups
+   - Find the printer named "TENAX TN-260" — if that exact name is not found, use the first available printer in the list
+   - Print the invoice content as HTML to the thermal printer with paper width 80mm, no margins, portrait layout
+   - **Important fallback:** If QZ Tray is NOT running or NOT connected, fall back to the normal `window.print()` browser dialog so printing still works even without QZ Tray
+   - Show a small toast saying "Printing..." when silent print starts, and "Print failed, opening dialog..." if falling back
+
+3. Also generate the required private key and digital certificate pair needed for QZ Tray signing, and show me exactly where to place each file in the project
+
+4. Paper settings: 80mm width, no margins, portrait layout
+
+5. Make sure everything works when the site is served over HTTPS on a VPS and QZ Tray is running on the operator's local PC
