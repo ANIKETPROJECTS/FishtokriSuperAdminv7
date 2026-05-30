@@ -1718,6 +1718,23 @@ export default function Orders() {
     return () => clearInterval(id);
   }, [load, loadStats]);
 
+  // ── Auto-promote "other day" orders when the date rolls over ─────────────
+  // Every 30 s, check if the IST calendar date has changed since the last
+  // check. When it does, refresh stats and switch from "otherday" → "current"
+  // so that orders scheduled for the new "today" appear immediately.
+  useEffect(() => {
+    let lastDate = getTodayIST();
+    const id = setInterval(() => {
+      const today = getTodayIST();
+      if (today !== lastDate) {
+        lastDate = today;
+        loadStats();
+        setActiveTab((tab) => (tab === "otherday" ? "current" : tab));
+      }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [loadStats]);
+
   const handleStatusUpdate = async () => {
     if (!selectedOrder || !editStatus) return;
 
@@ -3793,8 +3810,19 @@ export default function Orders() {
                       const isTakeaway = selectedOrder.deliveryType === "takeaway";
                       const hasAssignee = !!selectedOrder.assignedDeliveryPersonId;
                       const requiresAssignee = (s: string) => !isTakeaway && !hasAssignee && (s === "out_for_delivery" || s === "delivered");
-                      const statusOptions = isTakeaway ? ["takeaway", "cancelled"] : ALL_STATUSES.filter((s) => s !== "takeaway");
-                      const blocked = requiresAssignee(editStatus);
+                      // "Other day" orders (deliveryDate is a future date, not today) cannot
+                      // be dispatched or marked delivered until their delivery day arrives.
+                      const todayISO = getTodayIST();
+                      const isOtherDay = !!(
+                        selectedOrder.deliveryDate &&
+                        selectedOrder.deliveryDate !== "" &&
+                        selectedOrder.deliveryDate > todayISO
+                      );
+                      const otherDayBlocked = new Set(["out_for_delivery", "delivered"]);
+                      const statusOptions = isTakeaway
+                        ? ["takeaway", "cancelled"]
+                        : ALL_STATUSES.filter((s) => s !== "takeaway" && !(isOtherDay && otherDayBlocked.has(s)));
+                      const blocked = requiresAssignee(editStatus) || (isOtherDay && otherDayBlocked.has(editStatus));
                       return (
                         <>
                           <div className="flex gap-2">
@@ -3822,7 +3850,12 @@ export default function Orders() {
                               {savingStatus ? "Saving..." : "Update"}
                             </Button>
                           </div>
-                          {blocked && (
+                          {isOtherDay && (
+                            <p className="text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2.5">
+                              This order is scheduled for <strong>{selectedOrder.deliveryDate}</strong>. Out for Delivery and Delivered are only available on the delivery day.
+                            </p>
+                          )}
+                          {!isOtherDay && blocked && (
                             <p className="text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
                               Assign a delivery partner above before marking as Out for Delivery or Delivered.
                             </p>
