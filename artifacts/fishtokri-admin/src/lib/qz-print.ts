@@ -16,7 +16,7 @@ declare global {
 }
 
 const QZ_CDN_URL = "https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.min.js";
-const PREFERRED_PRINTER = "TENAX TN-260";
+const PREFERRED_PRINTER = "POS-80C (copy 2)";
 const CONNECT_TIMEOUT_MS = 5_000;
 
 // ─── SCRIPT LOADER ────────────────────────────────────────────────────────────
@@ -37,8 +37,15 @@ function loadQzScript(): Promise<void> {
     if (existing) {
       const start = Date.now();
       const poll = () => {
-        if (window.qz) { _scriptLoaded = true; resolve(); return; }
-        if (Date.now() - start > 5_000) { reject(new Error("QZ Tray script timed out")); return; }
+        if (window.qz) {
+          _scriptLoaded = true;
+          resolve();
+          return;
+        }
+        if (Date.now() - start > 5_000) {
+          reject(new Error("QZ Tray script timed out"));
+          return;
+        }
         setTimeout(poll, 100);
       };
       poll();
@@ -47,8 +54,15 @@ function loadQzScript(): Promise<void> {
     const script = document.createElement("script");
     script.src = QZ_CDN_URL;
     script.async = true;
-    script.onload = () => { _scriptLoaded = true; _scriptLoadingPromise = null; resolve(); };
-    script.onerror = () => { _scriptLoadingPromise = null; reject(new Error("Failed to load QZ Tray script from CDN")); };
+    script.onload = () => {
+      _scriptLoaded = true;
+      _scriptLoadingPromise = null;
+      resolve();
+    };
+    script.onerror = () => {
+      _scriptLoadingPromise = null;
+      reject(new Error("Failed to load QZ Tray script from CDN"));
+    };
     document.head.appendChild(script);
   });
 
@@ -64,15 +78,18 @@ function setupSecurity(): void {
 
   const qz = window.qz;
 
-  qz.security.setCertificatePromise((resolve: (cert: string) => void, reject: (err: unknown) => void) => {
-    fetch("/api/qz-certificate")
-      .then((res) => {
-        if (!res.ok) throw new Error(`Certificate fetch failed: ${res.status}`);
-        return res.text();
-      })
-      .then(resolve)
-      .catch(reject);
-  });
+  qz.security.setCertificatePromise(
+    (resolve: (cert: string) => void, reject: (err: unknown) => void) => {
+      fetch("/api/qz-certificate")
+        .then((res) => {
+          if (!res.ok)
+            throw new Error(`Certificate fetch failed: ${res.status}`);
+          return res.text();
+        })
+        .then(resolve)
+        .catch(reject);
+    },
+  );
 
   qz.security.setSignatureAlgorithm("SHA512");
 
@@ -102,9 +119,12 @@ async function ensureConnected(): Promise<void> {
     qz.websocket.connect(),
     new Promise<never>((_, reject) =>
       setTimeout(
-        () => reject(new Error("QZ Tray connection timed out — is QZ Tray running?")),
-        CONNECT_TIMEOUT_MS
-      )
+        () =>
+          reject(
+            new Error("QZ Tray connection timed out — is QZ Tray running?"),
+          ),
+        CONNECT_TIMEOUT_MS,
+      ),
     ),
   ]);
 }
@@ -122,7 +142,7 @@ async function resolvePrinter(): Promise<string> {
   }
 
   const all = await qz.printers.find();
-  const list: string[] = Array.isArray(all) ? all : (all ? [String(all)] : []);
+  const list: string[] = Array.isArray(all) ? all : all ? [String(all)] : [];
   const first = list.find((p) => p && p.trim().length > 0);
   if (!first) throw new Error("No printers found via QZ Tray");
   return first;
@@ -139,7 +159,9 @@ export interface QzPrintResult {
  * Returns { success: false } if QZ Tray is unavailable — caller should
  * fall back to window.print().
  */
-export async function printHtmlWithQZ(htmlContent: string): Promise<QzPrintResult> {
+export async function printHtmlWithQZ(
+  htmlContent: string,
+): Promise<QzPrintResult> {
   try {
     await loadQzScript();
 
