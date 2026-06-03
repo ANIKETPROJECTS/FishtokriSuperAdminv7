@@ -73,49 +73,51 @@ export function DateFilterBar({
   from, to, setFrom, setTo, applied, onApply,
 }: {
   from: string; to: string; setFrom: (v: string) => void; setTo: (v: string) => void;
-  applied: { from: string; to: string }; onApply: () => void;
+  applied: { from: string; to: string }; onApply: (f?: string, t?: string) => void;
 }) {
   const PRESETS = [
     { label: "Today", f: today(), t: today() },
     { label: "Last 7 days", f: daysAgo(7), t: today() },
     { label: "Last 30 days", f: daysAgo(30), t: today() },
-    { label: "This month", f: thisMonthStart(), t: today() },
   ];
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex items-center gap-1.5 text-sm font-medium text-gray-600 w-full sm:w-auto">
-          <Calendar className="w-4 h-4 text-gray-400" /> Date Range
+    <div style={{ fontFamily: "Poppins, sans-serif" }}>
+      {/* Preset chips — full width, tap-friendly */}
+      <div className="flex gap-2">
+        {PRESETS.map(({ label, f, t }) => (
+          <button
+            key={label}
+            onClick={() => { setFrom(f); setTo(t); onApply(f, t); }}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              applied.from === f && applied.to === t
+                ? "bg-brand-primary text-white"
+                : "bg-white text-black border border-gray-200"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Date inputs — auto-apply on change */}
+      <div className="flex gap-3 mt-3">
+        <div className="flex-1">
+          <label className="text-xs font-semibold text-black block mb-1">From</label>
+          <Input
+            type="date"
+            value={from}
+            onChange={(e) => { setFrom(e.target.value); onApply(e.target.value, to); }}
+            className="w-full text-sm h-9 font-medium text-black"
+          />
         </div>
-        <div className="flex flex-wrap gap-2 flex-1">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">From</label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40 text-sm h-8" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">To</label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40 text-sm h-8" />
-          </div>
-          <div className="flex items-end">
-            <Button size="sm" onClick={onApply} className="h-8 bg-brand-primary hover:bg-brand-primary/90 text-white text-xs px-3">
-              Apply
-            </Button>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map(({ label, f, t }) => (
-            <button
-              key={label}
-              onClick={() => { setFrom(f); setTo(t); onApply(); }}
-              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                applied.from === f && applied.to === t
-                  ? "bg-brand-primary text-white border-brand-primary"
-                  : "bg-white text-gray-600 border-gray-200 hover:border-brand-primary hover:text-brand-primary"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex-1">
+          <label className="text-xs font-semibold text-black block mb-1">To</label>
+          <Input
+            type="date"
+            value={to}
+            onChange={(e) => { setTo(e.target.value); onApply(from, e.target.value); }}
+            className="w-full text-sm h-9 font-medium text-black"
+          />
         </div>
       </div>
     </div>
@@ -239,7 +241,7 @@ export default function DeliveryReportPage() {
   const [to, setTo] = useState(today());
   const [applied, setApplied] = useState({ from: daysAgo(7), to: today() });
 
-  const handleApply = () => setApplied({ from, to });
+  const handleApply = (f?: string, t?: string) => setApplied({ from: f ?? from, to: t ?? to });
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["delivery-report", applied.from, applied.to],

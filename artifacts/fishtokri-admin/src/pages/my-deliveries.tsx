@@ -436,6 +436,7 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState<any>(null);
   const [deliverPayOpen, setDeliverPayOpen] = useState(false);
+  const [pendingDeliverOrder, setPendingDeliverOrder] = useState<any>(null);
   const [deliverPayStatus, setDeliverPayStatus] = useState<"unpaid" | "partial" | "paid">("paid");
   const [deliverPayEntries, setDeliverPayEntries] = useState<{ mode: string; amount: string; reference: string }[]>([]);
 
@@ -492,6 +493,8 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
       setDeliverPayEntries([
         { mode: "cash", amount: String(due > 0 ? due : total), reference: "" },
       ]);
+      setPendingDeliverOrder(selectedOrder);
+      setSelectedOrder(null);
       setDeliverPayOpen(true);
       return;
     }
@@ -513,10 +516,11 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
   );
 
   const handleDeliverWithPayment = async () => {
-    if (!selectedOrder) return;
-    const orderTotalAmount = orderTotal(selectedOrder);
-    const existingPaid = Number(selectedOrder.paidAmount) || 0;
-    const existingPayments: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
+    const orderForPayment = pendingDeliverOrder || selectedOrder;
+    if (!orderForPayment) return;
+    const orderTotalAmount = orderTotal(orderForPayment);
+    const existingPaid = Number(orderForPayment.paidAmount) || 0;
+    const existingPayments: any[] = Array.isArray(orderForPayment.payments) ? orderForPayment.payments : [];
 
     if (deliverPayStatus !== "unpaid") {
       const validEntries = deliverPayEntries.filter((p) => p.mode && Number(p.amount) > 0);
@@ -557,9 +561,11 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
         paymentMode: mergedPayments[0]?.mode,
         payments: mergedPayments,
       };
-      await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+      const orderForPayment = pendingDeliverOrder || selectedOrder;
+      await apiFetch(`/api/orders/${orderForPayment._id}`, { method: "PUT", body: JSON.stringify(payload) });
       toast({ title: "Marked as delivered", description: deliverPayStatus === "paid" ? "Payment recorded." : deliverPayStatus === "partial" ? "Partial payment recorded." : "No payment recorded." });
       setDeliverPayOpen(false);
+      setPendingDeliverOrder(null);
       setSelectedOrder(null);
       loadOrders();
     } catch (err: any) {
@@ -874,7 +880,7 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
       />
 
       {/* Payment-on-deliver dialog */}
-      <Dialog open={deliverPayOpen} onOpenChange={(open) => { if (!saving) setDeliverPayOpen(open); }}>
+      <Dialog open={deliverPayOpen} onOpenChange={(open) => { if (!saving) { setDeliverPayOpen(open); if (!open) setPendingDeliverOrder(null); } }}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -883,9 +889,10 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
             </DialogTitle>
           </DialogHeader>
 
-          {selectedOrder && (() => {
-            const orderTotalValue = orderTotal(selectedOrder);
-            const existingPaid = Number(selectedOrder.paidAmount) || 0;
+          {(pendingDeliverOrder || selectedOrder) && (() => {
+            const activeOrder = pendingDeliverOrder || selectedOrder;
+            const orderTotalValue = orderTotal(activeOrder);
+            const existingPaid = Number(activeOrder.paidAmount) || 0;
             const remainingDue = Math.max(0, orderTotalValue - existingPaid);
             const newPaidTotal = existingPaid + (deliverPayStatus === "unpaid" ? 0 : deliverPayPaidTotal);
             const newDue = Math.max(0, orderTotalValue - newPaidTotal);

@@ -243,10 +243,10 @@ export default function DeliveryReportPersonPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [from, setFrom] = useState(daysAgo(30));
+  const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
-  const [applied, setApplied] = useState({ from: daysAgo(30), to: today() });
-  const handleApply = () => setApplied({ from, to });
+  const [applied, setApplied] = useState({ from: today(), to: today() });
+  const handleApply = (f?: string, t?: string) => setApplied({ from: f ?? from, to: t ?? to });
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -338,96 +338,7 @@ export default function DeliveryReportPersonPage() {
     summary.totalRevenue > 0 ? ((amount / summary.totalRevenue) * 100).toFixed(1) : "0.0";
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-6xl mx-auto">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setLocation("/delivery-report")}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-primary transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Delivery Report
-        </button>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-800 truncate">{displayName}</span>
-      </div>
-
-      {/* Person profile header */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-          {/* Avatar */}
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-lg font-bold flex-shrink-0 ${ac}`}>
-            {userProfile?.profileImageUrl
-              ? <img src={userProfile.profileImageUrl} alt={displayName} className="w-full h-full rounded-2xl object-cover" />
-              : ini}
-          </div>
-
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <h2 className="text-xl font-bold text-gray-900">{displayName}</h2>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-orange-100 text-orange-700">
-                Delivery Person
-              </span>
-              {userProfile && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                  isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                }`}>
-                  {isActive ? "● Active" : "○ Inactive"}
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-              {userProfile?.phone && (
-                <span className="flex items-center gap-1 text-sm text-gray-500">
-                  <Phone className="w-3.5 h-3.5" /> {userProfile.phone}
-                </span>
-              )}
-              {userProfile?.email && (
-                <span className="flex items-center gap-1 text-sm text-gray-500">
-                  <Mail className="w-3.5 h-3.5" /> {userProfile.email}
-                </span>
-              )}
-              {hubNames.length > 0 && (
-                <span className="flex items-center gap-1 text-sm text-gray-500">
-                  <MapPin className="w-3.5 h-3.5" /> {hubNames.join(", ")}
-                </span>
-              )}
-              {userProfile?.createdAt && (
-                <span className="flex items-center gap-1 text-sm text-gray-500">
-                  <Calendar className="w-3.5 h-3.5" /> Joined {formatDate(userProfile.createdAt)}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* CRUD actions (master admin only) */}
-          {isMasterAdmin && userProfile && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-xs h-8"
-                onClick={() => setEditOpen(true)}
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-                Edit Profile
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className={`gap-1.5 text-xs h-8 ${isActive ? "text-amber-600 border-amber-200 hover:bg-amber-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}
-                onClick={() => setConfirmToggle(true)}
-              >
-                {isActive
-                  ? <><ToggleLeft className="w-3.5 h-3.5" />Deactivate</>
-                  : <><ToggleRight className="w-3.5 h-3.5" />Activate</>}
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-
+    <div className="p-4 md:p-6 space-y-5 max-w-6xl mx-auto" style={{ fontFamily: "Poppins, sans-serif" }}>
       {/* Date filter */}
       <DateFilterBar from={from} to={to} setFrom={setFrom} setTo={setTo} applied={applied} onApply={handleApply} />
 
