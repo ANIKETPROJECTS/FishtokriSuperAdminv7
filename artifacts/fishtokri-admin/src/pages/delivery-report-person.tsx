@@ -3,9 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import {
   ArrowLeft, Truck, Package, Banknote, CreditCard, Wallet, RefreshCw,
-  Search, X, Edit2, ToggleLeft, ToggleRight, TrendingUp, ChevronUp,
-  ChevronDown, IndianRupee, AlertCircle, CheckCircle2, Phone, Mail,
-  MapPin, Calendar, Hash, Filter,
+  Search, X, Edit2, ToggleLeft, ToggleRight, TrendingUp,
+  IndianRupee, AlertCircle, CheckCircle2, Phone, Mail,
+  MapPin, Calendar, Hash, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DateFilterBar, ModeTag, modeMeta, avatarColor, initials, today, daysAgo } from "./delivery-report";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+const FONT = "Poppins, sans-serif";
 
 function getToken() { return localStorage.getItem("fishtokri_token") || ""; }
 function getAdmin() {
@@ -38,7 +39,10 @@ async function apiFetch(path: string, opts?: RequestInit) {
 function formatRupees(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
-
+function formatDate(d: string | Date | undefined) {
+  if (!d) return "-";
+  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
 function formatDateTime(d: string | Date | undefined) {
   if (!d) return "-";
   const dt = new Date(d);
@@ -47,142 +51,161 @@ function formatDateTime(d: string | Date | undefined) {
     + dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
-function formatDate(d: string | Date | undefined) {
-  if (!d) return "-";
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-// ── Stat card ────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, color, icon }: { label: string; value: string; sub?: string; color: string; icon: React.ReactNode }) {
+// ── Enhanced stat card ──────────────────────────────────────────────────────
+function StatCard({
+  label, value, sub, accent, iconBg, icon, fullWidth,
+}: {
+  label: string; value: string; sub?: string;
+  accent: string; iconBg: string; icon: React.ReactNode;
+  fullWidth?: boolean;
+}) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className={color}>{icon}</span>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</p>
+    <div
+      className={`bg-white rounded-2xl border border-black/8 shadow-sm p-4 flex flex-col gap-1 ${fullWidth ? "col-span-2" : ""}`}
+      style={{ fontFamily: FONT }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+          <span className={accent}>{icon}</span>
+        </div>
+        <p className="text-[11px] font-semibold text-black/50 uppercase tracking-wider">{label}</p>
       </div>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      <p className={`text-2xl font-bold leading-tight ${accent}`}>{value}</p>
+      {sub && <p className="text-[12px] font-medium text-black/40 mt-0.5">{sub}</p>}
     </div>
   );
 }
 
-// ── Order row in the history table ────────────────────────────────────────────
-function OrderRow({ order, idx }: { order: any; idx: number }) {
-  const [open, setOpen] = useState(false);
-  const STATUS_COLORS: Record<string, string> = {
-    delivered: "bg-green-100 text-green-700",
-    takeaway: "bg-blue-100 text-blue-700",
-    cancelled: "bg-red-100 text-red-700",
+// ── Order card (mobile-first, Poppins, black text) ──────────────────────────
+function OrderCard({ order }: { order: any }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const orderId = order.orderId || ("#" + String(order.id || "").slice(-6).toUpperCase());
+
+  const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+    delivered: { bg: "bg-green-500", text: "text-white", label: "Delivered" },
+    takeaway:  { bg: "bg-blue-500",  text: "text-white", label: "Takeaway" },
+    cancelled: { bg: "bg-red-500",   text: "text-white", label: "Cancelled" },
   };
-  const PAY_COLORS: Record<string, string> = {
-    paid: "bg-green-100 text-green-700",
-    partial: "bg-yellow-100 text-yellow-700",
-    unpaid: "bg-red-100 text-red-700",
+  const PAY_STYLES: Record<string, { bg: string; text: string }> = {
+    paid:    { bg: "bg-green-500", text: "text-white" },
+    partial: { bg: "bg-amber-400", text: "text-white" },
+    unpaid:  { bg: "bg-red-500",   text: "text-white" },
   };
-  const sc = STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-600";
-  const pc = PAY_COLORS[order.paymentStatus ?? ""] ?? "bg-gray-100 text-gray-600";
+
+  const ss = STATUS_STYLES[order.status] ?? { bg: "bg-black/10", text: "text-black", label: order.status };
+  const ps = PAY_STYLES[order.paymentStatus ?? ""] ?? { bg: "bg-black/10", text: "text-black" };
 
   return (
-    <>
-      <tr
-        className={`border-b border-gray-100 hover:bg-gray-50/60 transition-colors cursor-pointer ${
-          idx % 2 === 0 ? "" : "bg-gray-50/30"
-        }`}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <td className="py-2.5 px-3 text-xs font-mono text-gray-500 whitespace-nowrap">
-          #{order.orderNumber ?? String(order.id).slice(-6).toUpperCase()}
-        </td>
-        <td className="py-2.5 px-3">
-          <p className="text-sm font-medium text-gray-800 truncate max-w-[140px]">{order.customerName || "—"}</p>
-          {order.phone && <p className="text-xs text-gray-400">{order.phone}</p>}
-        </td>
-        <td className="py-2.5 px-3 text-xs text-gray-500 whitespace-nowrap hidden sm:table-cell">
-          {order.deliveryArea || order.subHubName || "—"}
-        </td>
-        <td className="py-2.5 px-3 text-xs text-gray-500 whitespace-nowrap hidden md:table-cell">
-          {formatDate(order.createdAt)}
-        </td>
-        <td className="py-2.5 px-3 text-right text-sm font-semibold text-gray-800 whitespace-nowrap">
-          {formatRupees(order.total ?? 0)}
-        </td>
-        <td className="py-2.5 px-3 whitespace-nowrap hidden lg:table-cell">
-          <div className="flex flex-wrap gap-1 justify-end">
-            {Array.isArray(order.payments) && order.payments.map((p: any, i: number) => (
-              <ModeTag key={i} mode={p.mode} amount={p.amount} />
-            ))}
-            {(!order.payments || order.payments.length === 0) && <span className="text-xs text-gray-400">—</span>}
+    <div className="bg-white rounded-2xl border border-black/8 shadow-sm overflow-hidden" style={{ fontFamily: FONT }}>
+      {/* Main row */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold text-black/40 tracking-wide mb-0.5">{orderId}</p>
+            <p className="text-[17px] font-bold text-black leading-tight">{order.customerName || "—"}</p>
+            {order.phone && (
+              <p className="text-[13px] font-medium text-black/50 mt-0.5">{order.phone}</p>
+            )}
           </div>
-        </td>
-        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-          <div className="flex items-center justify-end gap-1.5">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${sc}`}>
-              {order.status === "takeaway" ? "Takeaway" : order.status}
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${ss.bg} ${ss.text}`}>
+              {ss.label}
             </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${pc}`}>
-              {order.paymentStatus ?? "—"}
-            </span>
-            {open ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
+            {order.paymentStatus && (
+              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${ps.bg} ${ps.text}`}>
+                {order.paymentStatus}
+              </span>
+            )}
           </div>
-        </td>
-      </tr>
+        </div>
 
-      {/* Expanded detail row */}
-      {open && (
-        <tr className="border-b border-gray-100 bg-blue-50/30">
-          <td colSpan={7} className="px-4 py-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div>
-                <p className="text-gray-400 font-medium mb-0.5">Date & Time</p>
-                <p className="text-gray-700">{formatDateTime(order.createdAt)}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 font-medium mb-0.5">Order Total</p>
-                <p className="text-gray-700 font-semibold">{formatRupees(order.total)}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 font-medium mb-0.5">Paid Amount</p>
-                <p className="text-gray-700 font-semibold">{formatRupees(order.paidAmount ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 font-medium mb-0.5">Due Amount</p>
-                <p className={`font-semibold ${(order.dueAmount || 0) > 0 ? "text-red-600" : "text-gray-700"}`}>
-                  {formatRupees(order.dueAmount ?? 0)}
-                </p>
-              </div>
-              {order.deliveryArea && (
-                <div>
-                  <p className="text-gray-400 font-medium mb-0.5">Delivery Area</p>
-                  <p className="text-gray-700">{order.deliveryArea}</p>
-                </div>
-              )}
-              {order.subHubName && (
-                <div>
-                  <p className="text-gray-400 font-medium mb-0.5">Hub</p>
-                  <p className="text-gray-700">{order.subHubName}</p>
-                </div>
-              )}
-              <div className="col-span-2">
-                <p className="text-gray-400 font-medium mb-1">Payment Breakdown</p>
-                <div className="flex flex-wrap gap-1">
-                  {Array.isArray(order.payments) && order.payments.map((p: any, i: number) => (
-                    <span key={i} className="inline-flex flex-col items-start">
-                      <ModeTag mode={p.mode} amount={p.amount} />
-                      {p.reference && <span className="text-gray-400 text-[10px] ml-1 mt-0.5">Ref: {p.reference}</span>}
-                    </span>
-                  ))}
-                  {(!order.payments || order.payments.length === 0) && <span className="text-gray-400">No payments recorded</span>}
-                </div>
+        {/* Meta row */}
+        <div className="flex items-center gap-4 mt-3">
+          {order.createdAt && (
+            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-black/50">
+              <Calendar className="w-3.5 h-3.5" />
+              {formatDate(order.createdAt)}
+            </span>
+          )}
+          {(order.deliveryArea || order.subHubName) && (
+            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-black/50 truncate">
+              <Hash className="w-3.5 h-3.5 flex-shrink-0" />
+              {order.deliveryArea || order.subHubName}
+            </span>
+          )}
+        </div>
+
+        {/* Payment + Total */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-black/6">
+          <div className="flex flex-wrap gap-1.5">
+            {Array.isArray(order.payments) && order.payments.length > 0
+              ? order.payments.map((p: any, i: number) => <ModeTag key={i} mode={p.mode} amount={p.amount} />)
+              : <span className="text-[12px] font-medium text-black/30">No payments</span>
+            }
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[17px] font-bold text-black">{formatRupees(order.total ?? 0)}</span>
+            <button
+              onClick={() => setExpanded(v => !v)}
+              className="w-7 h-7 rounded-full bg-black/5 flex items-center justify-center hover:bg-black/10 transition-colors"
+            >
+              {expanded
+                ? <ChevronUp className="w-4 h-4 text-black/60" />
+                : <ChevronDown className="w-4 h-4 text-black/60" />
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="border-t border-black/6 bg-black/[0.02] px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 mb-0.5">Date & Time</p>
+            <p className="text-[13px] font-semibold text-black">{formatDateTime(order.createdAt)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 mb-0.5">Order Total</p>
+            <p className="text-[13px] font-bold text-black">{formatRupees(order.total)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 mb-0.5">Paid</p>
+            <p className="text-[13px] font-bold text-green-600">{formatRupees(order.paidAmount ?? 0)}</p>
+          </div>
+          {(order.dueAmount || 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 mb-0.5">Due</p>
+              <p className="text-[13px] font-bold text-red-500">{formatRupees(order.dueAmount ?? 0)}</p>
+            </div>
+          )}
+          {(order.deliveryArea || order.subHubName) && (
+            <div className="col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 mb-0.5">Hub / Area</p>
+              <p className="text-[13px] font-semibold text-black">{order.deliveryArea || order.subHubName}</p>
+            </div>
+          )}
+          {Array.isArray(order.payments) && order.payments.length > 0 && (
+            <div className="col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 mb-1.5">Payment Breakdown</p>
+              <div className="flex flex-wrap gap-1.5">
+                {order.payments.map((p: any, i: number) => (
+                  <div key={i} className="flex flex-col">
+                    <ModeTag mode={p.mode} amount={p.amount} />
+                    {p.reference && <span className="text-[10px] text-black/30 mt-0.5 ml-1">Ref: {p.reference}</span>}
+                  </div>
+                ))}
               </div>
             </div>
-          </td>
-        </tr>
+          )}
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
-// ── Edit profile dialog (master admin only) ───────────────────────────────────
+// ── Edit profile dialog ───────────────────────────────────────────────────────
 function EditProfileDialog({
   open, onClose, user, onSaved,
 }: { open: boolean; onClose: () => void; user: any; onSaved: () => void }) {
@@ -233,7 +256,20 @@ function EditProfileDialog({
   );
 }
 
-// ── Main person detail page ───────────────────────────────────────────────────
+// ── Mode icon/accent helpers ──────────────────────────────────────────────────
+function modeAccent(mode: string): { accent: string; iconBg: string } {
+  const map: Record<string, { accent: string; iconBg: string }> = {
+    upi:    { accent: "text-purple-600", iconBg: "bg-purple-50" },
+    cash:   { accent: "text-green-600",  iconBg: "bg-green-50" },
+    wallet: { accent: "text-blue-600",   iconBg: "bg-blue-50" },
+    card:   { accent: "text-orange-600", iconBg: "bg-orange-50" },
+    bank:   { accent: "text-sky-600",    iconBg: "bg-sky-50" },
+    other:  { accent: "text-gray-600",   iconBg: "bg-gray-50" },
+  };
+  return map[(mode || "").toLowerCase()] ?? { accent: "text-gray-600", iconBg: "bg-gray-50" };
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function DeliveryReportPersonPage() {
   const params = useParams<{ id: string }>();
   const personId = params.id;
@@ -256,7 +292,6 @@ export default function DeliveryReportPersonPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmToggle, setConfirmToggle] = useState(false);
 
-  // Fetch person report
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["delivery-report-person", personId, applied.from, applied.to],
     queryFn: () => {
@@ -266,7 +301,6 @@ export default function DeliveryReportPersonPage() {
     enabled: !!personId,
   });
 
-  // Fetch user profile (master admin only)
   const { data: usersData, refetch: refetchUsers } = useQuery({
     queryKey: ["delivery-persons-list"],
     queryFn: () => apiFetch(`/api/users?role=delivery_person`),
@@ -278,7 +312,6 @@ export default function DeliveryReportPersonPage() {
     [usersData, personId],
   );
 
-  // Toggle status mutation
   const toggleMutation = useMutation({
     mutationFn: () => apiFetch(`/api/users/${personId}/toggle-status`, { method: "POST" }),
     onSuccess: () => {
@@ -305,8 +338,8 @@ export default function DeliveryReportPersonPage() {
       .filter((o) => {
         if (statusFilter !== "all" && o.status !== statusFilter) return false;
         if (modeFilter !== "all") {
-          const hasMOde = (o.payments ?? []).some((p: any) => (p.mode || "other").toLowerCase() === modeFilter);
-          if (!hasMOde) return false;
+          const hasMode = (o.payments ?? []).some((p: any) => (p.mode || "other").toLowerCase() === modeFilter);
+          if (!hasMode) return false;
         }
         if (search) {
           const q = search.toLowerCase();
@@ -315,7 +348,8 @@ export default function DeliveryReportPersonPage() {
             (o.phone || "").includes(q) ||
             (o.deliveryArea || "").toLowerCase().includes(q) ||
             String(o.orderNumber || "").includes(q) ||
-            o.id.slice(-6).toLowerCase().includes(q)
+            (o.orderId || "").toLowerCase().includes(q) ||
+            (o.id || "").slice(-6).toLowerCase().includes(q)
           );
         }
         return true;
@@ -327,78 +361,119 @@ export default function DeliveryReportPersonPage() {
       });
   }, [orders, search, statusFilter, modeFilter, sortDir]);
 
-  const displayName = person?.personName ?? userProfile?.name ?? "Delivery Person";
-  const ac = avatarColor(displayName);
-  const ini = initials(displayName);
-  const isActive = userProfile?.status !== "Inactive";
-  const hubNames: string[] = userProfile?.subHubNames ?? userProfile?.superHubNames ?? [];
-
   const modeBreakdown = Object.entries(summary.byMode || {}) as [string, { count: number; amount: number }][];
   const totalPct = (amount: number) =>
     summary.totalRevenue > 0 ? ((amount / summary.totalRevenue) * 100).toFixed(1) : "0.0";
 
+  const displayName = person?.personName ?? userProfile?.name ?? "Delivery Person";
+  const isActive = userProfile?.status !== "Inactive";
+
+  // First 2 payment modes for the 4-card row, rest go below
+  const primaryModes = modeBreakdown.slice(0, 2);
+  const extraModes = modeBreakdown.slice(2);
+
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-6xl mx-auto" style={{ fontFamily: "Poppins, sans-serif" }}>
+    <div className="space-y-4 max-w-2xl mx-auto w-full" style={{ fontFamily: FONT }}>
       {/* Date filter */}
       <DateFilterBar from={from} to={to} setFrom={setFrom} setTo={setTo} applied={applied} onApply={handleApply} />
 
       {/* Loading */}
       {isLoading && (
-        <div className="flex items-center justify-center py-20 gap-2 text-gray-400">
-          <RefreshCw className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading report…</span>
+        <div className="flex items-center justify-center py-20 gap-2 text-black/30">
+          <RefreshCw className="w-5 h-5 animate-spin" />
+          <span className="text-sm font-semibold">Loading report…</span>
         </div>
       )}
 
       {isError && (
-        <div className="text-center py-12 text-red-500">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-60" />
-          <p className="text-sm">Failed to load report. Please try again.</p>
-          <Button size="sm" variant="outline" onClick={() => refetch()} className="mt-3">Retry</Button>
+        <div className="bg-white rounded-2xl border border-black/8 shadow-sm py-12 text-center">
+          <AlertCircle className="w-10 h-10 mx-auto mb-3 text-red-400 opacity-70" />
+          <p className="text-[15px] font-semibold text-black">Failed to load report</p>
+          <button
+            onClick={() => refetch()}
+            className="mt-3 text-sm font-semibold text-brand-primary hover:underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
       {!isLoading && !isError && (
         <>
-          {/* Stats strip — 2-col on mobile */}
+          {/* ── Stat cards ─────────────────────────────────────────────────── */}
+
+          {/* Row 1: Total Orders + Total Collected (always shown) */}
           <div className="grid grid-cols-2 gap-3">
             <StatCard
               label="Total Orders"
               value={String(summary.totalOrders)}
               sub={`in ${applied.from === applied.to ? "1 day" : "date range"}`}
-              color="text-brand-primary"
+              accent="text-brand-primary"
+              iconBg="bg-red-50"
               icon={<Truck className="w-4 h-4" />}
             />
             <StatCard
               label="Total Collected"
               value={formatRupees(summary.totalRevenue)}
               sub={(summary.dueAmount || 0) > 0 ? `Due: ${formatRupees(summary.dueAmount)}` : "Fully collected"}
-              color="text-green-600"
+              accent="text-green-600"
+              iconBg="bg-green-50"
               icon={<CheckCircle2 className="w-4 h-4" />}
             />
-            {modeBreakdown.slice(0, 2).map(([mode, data]) => {
-              const m = modeMeta(mode);
-              return (
-                <StatCard
-                  key={mode}
-                  label={`${m.label} Collected`}
-                  value={formatRupees(data.amount)}
-                  sub={`${data.count} transaction${data.count !== 1 ? "s" : ""}`}
-                  color={m.color}
-                  icon={m.icon as any}
-                />
-              );
-            })}
           </div>
 
-          {/* Tabs — full width on mobile */}
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          {/* Row 2: First 2 payment modes side by side */}
+          {primaryModes.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {primaryModes.map(([mode, mdata]) => {
+                const m = modeMeta(mode);
+                const a = modeAccent(mode);
+                return (
+                  <StatCard
+                    key={mode}
+                    label={`${m.label} Collected`}
+                    value={formatRupees(mdata.amount)}
+                    sub={`${mdata.count} transaction${mdata.count !== 1 ? "s" : ""}`}
+                    accent={a.accent}
+                    iconBg={a.iconBg}
+                    icon={m.icon as any}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Row 3: Remaining payment modes (wallet etc.) — col-span-2 if alone, 2-col if multiple */}
+          {extraModes.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {extraModes.map(([mode, mdata], idx) => {
+                const m = modeMeta(mode);
+                const a = modeAccent(mode);
+                const isAlone = extraModes.length % 2 !== 0 && idx === extraModes.length - 1;
+                return (
+                  <StatCard
+                    key={mode}
+                    label={`${m.label} Collected`}
+                    value={formatRupees(mdata.amount)}
+                    sub={`${mdata.count} transaction${mdata.count !== 1 ? "s" : ""}`}
+                    accent={a.accent}
+                    iconBg={a.iconBg}
+                    icon={m.icon as any}
+                    fullWidth={isAlone}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Tabs ───────────────────────────────────────────────────────── */}
+          <div className="flex gap-1 bg-black/5 rounded-2xl p-1">
             {(["overview", "orders"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  activeTab === tab ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+                className={`flex-1 py-2.5 rounded-xl text-[14px] font-semibold transition-colors ${
+                  activeTab === tab ? "bg-white text-black shadow-sm" : "text-black/40"
                 }`}
               >
                 {tab === "overview" ? "Overview" : `Orders (${orders.length})`}
@@ -407,65 +482,79 @@ export default function DeliveryReportPersonPage() {
             <button
               onClick={() => refetch()}
               disabled={isFetching}
-              className="flex items-center justify-center w-9 rounded-lg text-gray-400 hover:text-gray-600 disabled:opacity-40"
+              className="flex items-center justify-center w-10 rounded-xl text-black/30 hover:text-black/60 disabled:opacity-30 transition-colors"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
             </button>
           </div>
 
-          {/* ── Overview tab ─────────────────────────────────────────────── */}
+          {/* ── Overview tab ───────────────────────────────────────────────── */}
           {activeTab === "overview" && (
             <div className="space-y-4">
-              {/* Payment mode breakdown — mobile-first card list */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3.5 border-b border-gray-100 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-brand-primary" />
-                  <h3 className="text-sm font-bold text-gray-800">Payment Mode Breakdown</h3>
+
+              {/* Payment Mode Breakdown */}
+              <div className="bg-white rounded-2xl border border-black/8 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-black/6 flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-brand-primary/10 flex items-center justify-center">
+                    <TrendingUp className="w-4 h-4 text-brand-primary" />
+                  </div>
+                  <h3 className="text-[15px] font-bold text-black">Payment Mode Breakdown</h3>
                 </div>
+
                 {modeBreakdown.length === 0 ? (
-                  <div className="py-10 text-center text-gray-400 text-sm">No payment data for selected range</div>
+                  <div className="py-12 text-center">
+                    <IndianRupee className="w-10 h-10 mx-auto mb-3 text-black/15" />
+                    <p className="text-[14px] font-semibold text-black/30">No payment data for selected range</p>
+                  </div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
-                    {modeBreakdown.map(([mode, data]) => {
+                  <div className="divide-y divide-black/5">
+                    {modeBreakdown.map(([mode, mdata]) => {
                       const m = modeMeta(mode);
-                      const pct = totalPct(data.amount);
+                      const a = modeAccent(mode);
+                      const pct = parseFloat(totalPct(mdata.amount));
                       return (
-                        <div key={mode} className="px-4 py-3.5">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`flex items-center gap-1.5 text-sm font-semibold ${m.color}`}>
-                              {m.icon} {m.label}
-                            </span>
-                            <span className="text-sm font-bold text-gray-800">{formatRupees(data.amount)}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-brand-primary rounded-full" style={{ width: `${pct}%` }} />
+                        <div key={mode} className="px-5 py-4">
+                          <div className="flex items-center justify-between mb-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className={a.accent}>{m.icon}</span>
+                              <span className={`text-[15px] font-bold ${a.accent}`}>{m.label}</span>
                             </div>
-                            <span className="text-xs text-gray-400 w-20 text-right flex-shrink-0">
-                              {data.count} txn · {pct}%
+                            <span className="text-[16px] font-bold text-black">{formatRupees(mdata.amount)}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-2 bg-black/6 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-brand-primary transition-all"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[12px] font-semibold text-black/40 w-24 text-right flex-shrink-0">
+                              {mdata.count} txn · {pct}%
                             </span>
                           </div>
                         </div>
                       );
                     })}
-                    <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-700">
+                    <div className="px-5 py-4 bg-black/[0.02] flex items-center justify-between">
+                      <span className="text-[14px] font-bold text-black">
                         Total · {modeBreakdown.reduce((s, [, d]) => s + d.count, 0)} transactions
                       </span>
-                      <span className="text-sm font-bold text-gray-800">{formatRupees(summary.totalRevenue)}</span>
+                      <span className="text-[16px] font-bold text-black">{formatRupees(summary.totalRevenue)}</span>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Daily summary — mobile-first card list */}
+              {/* Daily Summary */}
               {orders.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3.5 border-b border-gray-100 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-brand-primary" />
-                    <h3 className="text-sm font-bold text-gray-800">Daily Summary</h3>
+                <div className="bg-white rounded-2xl border border-black/8 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-black/6 flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
+                      <Calendar className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <h3 className="text-[15px] font-bold text-black">Daily Summary</h3>
                   </div>
-                  <div className="divide-y divide-gray-100">
+                  <div className="divide-y divide-black/5">
                     {(() => {
                       const byDay = new Map<string, { orders: number; collected: number; due: number }>();
                       orders.forEach((o) => {
@@ -480,24 +569,24 @@ export default function DeliveryReportPersonPage() {
                         .sort((a, b) => b[0].localeCompare(a[0]))
                         .slice(0, 15)
                         .map(([date, stats]) => (
-                          <div key={date} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div key={date} className="px-5 py-4 flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-800">
+                              <p className="text-[14px] font-bold text-black">
                                 {new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short" })}
                               </p>
-                              <p className="text-xs text-gray-400 mt-0.5">
+                              <p className="text-[12px] font-semibold text-black/40 mt-0.5">
                                 {stats.orders} order{stats.orders !== 1 ? "s" : ""}
                               </p>
                             </div>
-                            <div className="flex items-center gap-4 flex-shrink-0">
+                            <div className="flex items-center gap-5 flex-shrink-0">
                               <div className="text-right">
-                                <p className="text-xs text-gray-400">Collected</p>
-                                <p className="text-sm font-semibold text-green-600">{formatRupees(stats.collected)}</p>
+                                <p className="text-[11px] font-semibold text-black/40 uppercase tracking-wide">Collected</p>
+                                <p className="text-[14px] font-bold text-green-600">{formatRupees(stats.collected)}</p>
                               </div>
                               {stats.due > 0 && (
                                 <div className="text-right">
-                                  <p className="text-xs text-gray-400">Due</p>
-                                  <p className="text-sm font-semibold text-red-500">{formatRupees(stats.due)}</p>
+                                  <p className="text-[11px] font-semibold text-black/40 uppercase tracking-wide">Due</p>
+                                  <p className="text-[14px] font-bold text-red-500">{formatRupees(stats.due)}</p>
                                 </div>
                               )}
                             </div>
@@ -507,33 +596,50 @@ export default function DeliveryReportPersonPage() {
                   </div>
                 </div>
               )}
+
+              {orders.length === 0 && (
+                <div className="bg-white rounded-2xl border border-black/8 shadow-sm py-14 text-center">
+                  <Package className="w-12 h-12 mx-auto mb-3 text-black/15" />
+                  <p className="text-[15px] font-bold text-black/30">No deliveries in this period</p>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── Orders tab — mobile-first card list ──────────────────────── */}
+          {/* ── Orders tab ─────────────────────────────────────────────────── */}
           {activeTab === "orders" && (
             <div className="space-y-3">
-              {/* Filters */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 space-y-2">
+
+              {/* Filters card */}
+              <div className="bg-white rounded-2xl border border-black/8 shadow-sm p-4 space-y-3">
+                {/* Search */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                  <Input
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-black/30" />
+                  <input
+                    type="text"
                     placeholder="Search customer, area, order #..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9 h-9 text-sm"
+                    className="w-full h-11 pl-10 pr-10 text-[14px] font-medium text-black bg-black/[0.03] rounded-xl border-none outline-none placeholder:text-black/30"
+                    style={{ fontFamily: FONT }}
                   />
                   {search && (
-                    <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                      <X className="w-3.5 h-3.5" />
+                    <button
+                      onClick={() => setSearch("")}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/10 flex items-center justify-center hover:bg-black/20 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5 text-black/60" />
                     </button>
                   )}
                 </div>
-                <div className="flex gap-2 flex-wrap">
+
+                {/* Dropdowns row */}
+                <div className="grid grid-cols-2 gap-2">
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="flex-1 min-w-[110px] h-9 border border-gray-200 rounded-lg text-sm px-2 text-gray-700 bg-white"
+                    className="h-11 border border-black/10 rounded-xl text-[13px] font-semibold px-3 text-black bg-white"
+                    style={{ fontFamily: FONT }}
                   >
                     <option value="all">All Status</option>
                     <option value="delivered">Delivered</option>
@@ -543,124 +649,79 @@ export default function DeliveryReportPersonPage() {
                   <select
                     value={modeFilter}
                     onChange={(e) => setModeFilter(e.target.value)}
-                    className="flex-1 min-w-[110px] h-9 border border-gray-200 rounded-lg text-sm px-2 text-gray-700 bg-white"
+                    className="h-11 border border-black/10 rounded-xl text-[13px] font-semibold px-3 text-black bg-white"
+                    style={{ fontFamily: FONT }}
                   >
                     <option value="all">All Modes</option>
                     {allModes.map((m) => (
                       <option key={m} value={m}>{modeMeta(m).label}</option>
                     ))}
                   </select>
+                </div>
+
+                {/* Sort + count */}
+                <div className="flex items-center justify-between">
                   <button
                     onClick={() => setSortDir((v) => v === "desc" ? "asc" : "desc")}
-                    className="h-9 flex items-center gap-1.5 border border-gray-200 rounded-lg px-3 text-sm text-gray-600 bg-white flex-shrink-0"
+                    className="h-9 flex items-center gap-2 border border-black/10 rounded-xl px-3 text-[13px] font-semibold text-black bg-white hover:bg-black/[0.03] transition-colors"
+                    style={{ fontFamily: FONT }}
                   >
-                    <Calendar className="w-3.5 h-3.5" />
-                    {sortDir === "desc" ? "Newest" : "Oldest"}
+                    <Calendar className="w-3.5 h-3.5 text-black/40" />
+                    {sortDir === "desc" ? "Newest first" : "Oldest first"}
                   </button>
+                  <p className="text-[12px] font-semibold text-black/40">
+                    {filteredOrders.length} of {orders.length} orders
+                  </p>
                 </div>
-                <p className="text-xs text-gray-400 text-right">
-                  {filteredOrders.length} of {orders.length} orders
-                </p>
               </div>
 
+              {/* Order cards */}
               {filteredOrders.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-200 py-14 text-center text-gray-400">
-                  <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm font-medium">No orders match your filters</p>
+                <div className="bg-white rounded-2xl border border-black/8 shadow-sm py-14 text-center">
+                  <Package className="w-12 h-12 mx-auto mb-3 text-black/15" />
+                  <p className="text-[15px] font-bold text-black/30">No orders match your filters</p>
                   <button
                     onClick={() => { setSearch(""); setStatusFilter("all"); setModeFilter("all"); }}
-                    className="text-xs text-brand-primary mt-2 hover:underline"
+                    className="mt-3 text-[13px] font-semibold text-brand-primary hover:underline"
                   >
-                    Clear filters
+                    Clear all filters
                   </button>
                 </div>
               ) : (
                 <>
-                  {filteredOrders.map((order) => {
-                    const STATUS_COLORS: Record<string, string> = {
-                      delivered: "bg-green-100 text-green-700",
-                      takeaway: "bg-blue-100 text-blue-700",
-                      cancelled: "bg-red-100 text-red-700",
-                    };
-                    const PAY_COLORS: Record<string, string> = {
-                      paid: "bg-green-100 text-green-700",
-                      partial: "bg-yellow-100 text-yellow-700",
-                      unpaid: "bg-red-100 text-red-700",
-                    };
-                    return (
-                      <div key={order.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-mono text-gray-400">
-                              #{order.orderNumber ?? String(order.id).slice(-6).toUpperCase()}
-                            </p>
-                            <p className="text-sm font-semibold text-gray-800 mt-0.5">{order.customerName || "—"}</p>
-                            {order.phone && <p className="text-xs text-gray-400">{order.phone}</p>}
-                          </div>
-                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-600"}`}>
-                              {order.status === "takeaway" ? "Takeaway" : order.status}
-                            </span>
-                            {order.paymentStatus && (
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${PAY_COLORS[order.paymentStatus] ?? "bg-gray-100 text-gray-600"}`}>
-                                {order.paymentStatus}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
-                          {order.createdAt && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {formatDate(order.createdAt)}
-                            </span>
-                          )}
-                          {(order.deliveryArea || order.subHubName) && (
-                            <span className="flex items-center gap-1 truncate">
-                              <Hash className="w-3 h-3" />
-                              {order.deliveryArea || order.subHubName}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between pt-1 border-t border-gray-100">
-                          <div className="flex flex-wrap gap-1">
-                            {Array.isArray(order.payments) && order.payments.map((p: any, i: number) => (
-                              <ModeTag key={i} mode={p.mode} amount={p.amount} />
-                            ))}
-                            {(!order.payments || order.payments.length === 0) && (
-                              <span className="text-xs text-gray-400">No payments</span>
-                            )}
-                          </div>
-                          <span className="text-base font-bold text-gray-800 flex-shrink-0 ml-2">
-                            {formatRupees(order.total ?? 0)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {filteredOrders.map((order) => (
+                    <OrderCard key={order.id} order={order} />
+                  ))}
 
                   {/* Summary footer */}
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 flex flex-wrap gap-3 text-sm">
-                    <span className="text-gray-500">
-                      <strong className="text-gray-800">{filteredOrders.length}</strong> orders
-                    </span>
-                    <span className="text-gray-500">
-                      Total: <strong className="text-gray-800">
-                        {formatRupees(filteredOrders.reduce((s, o) => s + (o.total ?? 0), 0))}
-                      </strong>
-                    </span>
-                    <span className="text-gray-500">
-                      Collected: <strong className="text-green-600">
-                        {formatRupees(filteredOrders.reduce((s, o) => s + ((o.payments ?? []).reduce((ps: number, p: any) => ps + (Number(p.amount) || 0), 0)), 0))}
-                      </strong>
-                    </span>
-                    {filteredOrders.reduce((s, o) => s + (Number(o.dueAmount) || 0), 0) > 0 && (
-                      <span className="text-gray-500">
-                        Due: <strong className="text-red-500">
-                          {formatRupees(filteredOrders.reduce((s, o) => s + (Number(o.dueAmount) || 0), 0))}
-                        </strong>
-                      </span>
-                    )}
+                  <div className="bg-white rounded-2xl border border-black/8 shadow-sm px-5 py-4">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-black/30 mb-3">Summary</p>
+                    <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+                      <div>
+                        <p className="text-[11px] font-semibold text-black/40">Orders</p>
+                        <p className="text-[17px] font-bold text-black">{filteredOrders.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold text-black/40">Total Value</p>
+                        <p className="text-[17px] font-bold text-black">
+                          {formatRupees(filteredOrders.reduce((s, o) => s + (o.total ?? 0), 0))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold text-black/40">Collected</p>
+                        <p className="text-[17px] font-bold text-green-600">
+                          {formatRupees(filteredOrders.reduce((s, o) => s + ((o.payments ?? []).reduce((ps: number, p: any) => ps + (Number(p.amount) || 0), 0)), 0))}
+                        </p>
+                      </div>
+                      {filteredOrders.reduce((s, o) => s + (Number(o.dueAmount) || 0), 0) > 0 && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-black/40">Due</p>
+                          <p className="text-[17px] font-bold text-red-500">
+                            {formatRupees(filteredOrders.reduce((s, o) => s + (Number(o.dueAmount) || 0), 0))}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
