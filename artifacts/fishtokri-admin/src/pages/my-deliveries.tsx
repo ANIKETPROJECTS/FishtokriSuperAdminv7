@@ -151,8 +151,27 @@ function OrderDetailDialog({
   const nextStatuses = (STATUS_CONFIG[order.status]?.next ?? []).filter((s) => STATUS_CONFIG[s]);
   const displayId = order.orderId || ("#" + String(order._id).slice(-6).toUpperCase());
 
+  const paymentEntries: any[] = Array.isArray(order.payments) && order.payments.length > 0
+    ? order.payments
+    : order.paymentMode
+      ? [{ mode: order.paymentMode, amount: paid, reference: "" }]
+      : [];
+
+  const paymentStatusColor = order.paymentStatus === "paid"
+    ? "bg-green-500"
+    : order.paymentStatus === "partial"
+      ? "bg-amber-500"
+      : order.paymentStatus === "unpaid"
+        ? "bg-red-500"
+        : "bg-black/20";
+
+  const MODE_LABELS: Record<string, string> = {
+    cash: "Cash", upi: "UPI", card: "Card",
+    bank_transfer: "Bank Transfer", wallet: "Wallet", other: "Other",
+  };
+
   return createPortal(
-    <div className="fixed inset-0 z-[200] bg-white flex flex-col">
+    <div className="fixed inset-0 z-[200] bg-white flex flex-col" style={{ fontFamily: "Poppins, sans-serif" }}>
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-black/8 flex-shrink-0 bg-white">
         <button
@@ -162,88 +181,93 @@ function OrderDetailDialog({
           <X className="w-5 h-5 text-black" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-black leading-tight">Order Details</p>
-          <p className="text-xs font-mono font-bold text-black/40 leading-tight">{displayId}</p>
+          <p className="text-sm font-bold text-black leading-tight">Order Details</p>
+          <p className="text-[11px] font-mono font-semibold text-black/50 leading-tight">{displayId}</p>
         </div>
         <SolidStatusBadge status={order.status} />
       </div>
 
       {/* ── Scrollable body ── */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-4 space-y-4 pb-6">
+      <div className="flex-1 overflow-y-auto bg-[#F7F8FA]">
+        <div className="p-4 space-y-3 pb-8">
 
-          {/* Date + takeaway tag */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-black/50">{formatDate(order.createdAt)}</span>
+          {/* ── Date + Takeaway ── */}
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-xs font-semibold text-black">{formatDate(order.createdAt)}</span>
             {isTakeaway && order.status !== "takeaway" && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-600 text-white">
+              <span className="inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-600 text-white">
                 Takeaway
               </span>
             )}
           </div>
 
           {/* ── Customer ── */}
-          <div className="bg-black/[0.03] rounded-2xl p-4 space-y-3">
-            <p className="text-[10px] font-black text-black/40 uppercase tracking-widest">Customer</p>
-            <p className="text-base font-bold text-black">{order.customerName || "—"}</p>
+          <div className="bg-white rounded-2xl p-4 space-y-3 shadow-sm">
+            <p className="text-[10px] font-black text-black uppercase tracking-widest">Customer</p>
+
+            <div className="flex items-center gap-3">
+              <img src="/icon-user.png" alt="Customer" className="w-5 h-5 flex-shrink-0" />
+              <span className="text-base font-bold text-black">{order.customerName || "—"}</span>
+            </div>
+
             {order.phone && (
-              <a href={`tel:${order.phone}`} className="flex items-center gap-2.5">
+              <a href={`tel:${order.phone}`} className="flex items-center gap-3">
                 <img src="/icon-phone.png" alt="Phone" className="w-4 h-4 flex-shrink-0" />
                 <span className="text-sm font-semibold text-black">{order.phone}</span>
               </a>
             )}
+
             {order.email && (
-              <div className="flex items-center gap-2.5">
-                <Mail className="w-4 h-4 text-black/40 flex-shrink-0" />
-                <span className="text-sm text-black">{order.email}</span>
+              <div className="flex items-center gap-3">
+                <img src="/icon-email.png" alt="Email" className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm font-medium text-black">{order.email}</span>
               </div>
             )}
           </div>
 
           {/* ── Delivery Address / Pickup ── */}
           {isTakeaway ? (
-            <div className="bg-emerald-50 rounded-2xl p-4 space-y-1 border border-emerald-100">
+            <div className="bg-emerald-50 rounded-2xl p-4 space-y-2 border border-emerald-100">
               <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Pickup from Hub</p>
               <p className="text-sm font-bold text-black">{order.subHubName || order.pickupLocation || "—"}</p>
-              {order.superHubName && <p className="text-xs text-black/60">{order.superHubName}</p>}
             </div>
           ) : (
-            <div className="bg-black/[0.03] rounded-2xl p-4 space-y-3">
-              <p className="text-[10px] font-black text-black/40 uppercase tracking-widest">
+            <div className="bg-white rounded-2xl p-4 space-y-3 shadow-sm">
+              <p className="text-[10px] font-black text-black uppercase tracking-widest">
                 Delivery Address{d.label ? ` · ${d.label}` : ""}
               </p>
-              {(recipientName || recipientPhone) && (
-                <div className="flex items-center flex-wrap gap-x-4 gap-y-1">
-                  {recipientName && (
-                    <span className="flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-black/40" />
-                      <span className="text-sm font-semibold text-black">{recipientName}</span>
-                    </span>
-                  )}
-                  {recipientPhone && (
-                    <a href={`tel:${recipientPhone}`} className="flex items-center gap-2">
-                      <img src="/icon-phone.png" alt="Phone" className="w-3.5 h-3.5" />
-                      <span className="text-sm font-semibold text-black">{recipientPhone}</span>
-                    </a>
-                  )}
+
+              {recipientName && (
+                <div className="flex items-center gap-3">
+                  <img src="/icon-user.png" alt="Recipient" className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-sm font-semibold text-black">{recipientName}</span>
                 </div>
               )}
+
+              {recipientPhone && (
+                <a href={`tel:${recipientPhone}`} className="flex items-center gap-3">
+                  <img src="/icon-phone.png" alt="Phone" className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-sm font-semibold text-black">{recipientPhone}</span>
+                </a>
+              )}
+
               {addressLines.length > 0 ? (
-                <div className="flex items-start gap-2.5">
+                <div className="flex items-start gap-3">
                   <img src="/icon-pin.png" alt="Location" className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     {addressLines.map((ln, i) => (
-                      <p key={i} className="text-sm text-black font-medium leading-snug">{ln}</p>
+                      <p key={i} className="text-sm font-medium text-black leading-snug">{ln}</p>
                     ))}
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-black/40 italic">No delivery address on file</p>
+                <p className="text-sm font-medium text-black italic">No delivery address on file</p>
               )}
+
               {d.instructions && (
-                <div className="border-l-2 border-amber-400 pl-3">
-                  <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-0.5">Note</p>
-                  <p className="text-sm text-black">{d.instructions}</p>
+                <div className="border-l-4 border-amber-400 bg-amber-50 pl-3 py-2 rounded-r-lg mt-1">
+                  <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-0.5">Delivery Note</p>
+                  <p className="text-sm font-medium text-black">{d.instructions}</p>
                 </div>
               )}
             </div>
@@ -251,101 +275,127 @@ function OrderDetailDialog({
 
           {/* ── Schedule ── */}
           {(order.timeslotLabel || order.scheduledDate || order.deliveryDate) && (
-            <div className="bg-black/[0.03] rounded-2xl p-4 flex items-center gap-3">
+            <div className="bg-white rounded-2xl p-4 flex items-center gap-3 shadow-sm">
               <img src="/icon-clock.png" alt="Time" className="w-5 h-5 flex-shrink-0" />
               <div>
                 {(order.scheduledDate || order.deliveryDate) && (
                   <p className="text-sm font-bold text-black">{formatDay(order.scheduledDate || order.deliveryDate)}</p>
                 )}
                 {order.timeslotLabel && (
-                  <p className="text-sm font-semibold text-black/70">{order.timeslotLabel}</p>
+                  <p className="text-sm font-semibold text-black">{order.timeslotLabel}</p>
                 )}
               </div>
             </div>
           )}
 
           {/* ── Items ── */}
-          <div>
-            <p className="text-[10px] font-black text-black/40 uppercase tracking-widest mb-2">
-              Items ({(order.items ?? []).length})
-            </p>
-            <div className="border border-black/8 rounded-2xl overflow-hidden">
-              {(order.items ?? []).map((i: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between px-4 py-3 border-b border-black/5 last:border-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-black truncate">{i.name}</p>
-                    <p className="text-xs text-black/50 mt-0.5">
-                      {formatRupees(Number(i.price || 0))} × {i.quantity}{i.unit ? ` ${i.unit}` : ""}
-                    </p>
-                  </div>
-                  <span className="font-bold text-black text-sm ml-4">
-                    {formatRupees(Number(i.price || 0) * Number(i.quantity || 1))}
-                  </span>
-                </div>
-              ))}
-              {(!order.items || order.items.length === 0) && (
-                <p className="text-sm text-black/40 text-center py-6">No items</p>
-              )}
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 pt-4 pb-2">
+              <p className="text-[10px] font-black text-black uppercase tracking-widest">
+                Items ({(order.items ?? []).length})
+              </p>
             </div>
+            {(order.items ?? []).map((i: any, idx: number) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between px-4 py-3 border-t border-black/5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-black">{i.name}</p>
+                  <p className="text-xs font-medium text-black mt-0.5">
+                    {formatRupees(Number(i.price || 0))} × {i.quantity}{i.unit ? ` ${i.unit}` : ""}
+                  </p>
+                </div>
+                <span className="font-bold text-black text-sm ml-4 flex-shrink-0">
+                  {formatRupees(Number(i.price || 0) * Number(i.quantity || 1))}
+                </span>
+              </div>
+            ))}
+            {(!order.items || order.items.length === 0) && (
+              <p className="text-sm font-medium text-black text-center py-6">No items</p>
+            )}
           </div>
 
-          {/* ── Totals ── */}
-          <div className="border border-black/8 rounded-2xl overflow-hidden">
-            <div className="flex justify-between items-center px-4 py-3 border-b border-black/5">
-              <span className="text-sm text-black/60">Subtotal</span>
-              <span className="text-sm font-medium text-black">{formatRupees(sub)}</span>
-            </div>
-            {discount > 0 && (
-              <div className="flex justify-between items-center px-4 py-3 border-b border-black/5">
-                <span className="text-sm text-emerald-700">
-                  Discount{couponCode ? ` (${couponCode})` : ""}
+          {/* ── Payment ── */}
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+              <p className="text-[10px] font-black text-black uppercase tracking-widest">Payment</p>
+              {order.paymentStatus && (
+                <span className={`text-[11px] font-black text-white px-2.5 py-1 rounded-lg uppercase tracking-wide ${paymentStatusColor}`}>
+                  {order.paymentStatus}
                 </span>
-                <span className="text-sm font-semibold text-emerald-600">−{formatRupees(discount)}</span>
+              )}
+            </div>
+
+            {/* Subtotal */}
+            <div className="flex justify-between items-center px-4 py-3 border-t border-black/5">
+              <span className="text-sm font-medium text-black">Subtotal</span>
+              <span className="text-sm font-semibold text-black">{formatRupees(sub)}</span>
+            </div>
+
+            {discount > 0 && (
+              <div className="flex justify-between items-center px-4 py-3 border-t border-black/5">
+                <span className="text-sm font-semibold text-emerald-600">
+                  Discount{couponCode ? ` · ${couponCode}` : ""}
+                </span>
+                <span className="text-sm font-bold text-emerald-600">−{formatRupees(discount)}</span>
               </div>
             )}
+
             {slot > 0 && (
-              <div className="flex justify-between items-center px-4 py-3 border-b border-black/5">
-                <span className="text-sm text-black/60">Slot Charge</span>
-                <span className="text-sm font-medium text-black">{formatRupees(slot)}</span>
+              <div className="flex justify-between items-center px-4 py-3 border-t border-black/5">
+                <span className="text-sm font-medium text-black">Slot Charge</span>
+                <span className="text-sm font-semibold text-black">{formatRupees(slot)}</span>
               </div>
             )}
-            <div className="flex justify-between items-center px-4 py-3.5 bg-black/[0.02] border-b border-black/5">
+
+            {/* Grand total */}
+            <div className="flex justify-between items-center px-4 py-4 border-t border-black/8 bg-black/[0.02]">
               <span className="text-base font-bold text-black">Grand Total</span>
               <span className="text-base font-bold text-black">{formatRupees(total)}</span>
             </div>
-            <div className="flex justify-between items-center px-4 py-3 border-b border-black/5">
-              <span className="text-sm text-black/60">Paid</span>
+
+            {/* Paid / Due */}
+            <div className="flex justify-between items-center px-4 py-3 border-t border-black/5">
+              <span className="text-sm font-medium text-black">Paid</span>
               <span className="text-sm font-bold text-green-600">{formatRupees(paid)}</span>
             </div>
-            <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-sm text-black/60">Due</span>
-              <span className={`text-sm font-bold ${due > 0 ? "text-amber-600" : "text-black/30"}`}>
-                {formatRupees(due)}
-              </span>
-            </div>
-            {order.paymentStatus && (
-              <div className="flex justify-between items-center px-4 py-2.5 bg-black/[0.02] border-t border-black/5">
-                <span className="text-xs text-black/40 uppercase tracking-wide font-semibold">Payment Status</span>
-                <span className="text-xs font-bold text-black uppercase tracking-wide">{order.paymentStatus}</span>
+            {due > 0 && (
+              <div className="flex justify-between items-center px-4 py-3 border-t border-black/5">
+                <span className="text-sm font-medium text-black">Due</span>
+                <span className="text-sm font-bold text-amber-600">{formatRupees(due)}</span>
+              </div>
+            )}
+
+            {/* Payment mode(s) from backend */}
+            {paymentEntries.length > 0 && (
+              <div className="border-t border-black/8 mt-1">
+                <div className="px-4 pt-3 pb-1">
+                  <p className="text-[10px] font-black text-black uppercase tracking-widest">Payment Mode</p>
+                </div>
+                {paymentEntries.map((p: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between px-4 py-3 border-t border-black/5">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#1A56DB]/10 text-[#1A56DB] text-xs font-black">
+                        {(MODE_LABELS[p.mode] || p.mode || "—").slice(0, 1).toUpperCase()}
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-black">{MODE_LABELS[p.mode] || p.mode}</p>
+                        {p.reference && <p className="text-[11px] font-medium text-black">{p.reference}</p>}
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-black">{formatRupees(Number(p.amount) || 0)}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          {/* ── Hub ── */}
-          {(order.superHubName || order.subHubName) && (
-            <p className="text-xs text-black/40 font-medium">
-              {[order.superHubName, order.subHubName].filter(Boolean).join(" → ")}
-            </p>
-          )}
-
           {/* ── Notes ── */}
           {order.notes && (
-            <div className="border-l-4 border-amber-400 bg-amber-50 pl-3 py-3 pr-3 rounded-r-xl">
-              <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">Order Notes</p>
-              <p className="text-sm text-black">{order.notes}</p>
+            <div className="border-l-4 border-amber-400 bg-amber-50 pl-4 py-3 pr-4 rounded-r-2xl shadow-sm">
+              <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">Order Notes</p>
+              <p className="text-sm font-medium text-black">{order.notes}</p>
             </div>
           )}
         </div>
@@ -582,7 +632,6 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
           )}
         </div>
 
-        <span className="text-xs font-medium text-black flex-shrink-0">{filtered.length} order{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
       {/* Summary cards */}
@@ -666,19 +715,19 @@ function OrdersList({ mode, refreshKey, onCountChange }: { mode: "active" | "his
                 className={`bg-white rounded-2xl border border-gray-100 border-l-4 ${leftBorder} shadow-sm overflow-hidden`}
               >
                 <div className="p-4 space-y-3">
-                  {/* Row 1: Status badge (solid, no icon) + Order ID */}
+                  {/* Row 1: Order ID first, then status badge */}
                   <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-mono font-bold text-black/50">{displayId}</span>
                     <SolidStatusBadge status={o.status} />
-                    <span className="text-xs font-mono font-bold text-black/40">{displayId}</span>
                   </div>
 
-                  {/* Row 2: Customer name + amount + date */}
+                  {/* Row 2: Customer name + date (left) | amount (right) */}
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-bold text-black text-base leading-tight">{o.customerName}</p>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold text-black text-lg leading-tight">{formatRupees(total)}</p>
+                    <div className="min-w-0">
+                      <p className="font-bold text-black text-base leading-tight">{o.customerName}</p>
                       <p className="text-xs font-medium text-black/50 mt-0.5">{formatDate(o.createdAt)}</p>
                     </div>
+                    <p className="font-bold text-black text-lg leading-tight flex-shrink-0">{formatRupees(total)}</p>
                   </div>
 
                   {/* Info rows with custom icons */}
