@@ -536,38 +536,9 @@ export default function SubHubMenuAdmin() {
           <h2 className="text-sm font-bold text-[#162B4D] whitespace-nowrap flex-shrink-0">
             {subHubName || "Sub Hub"} Sub Hub
           </h2>
-          {excelBar && (
-            <div className="flex items-center gap-2 ml-3 pl-3 border-l border-gray-200">
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide hidden sm:inline">Excel</span>
-              <button
-                disabled={excelBar.busy}
-                onClick={excelBar.onImport}
-                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 disabled:opacity-50 transition-colors"
-              >
-                {excelBar.busy ? <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> : <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 8l-4-4-4 4M12 4v12" /></svg>}
-                Import
-              </button>
-              <button
-                disabled={excelBar.busy}
-                onClick={excelBar.onEdit}
-                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 disabled:opacity-50 transition-colors"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                Edit
-              </button>
-              <button
-                disabled={excelBar.busy}
-                onClick={excelBar.onExport}
-                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 disabled:opacity-50 transition-colors"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" /></svg>
-                Export ({excelBar.count})
-              </button>
-            </div>
-          )}
           <div className="flex-1" />
           <button
-            onClick={() => { loadStats(); excelBar?.onRefresh?.(); }}
+            onClick={() => { loadStats(); }}
             className="flex-shrink-0 p-1.5 rounded hover:bg-gray-100 transition-colors"
             title="Refresh"
           >
