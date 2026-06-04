@@ -1384,7 +1384,16 @@ export default function Orders() {
         toast({ title: "Select a customer", description: "Pick an existing customer or switch to 'New Customer'.", variant: "destructive" });
         return;
       }
-      customerName = chosenCustomer.name;
+      customerName = chosenCustomer.name?.trim() || "";
+      // If customer account has no name, fall back to the name on the selected address
+      if (!customerName) {
+        if (orderAddressMode === "saved" && selectedAddressIdx !== null) {
+          const a = (chosenCustomer.addresses ?? [])[selectedAddressIdx] as any;
+          customerName = (a?.name || a?.contactName || "").trim();
+        } else if (orderAddressMode === "new") {
+          customerName = newAddress.name?.trim() || "";
+        }
+      }
       phone = chosenCustomer.phone;
       email = chosenCustomer.email;
       customerId = chosenCustomer.id;

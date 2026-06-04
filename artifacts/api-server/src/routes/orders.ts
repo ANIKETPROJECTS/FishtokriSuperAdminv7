@@ -851,7 +851,15 @@ router.post("/", async (req: ScopedRequest, res) => {
       timeslotEnd,
     } = req.body ?? {};
 
-    if (!customerName || !String(customerName).trim()) {
+    // Fall back to the name stored in the delivery address if the account has no name
+    let effectiveCustomerName = customerName && String(customerName).trim() ? String(customerName).trim() : "";
+    if (!effectiveCustomerName && deliveryAddressDetail && typeof deliveryAddressDetail === "object") {
+      const addrName = (deliveryAddressDetail as any).name || (deliveryAddressDetail as any).contactName || "";
+      if (addrName && String(addrName).trim()) {
+        effectiveCustomerName = String(addrName).trim();
+      }
+    }
+    if (!effectiveCustomerName) {
       res.status(400).json({ error: "ValidationError", message: "Customer name is required" });
       return;
     }
@@ -912,7 +920,7 @@ router.post("/", async (req: ScopedRequest, res) => {
               ? { label: "Home", address: String(address).trim(), area: deliveryArea ?? "" }
               : null;
         const newCustomer = {
-          name: String(customerName).trim(),
+          name: effectiveCustomerName,
           email: email ? String(email).toLowerCase().trim() : "",
           phone: phone ? String(phone).trim() : "",
           alternatePhone: extras.alternatePhone ? String(extras.alternatePhone).trim() : "",
@@ -942,7 +950,7 @@ router.post("/", async (req: ScopedRequest, res) => {
 
     const orderDoc: any = {
       customerId: resolvedCustomerId ?? undefined,
-      customerName: String(customerName).trim(),
+      customerName: effectiveCustomerName,
       phone: phone ? String(phone).trim() : "",
       email: email ? String(email).trim() : "",
       items: cleanItems,
