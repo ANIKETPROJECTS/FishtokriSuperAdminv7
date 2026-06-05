@@ -854,7 +854,7 @@ export default function InventoryStockAdjustment() {
   const headerContent = (
     <div className="flex items-center justify-between w-full gap-4 min-w-0">
       <div className="min-w-0 flex-shrink-0">
-        <p className="text-sm font-bold text-[#162B4D] leading-tight">Inventory Stock Adjustment</p>
+        <p className="text-sm font-bold text-[#162B4D] leading-tight">Inventory Stock Management</p>
         <p className="text-[11px] text-gray-400 leading-tight hidden sm:block">Adjust quantities for multiple products at once.</p>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">

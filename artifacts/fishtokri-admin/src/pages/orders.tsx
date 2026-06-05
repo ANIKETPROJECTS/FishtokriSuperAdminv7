@@ -1164,7 +1164,7 @@ export default function Orders() {
       const now = new Date();
       const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
       const currentMins = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
-      return slotStartMins > currentMins;
+      return slotStartMins > currentMins + 30;
     });
   }, [timeslots, orderDate]);
 

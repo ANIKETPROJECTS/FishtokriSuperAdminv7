@@ -27,7 +27,7 @@ const masterAdminNavItems = [
     children: [
       { href: "/inventory/products", label: "Inventory", icon: Package },
       { href: "/inventory/history", label: "History", icon: History },
-      { href: "/inventory/adjustment", label: "Stock Adjustment", icon: SlidersHorizontal },
+      { href: "/inventory/adjustment", label: "Stock Management", icon: SlidersHorizontal },
     ],
   },
   {

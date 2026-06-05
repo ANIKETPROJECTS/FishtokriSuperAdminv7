@@ -174,7 +174,7 @@ export default function InventoryOverview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <SectionLink href="/inventory/products" label="Inventory" description={`${overview?.totalProducts ?? 0} products tracked across sub-hubs.`} icon={Boxes} />
         <SectionLink href="/inventory/history" label="History" description={`${overview?.movementsTotal ?? 0} stock movements recorded.`} icon={History} />
-        <SectionLink href="/inventory/adjustment" label="Stock Adjustment" description={`${overview?.adjustmentsTotal ?? 0} adjustments logged.`} icon={SlidersHorizontal} />
+        <SectionLink href="/inventory/adjustment" label="Stock Management" description={`${overview?.adjustmentsTotal ?? 0} adjustments logged.`} icon={SlidersHorizontal} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-5">
