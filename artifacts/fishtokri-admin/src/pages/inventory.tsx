@@ -183,19 +183,13 @@ export default function InventoryPage() {
       return {
         Product: p.name,
         Category: p.category,
-        "Sub Category": p.subCategory,
-        Unit: p.unit,
-        "Price (₹)": p.price,
         Stock: p.quantity,
-        "Stock Value (₹)": p.price * p.quantity,
         Batches: batches.map((b) => b.batchNumber).filter(Boolean).join(", "),
         "Next Expiry": nextExpiry ? new Date(nextExpiry).toLocaleDateString("en-IN") : "",
-        Status: p.status,
       };
     });
     const ws = XLSX.utils.json_to_sheet(rows);
-    const colWidths = [30, 18, 18, 10, 12, 8, 16, 36, 14, 10];
-    ws["!cols"] = colWidths.map((w) => ({ wch: w }));
+    ws["!cols"] = [{ wch: 32 }, { wch: 18 }, { wch: 8 }, { wch: 36 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
     const filename = `inventory-${selectedSubHub?.name ?? "export"}-${new Date().toISOString().slice(0, 10)}.xlsx`;
