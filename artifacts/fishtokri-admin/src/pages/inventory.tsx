@@ -334,9 +334,14 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-4 py-3 text-center text-xs text-gray-500">
                               {batches.length > 0 ? (
-                                <span className="inline-flex items-center gap-0.5 font-semibold text-[#1A56DB]">
-                                  {batches.length}
-                                </span>
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <span className="font-semibold text-[#1A56DB]">{batches.length}</span>
+                                  {batches.map((b) => (
+                                    <span key={b.id} className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1 leading-tight">
+                                      {b.batchNumber || "—"}
+                                    </span>
+                                  ))}
+                                </div>
                               ) : <span className="text-gray-300">—</span>}
                             </td>
                             <td className={`px-4 py-3 text-xs font-medium ${expTone}`}>
