@@ -485,6 +485,14 @@ export default function SubHubMenuAdmin() {
   const [statsError, setStatsError] = useState("");
   const [excelBar, setExcelBar] = useState<ExcelBarConfig>(null);
 
+  type PincodeEntry = { pincode: string; charge: number; timeDelay: number };
+  const [pincodes, setPincodes] = useState<PincodeEntry[]>([]);
+  const [pinInput, setPinInput] = useState("");
+  const [pinCharge, setPinCharge] = useState("0");
+  const [pinTimeDelay, setPinTimeDelay] = useState("0");
+  const [pincodeSaving, setPincodeSaving] = useState(false);
+  const [pincodesDirty, setPincodesDirty] = useState(false);
+
   const loadStats = useCallback(async (silent = false) => {
     if (!silent) { setLoadingStats(true); setStatsError(""); }
     try {
@@ -501,7 +509,12 @@ export default function SubHubMenuAdmin() {
   useEffect(() => {
     apiFetch("/api/sub-hubs").then((d) => {
       const sub = d.subHubs?.find((s: any) => s.id === subHubId);
-      if (sub) { setSubHubName(sub.name); setDbName(sub.dbName); }
+      if (sub) {
+        setSubHubName(sub.name);
+        setDbName(sub.dbName);
+        setPincodes(sub.pincodes ?? []);
+        setPincodesDirty(false);
+      }
     }).catch(() => {});
     loadStats();
   }, [subHubId, loadStats]);
@@ -510,6 +523,33 @@ export default function SubHubMenuAdmin() {
     const id = setInterval(() => { loadStats(true); }, 5000);
     return () => clearInterval(id);
   }, [loadStats]);
+
+  const addPin = () => {
+    const val = pinInput.trim();
+    if (val && !pincodes.some((p) => p.pincode === val)) {
+      setPincodes((prev) => [...prev, { pincode: val, charge: Number(pinCharge) || 0, timeDelay: Number(pinTimeDelay) || 0 }]);
+      setPinInput("");
+      setPinCharge("0");
+      setPinTimeDelay("0");
+      setPincodesDirty(true);
+    }
+  };
+
+  const savePincodes = async () => {
+    setPincodeSaving(true);
+    try {
+      await apiFetch(`/api/sub-hubs/${subHubId}`, {
+        method: "PUT",
+        body: JSON.stringify({ pincodes }),
+      });
+      setPincodesDirty(false);
+      toast({ title: "Service areas saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
+    } finally {
+      setPincodeSaving(false);
+    }
+  };
 
   const statCards = [
     { label: "Products", value: stats?.products ?? 0, img: iconMenuProducts },
@@ -598,6 +638,104 @@ export default function SubHubMenuAdmin() {
           {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
           {!statsError && tab === "timeslots" && <TimeSlotsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
           {statsError && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
+        </div>
+      </div>
+
+      {/* ─── PINCODES / SERVICE AREAS ─────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4" style={{ fontFamily: "Poppins, sans-serif" }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Service Areas</p>
+            <p className="text-xs text-gray-400 mt-1">Each pincode can have an extra delivery charge and a time delay added to all time slots for orders from that area.</p>
+          </div>
+          {pincodesDirty && (
+            <Button
+              onClick={savePincodes}
+              disabled={pincodeSaving}
+              className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-5 text-sm font-semibold flex-shrink-0"
+            >
+              {pincodeSaving
+                ? <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving...</span>
+                : "Save Changes"}
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-600">Pincode</Label>
+              <Input
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPin(); } }}
+                placeholder="e.g. 400601"
+                className="h-9 text-black"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-600">Extra Charge (₹)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={pinCharge}
+                onChange={(e) => setPinCharge(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPin(); } }}
+                placeholder="0"
+                className="h-9 text-black"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-600">Time Delay (min)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={pinTimeDelay}
+                onChange={(e) => setPinTimeDelay(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPin(); } }}
+                placeholder="0"
+                className="h-9 text-black"
+              />
+            </div>
+          </div>
+          <Button type="button" variant="secondary" onClick={addPin} className="h-9 px-4 text-sm">
+            Add Pincode
+          </Button>
+
+          {pincodes.length > 0 ? (
+            <div className="mt-1 rounded-lg border border-gray-100 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Pincode</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Extra Charge</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Time Delay</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-500">Remove</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {pincodes.map((p) => (
+                    <tr key={p.pincode} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2 font-semibold text-blue-700">{p.pincode}</td>
+                      <td className="px-3 py-2 text-gray-700">₹{p.charge}</td>
+                      <td className="px-3 py-2 text-gray-700">{p.timeDelay} min</td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => { setPincodes((prev) => prev.filter((x) => x.pincode !== p.pincode)); setPincodesDirty(true); }}
+                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">No pincodes added yet. Add pincodes to define the service area.</p>
+          )}
         </div>
       </div>
     </div>
