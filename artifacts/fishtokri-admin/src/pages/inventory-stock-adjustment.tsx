@@ -754,7 +754,12 @@ export default function InventoryStockAdjustment() {
   }
 
   function setExpiryDate(i: number, val: string) {
-    updateRow(i, { expiryDate: val, shelfLifeDays: "" });
+    let shelfLifeDays = "";
+    if (val) {
+      const days = Math.round((new Date(val).getTime() - Date.now()) / 86400000);
+      if (days >= 0) shelfLifeDays = String(days);
+    }
+    updateRow(i, { expiryDate: val, shelfLifeDays });
   }
 
   function resetForm() {
