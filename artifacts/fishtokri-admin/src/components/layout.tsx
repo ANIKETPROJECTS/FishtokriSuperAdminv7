@@ -555,7 +555,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div id="page-header-slot" className="flex items-center gap-3 flex-1 min-w-0" />
         </header>
 
-        <div className={`flex-1 min-w-0 bg-white ${location.startsWith("/orders") ? "px-4 py-3" : location.startsWith("/my-deliveries") || location.startsWith("/delivery-report") ? "p-4" : "p-4 sm:p-6 lg:p-8"}`}>
+        <div className={`flex-1 min-w-0 bg-white ${location.startsWith("/day-end-report") ? "p-0" : location.startsWith("/orders") ? "px-4 py-3" : location.startsWith("/my-deliveries") || location.startsWith("/delivery-report") ? "p-4" : "p-4 sm:p-6 lg:p-8"}`}>
           {children}
         </div>
       </main>

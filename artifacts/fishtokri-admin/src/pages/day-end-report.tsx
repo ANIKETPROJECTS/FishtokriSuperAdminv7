@@ -5,7 +5,6 @@ import {
   FileText, Printer, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import * as XLSX from "xlsx";
 import { printHtmlWithQZ } from "@/lib/qz-print";
@@ -126,7 +125,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     const paidDueRow = (order.paidAmount!==undefined||order.dueAmount!==undefined) ? `<div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:12px;"><span>Paid: <strong style="color:#16a34a;">₹${paidAmt.toFixed(2)}</strong></span><span>Due: <strong style="color:${dueAmt>0?"#ef4444":"#16a34a"};">₹${dueAmt.toFixed(2)}</strong></span></div>` : "";
     const notesRow = order.notes ? `<div style="border-top:1px dashed #bbb;margin:10px 0;"></div><div style="font-size:12px;"><b>Note:</b> ${order.notes}</div>` : "";
     const slotLabel = formatTimeSlot(order);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${invoiceNo}</title><style>* { margin:0;padding:0;box-sizing:border-box; } body { font-family:Arial,sans-serif;color:#111;background:#fff; } @page { size:80mm auto;margin:0; }</style></head><body><div style="padding:4px 8px;font-size:13px;color:#111;"><h2 style="text-align:center;font-size:16px;font-weight:700;margin-bottom:2px;">Atha Foods${order.superHubName?` - ${order.superHubName}`:""}</h2><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="text-align:center;font-size:12px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone||"—"}</div><div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px;"><span><b>Invoice No:</b> ${invoiceNo}</span><span><b>Date:</b> ${deliveryDateStr}</span></div><div style="display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:12px;"><span><b>Payment Mode:</b> ${payMode} <span style="margin-left:5px;font-size:10px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span></span><span><b>Time:</b> ${timeStr}</span></div><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="font-size:12px;margin:2px 0;"><b>Name:</b> ${order.customerName}</div>${order.address?`<div style="font-size:12px;margin:2px 0;"><b>Add :</b> ${order.address}</div>`:""} ${slotLabel?`<div style="font-size:12px;margin:2px 0;"><b>Delivery Slot:</b> ${slotLabel}</div>`:""}<div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0;"><thead><tr style="border-bottom:1px solid #555;"><th style="padding:5px 4px;text-align:left;font-weight:600;">Item</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Qty</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Rate</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Amount</th></tr></thead><tbody>${itemRows}<tr style="border-top:1px solid #aaa;"><td style="padding:5px 4px;font-weight:600;">Total Items: ${items.length}</td><td style="padding:5px 4px;text-align:right;font-weight:600;">${totalQty}</td><td></td><td style="padding:5px 4px;text-align:right;font-weight:600;">${subtotal.toFixed(2)}</td></tr><tr><td style="padding:4px 2px;" colspan="3">Discount${order.couponCode?` (${order.couponCode})`:""} :</td><td style="padding:4px 2px;text-align:right;">- ${discount.toFixed(2)}</td></tr>${slotRow}${delivRow}</tbody></table><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>${walletRow}<div style="text-align:center;font-style:italic;font-size:11px;color:#555;margin:4px 0 8px;">( ${numberToWords(grandTotal)} )</div>${paidDueRow}${notesRow}<div style="text-align:center;font-size:11px;color:#555;line-height:1.8;margin-top:14px;">Thank you for your business!<br/>For any query - 9220200100</div></div></body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${invoiceNo}</title><style>* { margin:0;padding:0;box-sizing:border-box; } body { font-family:Arial,sans-serif;color:#111;background:#fff; } @page { size:80mm auto;margin:0; }</style></head><body><div style="padding:4px 8px;font-size:13px;color:#111;"><h2 style="text-align:center;font-size:16px;font-weight:700;margin-bottom:2px;">Atha Foods${order.superHubName?` - ${order.superHubName}`:""}</h2><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="text-align:center;font-size:12px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone||"—"}</div><div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px;"><span><b>Invoice No:</b> ${invoiceNo}</span><span><b>Date:</b> ${deliveryDateStr}</span></div><div style="display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:12px;"><span><b>Payment Mode:</b> ${payMode} <span style="margin-left:5px;font-size:10px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span></span><span><b>Time:</b> ${timeStr}</span></div><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="font-size:12px;margin:2px 0;"><b>Name:</b> ${order.customerName}</div>${order.address?`<div style="font-size:12px;margin:2px 0;"><b>Add :</b> ${order.address}</div>`:""} ${slotLabel?`<div style="font-size:12px;margin:2px 0;"><b>Delivery Slot:</b> ${slotLabel}</div>`:""}<div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0;"><thead><tr style="border-bottom:1px solid #555;"><th style="padding:5px 4px;text-align:left;font-weight:600;">Item</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Qty</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Rate</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Amt</th></tr></thead><tbody>${itemRows}</tbody></table><div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;font-size:12px;"><tr><td colspan="3"><b>Total Items: ${items.length}</b></td><td style="text-align:right;"><b>${subtotal.toFixed(2)}</b></td></tr><tr><td colspan="3">Discount${order.couponCode?` (${order.couponCode})`:""} :</td><td style="text-align:right;">- ${discount.toFixed(2)}</td></tr>${slotRow}${delivRow}</table><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>${walletRow}<div style="text-align:center;font-size:11px;color:#555;margin-top:4px;">( ${numberToWords(grandTotal)} )</div>${paidDueRow}${notesRow}<div style="text-align:center;font-size:12px;color:#555;margin-top:12px;">Thank you for your business!<br/>For any query - 9220200100</div></div></body></html>`;
     toast({ title: "Printing..." });
     const qzResult = await printHtmlWithQZ(html);
     if (qzResult.success) return;
@@ -198,24 +197,11 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   );
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="flex-1 min-w-[140px]" style={POPPINS}>
-      <p style={{ fontSize: 11, fontWeight: 500, color: "#555", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 4 }}>{label}</p>
-      <p style={{ fontSize: 22, fontWeight: 700, color: "#000", lineHeight: 1.1 }}>{value}</p>
-      {sub && <p style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{sub}</p>}
-    </div>
-  );
-}
-
 // ── ORDERS REPORT ─────────────────────────────────────────────────────────────
-function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void) => void; downloadRef: any }) {
-  const [from, setFrom] = useState(today());
-  const [to, setTo] = useState(today());
+function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to: string; onDownload: (fn: () => void) => void; downloadRef: any }) {
   const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
 
-  const { data, isLoading, isError, isFetching } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["day-end-orders", from, to],
     queryFn: () => {
       const p = new URLSearchParams({ from, to });
@@ -225,7 +211,6 @@ function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void
 
   const orders: any[] = data?.orders ?? [];
 
-  // Stats
   const stats = useMemo(() => {
     let cash = 0, upi = 0, wallet = 0, totalRev = 0, unpaid = 0;
     for (const o of orders) {
@@ -266,26 +251,10 @@ function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void
     XLSX.writeFile(wb, `orders-report-${from}-to-${to}.xlsx`);
   }, [orders, from, to]);
 
-  // Expose download fn to parent
   downloadRef.current = handleDownload;
 
   return (
     <div style={POPPINS}>
-      {/* Date bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <label style={{ fontSize: 12, fontWeight: 500, color: "#555" }}>From</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 13, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", height: 36 }} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <label style={{ fontSize: 12, fontWeight: 500, color: "#555" }}>To</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)}
-            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 13, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", height: 36 }} />
-        </div>
-        {isFetching && <span style={{ fontSize: 12, color: "#888" }}>Loading…</span>}
-      </div>
-
       {/* Stats strip */}
       <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
         {[
@@ -303,7 +272,6 @@ function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void
         ))}
       </div>
 
-      {/* States */}
       {isLoading && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>Loading orders…</div>}
       {isError && <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
       {!isLoading && !isError && orders.length === 0 && (
@@ -313,13 +281,13 @@ function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void
         </div>
       )}
 
-      {/* Table */}
+      {/* Table — no wrapper card, full width */}
       {!isLoading && !isError && orders.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                {["Invoice No","Customer","Phone","Address","Items & Qty","Total","Delivery Partner","Payment Mode","Payment Status","Order Status","View"].map(h => (
+                {["Invoice No","Customer","Phone","Items & Qty","Total","Delivery Partner","Payment Mode","Payment Status","Order Status","Receipt"].map(h => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#555", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                 ))}
               </tr>
@@ -334,14 +302,11 @@ function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void
                   </td>
                   <td style={{ padding: "10px 14px", fontWeight: 600, color: "#000", whiteSpace: "nowrap" }}>{o.customerName}</td>
                   <td style={{ padding: "10px 14px", color: "#444", whiteSpace: "nowrap" }}>{o.phone}</td>
-                  <td style={{ padding: "10px 14px", color: "#555", fontSize: 12, maxWidth: 180 }}>
-                    <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{o.address}</span>
-                  </td>
-                  <td style={{ padding: "10px 14px", minWidth: 160 }}>
+                  <td style={{ padding: "10px 14px", minWidth: 140 }}>
                     {(o.items || []).map((it: any, j: number) => (
                       <div key={j} style={{ fontSize: 12, color: "#222" }}>
                         <span style={{ fontWeight: 600 }}>{it.name}</span>
-                        <span style={{ color: "#888" }}> × {it.quantity}{it.unit ? ` ${it.unit}` : ""}</span>
+                        <span style={{ color: "#888" }}> × {it.quantity}</span>
                       </div>
                     ))}
                   </td>
@@ -361,9 +326,10 @@ function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void
                   <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
                     <button
                       onClick={() => setInvoiceOrder(o)}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#364F9F", background: "#eff3ff", border: "none", borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontFamily: "Poppins, sans-serif" }}
+                      title="View Receipt"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                     >
-                      <FileText style={{ width: 13, height: 13 }} /> View
+                      <img src="/receipt-icon.png" alt="View Receipt" style={{ width: 28, height: 28, objectFit: "contain" }} />
                     </button>
                   </td>
                 </tr>
@@ -458,7 +424,7 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
       {firstSubHubId && isError && <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
       {firstSubHubId && !isLoading && !isError && products.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>No inventory products found.</div>}
 
-      {/* Table */}
+      {/* Table — no wrapper card, full width */}
       {firstSubHubId && !isLoading && !isError && products.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -555,13 +521,14 @@ type Tab = "orders" | "inventory";
 
 export default function DayEndReportPage() {
   const [activeTab, setActiveTab] = useState<Tab>("orders");
+  const [from, setFrom] = useState(today());
+  const [to, setTo] = useState(today());
   const ordersDownloadRef = { current: null as (() => void) | null };
   const inventoryDownloadRef = { current: null as (() => void) | null };
   const admin = getAdmin();
   const isMaster = admin?.role === "master_admin";
   const isSuperHub = admin?.role === "super_hub";
 
-  // Fetch sub-hubs for master/super hub to auto-pick first
   const { data: subHubsData } = useQuery({
     queryKey: ["sub-hubs-for-report"],
     queryFn: () => apiFetch("/api/sub-hubs"),
@@ -581,20 +548,51 @@ export default function DayEndReportPage() {
     else if (activeTab === "inventory" && inventoryDownloadRef.current) inventoryDownloadRef.current();
   };
 
+  const dateInputStyle: React.CSSProperties = {
+    border: "1px solid #e5e7eb",
+    borderRadius: 8,
+    padding: "4px 8px",
+    fontSize: 12,
+    fontFamily: "Poppins, sans-serif",
+    color: "#000",
+    background: "#fff",
+    height: 32,
+  };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#f4f6fa", padding: "0 0 40px" }}>
-      {/* Top header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #ebebeb", padding: "18px 28px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", ...POPPINS }}>
-          {/* Left: title */}
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#000", margin: 0, lineHeight: 1.2 }}>Day End Report</h1>
-            <p style={{ fontSize: 12, color: "#888", margin: "3px 0 0", fontWeight: 400 }}>Orders and inventory summary — download in Excel format</p>
+    <div style={{ minHeight: "100vh", background: "#fff", ...POPPINS }}>
+      {/* ── Unified top header ── */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #ebebeb", padding: "14px 28px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+
+          {/* Left: title + subtitle + date pickers */}
+          <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+            <div>
+              <h1 style={{ fontSize: 20, fontWeight: 700, color: "#000", margin: 0, lineHeight: 1.2 }}>Day End Report</h1>
+              <p style={{ fontSize: 11, color: "#888", margin: "2px 0 0", fontWeight: 400 }}>Orders and inventory summary — download in Excel format</p>
+            </div>
+
+            {/* Date range — only meaningful for orders tab, but always show */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: "#555" }}>From</label>
+              <input
+                type="date"
+                value={from}
+                onChange={e => setFrom(e.target.value)}
+                style={dateInputStyle}
+              />
+              <label style={{ fontSize: 12, fontWeight: 500, color: "#555" }}>To</label>
+              <input
+                type="date"
+                value={to}
+                onChange={e => setTo(e.target.value)}
+                style={dateInputStyle}
+              />
+            </div>
           </div>
 
-          {/* Right: tabs + download */}
+          {/* Right: tab buttons + download */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {/* Tab buttons */}
             <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 10, padding: 3, gap: 2 }}>
               {[
                 { key: "orders" as Tab, label: "Orders Report" },
@@ -604,7 +602,7 @@ export default function DayEndReportPage() {
                   key={key}
                   onClick={() => setActiveTab(key)}
                   style={{
-                    padding: "7px 18px",
+                    padding: "6px 16px",
                     borderRadius: 8,
                     border: "none",
                     cursor: "pointer",
@@ -622,28 +620,29 @@ export default function DayEndReportPage() {
               ))}
             </div>
 
-            {/* Download icon button */}
             <button
               onClick={handleDownload}
               title="Download Excel"
               style={{
-                width: 38, height: 38, borderRadius: 10, border: "1px solid #e5e7eb",
+                width: 36, height: 36, borderRadius: 10, border: "1px solid #e5e7eb",
                 background: "#fff", cursor: "pointer", display: "flex", alignItems: "center",
                 justifyContent: "center", color: "#15803d", transition: "all 0.15s",
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f0fdf4"; (e.currentTarget as HTMLElement).style.borderColor = "#86efac"; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#fff"; (e.currentTarget as HTMLElement).style.borderColor = "#e5e7eb"; }}
             >
-              <Download style={{ width: 17, height: 17 }} />
+              <Download style={{ width: 16, height: 16 }} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Content */}
+      {/* ── Content — full width, no blue bg wrapper ── */}
       <div style={{ padding: "24px 28px" }}>
         {activeTab === "orders" && (
           <OrdersReport
+            from={from}
+            to={to}
             onDownload={() => {}}
             downloadRef={ordersDownloadRef}
           />
