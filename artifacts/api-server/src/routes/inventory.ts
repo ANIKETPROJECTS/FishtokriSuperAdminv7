@@ -29,6 +29,22 @@ async function withDeductionLock<T>(fn: () => Promise<T>): Promise<T> {
   finally { _deductionBusy = false; }
 }
 
+/**
+ * Thrown when a stock deduction is blocked because available inventory is
+ * less than the requested quantity. Caught in the order-creation route to
+ * return a 409 and cancel the just-inserted order document.
+ */
+export class InsufficientStockError extends Error {
+  constructor(
+    public readonly productName: string,
+    public readonly available: number,
+    public readonly requested: number,
+  ) {
+    super(`Insufficient stock for "${productName}": requested ${requested}, available ${available}`);
+    this.name = "InsufficientStockError";
+  }
+}
+
 function toId(id: string) {
   try { return new mongoose.Types.ObjectId(id); } catch { return null; }
 }
@@ -925,6 +941,35 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore"):
   if (items.length === 0) {
     logger.warn({ orderId, subHubId: order.subHubId, rawItemCount: (order.items ?? []).length }, "applyDelta: no items to process after expansion");
     return 0;
+  }
+
+  // ── Pre-flight stock check (deduct only) ────────────────────────────────────
+  // This runs INSIDE withDeductionLock so only one request at a time reaches
+  // this point. If two orders race for the last unit, the second request enters
+  // the lock only after the first has already deducted — it then sees available=0
+  // and throws InsufficientStockError before any mutation occurs.
+  if (direction === "deduct") {
+    for (const it of items) {
+      const pid = toId(it.productId);
+      if (!pid || it.quantity <= 0) continue;
+      const product = await products.findOne({ _id: pid });
+      if (!product) continue; // missing product is a warning, not a stock block
+      const currentBatches: Batch[] = Array.isArray(product.batches)
+        ? product.batches.map((b: any) => normalizeBatch(b))
+        : [];
+      // Available stock: use batch totals if batches exist, otherwise the raw quantity field
+      const available = currentBatches.length > 0
+        ? batchesTotal(currentBatches)
+        : Math.max(0, Number(product.quantity) || 0);
+      if (available < it.quantity) {
+        logger.warn(
+          { orderId, productId: String(pid), productName: product.name, available, requested: it.quantity },
+          "applyDelta: pre-flight stock check FAILED — insufficient stock, rejecting order"
+        );
+        throw new InsufficientStockError(product.name ?? it.name ?? "Unknown product", available, it.quantity);
+      }
+    }
+    logger.info({ orderId, itemCount: items.length }, "applyDelta: pre-flight stock check passed — all items have sufficient stock");
   }
 
   let deductedCount = 0;

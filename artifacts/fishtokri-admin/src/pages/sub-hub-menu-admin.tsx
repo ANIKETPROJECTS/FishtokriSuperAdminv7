@@ -2771,7 +2771,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                         )}
                       </div>
                     </div>
-                    <div className="max-h-52 overflow-y-auto py-1">
+                    <div className="max-h-52 overflow-y-auto py-1" onWheel={(e) => e.stopPropagation()}>
                       {(categories ?? [])
                         .filter((c: any) => !categorySearchInput || c.name?.toLowerCase().includes(categorySearchInput.toLowerCase()))
                         .map((c: any) => (
