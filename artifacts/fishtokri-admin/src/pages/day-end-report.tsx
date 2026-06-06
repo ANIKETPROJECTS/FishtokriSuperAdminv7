@@ -72,20 +72,20 @@ function numberToWords(n: number): string {
 
 function paymentBadgeStyle(status: string): React.CSSProperties {
   const s = String(status || "").toLowerCase();
-  if (s === "paid") return { background: "#dcfce7", color: "#15803d" };
-  if (s === "partial") return { background: "#fef9c3", color: "#a16207" };
-  if (s === "unpaid") return { background: "#fee2e2", color: "#b91c1c" };
-  return { background: "#f3f4f6", color: "#555" };
+  if (s === "paid") return { background: "#16a34a", color: "#fff" };
+  if (s === "partial") return { background: "#d97706", color: "#fff" };
+  if (s === "unpaid") return { background: "#dc2626", color: "#fff" };
+  return { background: "#6b7280", color: "#fff" };
 }
 function orderStatusBadgeStyle(status: string): React.CSSProperties {
   const s = String(status || "").toLowerCase();
-  if (s === "delivered") return { background: "#dcfce7", color: "#15803d" };
-  if (s === "cancelled") return { background: "#fee2e2", color: "#b91c1c" };
-  if (s === "out_for_delivery") return { background: "#dbeafe", color: "#1d4ed8" };
-  if (s === "confirmed") return { background: "#ede9fe", color: "#7c3aed" };
-  if (s === "pending") return { background: "#fef9c3", color: "#a16207" };
-  if (s === "takeaway") return { background: "#ffedd5", color: "#c2410c" };
-  return { background: "#f3f4f6", color: "#555" };
+  if (s === "delivered") return { background: "#16a34a", color: "#fff" };
+  if (s === "cancelled") return { background: "#dc2626", color: "#fff" };
+  if (s === "out_for_delivery") return { background: "#2563eb", color: "#fff" };
+  if (s === "confirmed") return { background: "#7c3aed", color: "#fff" };
+  if (s === "pending") return { background: "#d97706", color: "#fff" };
+  if (s === "takeaway") return { background: "#ea580c", color: "#fff" };
+  return { background: "#6b7280", color: "#fff" };
 }
 
 // ── Invoice Modal (self-contained) ───────────────────────────────────────────
@@ -241,16 +241,25 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
 
   const handleDownload = useCallback(() => {
     if (!orders.length) return;
-    const rows: any[] = [["Invoice No","Customer Name","Phone","Address","Ordered Items","Total Price (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status","Delivery Date","Sub Hub"]];
+    const rows: any[] = [["Invoice No","Customer","Phone","Items & Qty","Total (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status"]];
     for (const o of orders) {
-      rows.push([o.invoiceNo,o.customerName,o.phone,o.address,o.itemsSummary,o.total,o.deliveryPerson,o.paymentMode,o.paymentStatus,o.status,o.deliveryDate||"—",o.subHubName]);
+      const itemsQty = (o.items || []).map((it: any) => `${it.name} × ${it.quantity}`).join(", ");
+      rows.push([o.invoiceNo, o.customerName, o.phone, itemsQty, o.total, o.deliveryPerson || "—", o.paymentMode, o.paymentStatus, String(o.status || "").replace(/_/g, " ")]);
     }
+    rows.push([]);
+    rows.push(["SUMMARY", "", "", "", "", "", "", "", ""]);
+    rows.push(["Total Orders", orders.length]);
+    rows.push(["Cash Revenue", stats.cash]);
+    rows.push(["UPI Revenue", stats.upi]);
+    rows.push(["Total Revenue", stats.totalRev]);
+    rows.push(["Wallet Collected", stats.wallet]);
+    rows.push(["Unpaid Dues", stats.unpaid]);
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [{wch:20},{wch:22},{wch:14},{wch:35},{wch:45},{wch:16},{wch:22},{wch:14},{wch:16},{wch:16},{wch:14},{wch:20}];
+    ws["!cols"] = [{wch:20},{wch:22},{wch:14},{wch:48},{wch:14},{wch:22},{wch:14},{wch:16},{wch:16}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Orders Report");
     XLSX.writeFile(wb, `orders-report-${from}-to-${to}.xlsx`);
-  }, [orders, from, to]);
+  }, [orders, stats, from, to]);
 
   downloadRef.current = handleDownload;
 
@@ -346,7 +355,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
 }
 
 // ── INVENTORY REPORT ──────────────────────────────────────────────────────────
-function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubHubId: string; onDownload: (fn: () => void) => void; downloadRef: any }) {
+function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef, collapseAllRef, onHasProducts }: { firstSubHubId: string; onDownload: (fn: () => void) => void; downloadRef: any; expandAllRef: any; collapseAllRef: any; onHasProducts: (v: boolean) => void }) {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
 
   const { data, isLoading, isError } = useQuery({
@@ -363,6 +372,12 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
   });
   const expandAll = () => setExpandedProducts(new Set(products.map(p => p.productId)));
   const collapseAll = () => setExpandedProducts(new Set());
+
+  // Expose expand/collapse to parent portal
+  expandAllRef.current = expandAll;
+  collapseAllRef.current = collapseAll;
+
+  useEffect(() => { onHasProducts(products.length > 0); }, [products.length]);
 
   const handleDownload = useCallback(() => {
     if (!products.length) return;
@@ -388,20 +403,7 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
 
   return (
     <div style={POPPINS}>
-      {/* Controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-        {products.length > 0 && (
-          <>
-            <button onClick={expandAll} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#555", background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontFamily: "Poppins, sans-serif" }}>
-              <ChevronDown style={{ width: 13, height: 13 }} /> Expand All
-            </button>
-            <button onClick={collapseAll} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#555", background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontFamily: "Poppins, sans-serif" }}>
-              <ChevronRight style={{ width: 13, height: 13 }} /> Collapse All
-            </button>
-          </>
-        )}
-        {!firstSubHubId && <span style={{ fontSize: 13, color: "#888" }}>No sub hub linked to your account</span>}
-      </div>
+      {!firstSubHubId && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>No sub hub linked to your account.</div>}
 
       {/* Stats strip */}
       {products.length > 0 && (
@@ -410,7 +412,7 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
             { label: "Total Products", value: String(products.length) },
             { label: "Total Stock", value: grandTotal.toLocaleString("en-IN") },
             { label: "Out of Stock", value: String(products.filter(p => p.activeQuantity === 0).length) },
-            { label: "Expiring Soon (≤3d)", value: String(products.filter(p => p.batches.some((b:any) => !b.isExpired && b.daysLeft !== null && b.daysLeft <= 3)).length) },
+            { label: "Expiring Soon (≤1d)", value: String(products.filter(p => p.batches.some((b:any) => !b.isExpired && b.daysLeft !== null && b.daysLeft <= 1)).length) },
           ].map((s, i, arr) => (
             <div key={s.label} style={{ flex: 1, padding: "16px 18px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
               <p style={{ fontSize: 10, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
@@ -420,7 +422,6 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
         </div>
       )}
 
-      {!firstSubHubId && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>No sub hub linked to your account.</div>}
       {firstSubHubId && isLoading && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>Loading inventory…</div>}
       {firstSubHubId && isError && <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
       {firstSubHubId && !isLoading && !isError && products.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>No inventory products found.</div>}
@@ -432,7 +433,7 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
             <thead>
               <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
                 <th style={{ width: 28, padding: "10px 8px" }}></th>
-                {["Product Name","Category","Unit","Total Qty","Status"].map(h => (
+                {["Product Name","Category","Total Qty","Stock Status"].map(h => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#555", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                 ))}
               </tr>
@@ -441,6 +442,7 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
               {products.map(p => {
                 const isExpanded = expandedProducts.has(p.productId);
                 const hasBatches = p.batches && p.batches.length > 0;
+                const inStock = p.activeQuantity > 0;
                 return (
                   <>
                     <tr key={p.productId}
@@ -454,11 +456,10 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
                         {hasBatches && <span style={{ marginLeft: 6, fontSize: 11, color: "#888", fontWeight: 400 }}>{p.batches.length} batch{p.batches.length !== 1 ? "es" : ""}</span>}
                       </td>
                       <td style={{ padding: "10px 14px", color: "#444" }}>{p.category}</td>
-                      <td style={{ padding: "10px 14px", color: "#666" }}>{p.unit || "—"}</td>
-                      <td style={{ padding: "10px 14px", fontWeight: 700, fontSize: 16, color: p.activeQuantity === 0 ? "#dc2626" : "#000" }}>{p.totalQuantity.toLocaleString("en-IN")}</td>
+                      <td style={{ padding: "10px 14px", fontWeight: 700, fontSize: 16, color: inStock ? "#000" : "#dc2626" }}>{p.totalQuantity.toLocaleString("en-IN")}</td>
                       <td style={{ padding: "10px 14px" }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, ...(p.activeQuantity === 0 ? { background: "#fee2e2", color: "#b91c1c" } : p.status === "available" ? { background: "#dcfce7", color: "#15803d" } : { background: "#f3f4f6", color: "#555" }) }}>
-                          {p.activeQuantity === 0 ? "Out of Stock" : p.status === "available" ? "Available" : "Unavailable"}
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: inStock ? "#16a34a" : "#dc2626" }}>
+                          {inStock ? "In Stock" : "Out of Stock"}
                         </span>
                       </td>
                     </tr>
@@ -483,18 +484,18 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
                             <td style={{ padding: "9px 14px", fontSize: 12, color: "#444" }}>{b.expiryDate ? formatDate(b.expiryDate) : <span style={{ color: "#aaa" }}>No Expiry</span>}</td>
                             <td style={{ padding: "9px 14px" }}>
                               {b.daysLeft === null ? <span style={{ color: "#aaa", fontSize: 12 }}>—</span>
-                                : b.isExpired ? <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#fee2e2", color: "#b91c1c" }}>Expired {Math.abs(b.daysLeft)}d ago</span>
-                                : b.daysLeft <= 3 ? <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#fef9c3", color: "#a16207" }}>{b.daysLeft}d left ⚠️</span>
-                                : <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#dcfce7", color: "#15803d" }}>{b.daysLeft}d left</span>}
+                                : b.isExpired ? <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#dc2626", color: "#fff" }}>Expired {Math.abs(b.daysLeft)}d ago</span>
+                                : b.daysLeft <= 1 ? <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#d97706", color: "#fff" }}>{b.daysLeft}d left ⚠️</span>
+                                : <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#16a34a", color: "#fff" }}>{b.daysLeft}d left</span>}
                             </td>
                           </tr>
                         ))}
                         <tr style={{ background: "#eef2ff", borderBottom: "2px solid #c7d2fe" }}>
                           <td style={{ padding: "9px 8px" }}></td>
                           <td style={{ padding: "9px 14px", fontWeight: 700, color: "#364F9F", fontSize: 13 }} colSpan={1}>↳ {p.name} — Subtotal</td>
-                          <td style={{ padding: "9px 14px", fontWeight: 700, color: "#364F9F", fontSize: 15 }}>{p.totalQuantity.toLocaleString("en-IN")} {p.unit}</td>
-                          <td colSpan={3} style={{ padding: "9px 14px", fontSize: 12, color: "#666" }}>
-                            Active: {p.activeQuantity.toLocaleString("en-IN")} {p.unit}
+                          <td style={{ padding: "9px 14px", fontWeight: 700, color: "#364F9F", fontSize: 15 }}>{p.totalQuantity.toLocaleString("en-IN")}</td>
+                          <td colSpan={2} style={{ padding: "9px 14px", fontSize: 12, color: "#666" }}>
+                            Active: {p.activeQuantity.toLocaleString("en-IN")}
                             {p.totalQuantity !== p.activeQuantity && <span style={{ marginLeft: 8, color: "#dc2626" }}>({(p.totalQuantity - p.activeQuantity).toLocaleString("en-IN")} expired)</span>}
                           </td>
                         </tr>
@@ -505,7 +506,7 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubH
               })}
               <tr style={{ background: "#1e3a6e", borderTop: "2px solid #364F9F" }}>
                 <td style={{ padding: "14px 8px" }}></td>
-                <td style={{ padding: "14px 14px", fontWeight: 700, color: "#fff", fontSize: 14 }} colSpan={3}>OVERALL TOTAL — {data?.subHub?.name || "All Products"}</td>
+                <td style={{ padding: "14px 14px", fontWeight: 700, color: "#fff", fontSize: 14 }} colSpan={2}>OVERALL TOTAL — {data?.subHub?.name || "All Products"}</td>
                 <td style={{ padding: "14px 14px", fontWeight: 800, fontSize: 22, color: "#fff" }}>{grandTotal.toLocaleString("en-IN")}</td>
                 <td style={{ padding: "14px 14px" }}></td>
               </tr>
@@ -524,8 +525,11 @@ export default function DayEndReportPage() {
   const [activeTab, setActiveTab] = useState<Tab>("orders");
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
+  const [hasInventoryProducts, setHasInventoryProducts] = useState(false);
   const ordersDownloadRef = { current: null as (() => void) | null };
   const inventoryDownloadRef = { current: null as (() => void) | null };
+  const expandAllRef = { current: null as (() => void) | null };
+  const collapseAllRef = { current: null as (() => void) | null };
   const admin = getAdmin();
   const isMaster = admin?.role === "master_admin";
   const isSuperHub = admin?.role === "super_hub";
@@ -582,6 +586,19 @@ export default function DayEndReportPage() {
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* Expand/Collapse All — only on inventory tab when products exist */}
+      {activeTab === "inventory" && hasInventoryProducts && (
+        <>
+          <button onClick={() => expandAllRef.current?.()} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: "#555", background: "#f3f4f6", border: "none", borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontFamily: "Poppins, sans-serif", flexShrink: 0, height: 30 }}>
+            <ChevronDown style={{ width: 12, height: 12 }} /> Expand All
+          </button>
+          <button onClick={() => collapseAllRef.current?.()} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: "#555", background: "#f3f4f6", border: "none", borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontFamily: "Poppins, sans-serif", flexShrink: 0, height: 30 }}>
+            <ChevronRight style={{ width: 12, height: 12 }} /> Collapse All
+          </button>
+          <div style={{ width: 1, height: 20, background: "#e5e7eb", flexShrink: 0 }} />
+        </>
+      )}
 
       {/* Tab buttons */}
       <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 9, padding: 3, gap: 2, flexShrink: 0 }}>
@@ -649,6 +666,9 @@ export default function DayEndReportPage() {
             firstSubHubId={firstSubHubId}
             onDownload={() => {}}
             downloadRef={inventoryDownloadRef}
+            expandAllRef={expandAllRef}
+            collapseAllRef={collapseAllRef}
+            onHasProducts={setHasInventoryProducts}
           />
         )}
       </div>
