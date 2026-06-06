@@ -1,698 +1,549 @@
 import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  FileSpreadsheet, Download, RefreshCw, Package, AlertCircle,
-  ClipboardList, Boxes, ChevronDown, ChevronRight,
+  Download, Package, AlertCircle, ChevronDown, ChevronRight,
+  FileText, Printer, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import * as XLSX from "xlsx";
+import { printHtmlWithQZ } from "@/lib/qz-print";
+import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+const POPPINS = { fontFamily: "Poppins, sans-serif" };
 
 function getToken() { return localStorage.getItem("fishtokri_token") || ""; }
 function getAdmin() {
   try { return JSON.parse(localStorage.getItem("fishtokri_admin") || "null"); } catch { return null; }
 }
-
 async function apiFetch(path: string) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
+  const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new Error(`Request failed: ${path}`);
   return res.json();
 }
 
 function today() { return new Date().toISOString().slice(0, 10); }
-function daysAgo(n: number) {
-  const d = new Date(); d.setDate(d.getDate() - n + 1); return d.toISOString().slice(0, 10);
-}
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
-
 function formatRupees(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
+function formatTime12(t: string) {
+  if (!t) return t;
+  const [h, m] = t.split(":").map(Number);
+  const ampm = h >= 12 ? "PM" : "AM";
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+function formatTimeSlot(o: any): string | null {
+  if (o?.timeslotStart && o?.timeslotEnd) return `${formatTime12(o.timeslotStart)} to ${formatTime12(o.timeslotEnd)}`;
+  if (o?.timeslotLabel) { const m = String(o.timeslotLabel).match(/\(([^)]+)\)/); return m ? m[1] : o.timeslotLabel; }
+  return null;
+}
+function orderItemsTotal(items: any[]) {
+  return (items ?? []).reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+}
+function effectiveTotal(o: any): number {
+  const saved = Number(o?.total); if (saved > 0) return saved;
+  const sub = orderItemsTotal(Array.isArray(o?.items) ? o.items : []);
+  return Math.max(0, sub - (Number(o?.discount) || 0) + (Number(o?.slotCharge) || 0));
+}
+function numberToWords(n: number): string {
+  const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+  function h(x: number): string {
+    if (x < 20) return ones[x];
+    if (x < 100) return tens[Math.floor(x/10)] + (x%10 ? " "+ones[x%10] : "");
+    if (x < 1000) return ones[Math.floor(x/100)]+" Hundred"+(x%100 ? " "+h(x%100) : "");
+    if (x < 100000) return h(Math.floor(x/1000))+" Thousand"+(x%1000 ? " "+h(x%1000) : "");
+    if (x < 10000000) return h(Math.floor(x/100000))+" Lakh"+(x%100000 ? " "+h(x%100000) : "");
+    return h(Math.floor(x/10000000))+" Crore"+(x%10000000 ? " "+h(x%10000000) : "");
+  }
+  const int = Math.floor(Math.abs(n)), dec = Math.round((Math.abs(n)-int)*100);
+  if (int === 0 && dec === 0) return "Zero Rupees";
+  let r = int > 0 ? h(int)+" Rupees" : "";
+  if (dec > 0) r += (r ? " and " : "")+h(dec)+" Paise";
+  return r;
+}
 
-const STATUS_COLORS: Record<string, string> = {
-  paid: "bg-green-100 text-green-700",
-  partial: "bg-yellow-100 text-yellow-700",
-  unpaid: "bg-red-100 text-red-700",
-  pending: "bg-gray-100 text-gray-600",
-};
+function paymentBadgeStyle(status: string): React.CSSProperties {
+  const s = String(status || "").toLowerCase();
+  if (s === "paid") return { background: "#dcfce7", color: "#15803d" };
+  if (s === "partial") return { background: "#fef9c3", color: "#a16207" };
+  if (s === "unpaid") return { background: "#fee2e2", color: "#b91c1c" };
+  return { background: "#f3f4f6", color: "#555" };
+}
+function orderStatusBadgeStyle(status: string): React.CSSProperties {
+  const s = String(status || "").toLowerCase();
+  if (s === "delivered") return { background: "#dcfce7", color: "#15803d" };
+  if (s === "cancelled") return { background: "#fee2e2", color: "#b91c1c" };
+  if (s === "out_for_delivery") return { background: "#dbeafe", color: "#1d4ed8" };
+  if (s === "confirmed") return { background: "#ede9fe", color: "#7c3aed" };
+  if (s === "pending") return { background: "#fef9c3", color: "#a16207" };
+  if (s === "takeaway") return { background: "#ffedd5", color: "#c2410c" };
+  return { background: "#f3f4f6", color: "#555" };
+}
 
-const ORDER_STATUS_COLORS: Record<string, string> = {
-  delivered: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
-  out_for_delivery: "bg-blue-100 text-blue-700",
-  confirmed: "bg-purple-100 text-purple-700",
-  pending: "bg-yellow-100 text-yellow-700",
-  takeaway: "bg-orange-100 text-orange-700",
-};
+// ── Invoice Modal (self-contained) ───────────────────────────────────────────
+function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
+  const { toast } = useToast();
+  const items: any[] = order.items ?? [];
+  const subtotal = Number(order.subtotal) > 0 ? Number(order.subtotal) : orderItemsTotal(items);
+  const totalQty = items.reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
+  const discount = Number(order.discount) || 0;
+  const slotCharge = Number(order.slotCharge) || 0;
+  const deliveryCharge = Number(order.deliveryCharge) || 0;
+  const grandTotal = effectiveTotal(order);
+  const paidAmt = Number(order.paidAmount) || 0;
+  const dueAmt = Number(order.dueAmount) || Math.max(0, grandTotal - paidAmt);
+  const invPays: any[] = Array.isArray(order.payments) ? order.payments : [];
+  const walletAmt = (() => { const w = invPays.find((p: any) => String(p?.mode||"").toLowerCase()==="wallet"); return w ? Number(w.amount)||0 : 0; })();
+  const invoiceNo = order.orderId || order.invoiceNo || ("INV-"+String(order._id||order.id||"").slice(-6).toUpperCase());
+  const d = new Date(order.createdAt ?? Date.now());
+  const deliveryDateStr = (() => {
+    const s = String(order.deliveryDate ?? "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { const [y,m,day] = s.split("-"); return `${day}-${m}-${y}`; }
+    return [String(d.getDate()).padStart(2,"0"),String(d.getMonth()+1).padStart(2,"0"),d.getFullYear()].join("-");
+  })();
+  const timeStr = d.toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit", hour12:true });
+  const payMode = order.paymentMode || (invPays.length>0 ? [...new Set(invPays.map((p:any)=>p.method))].join(", ") : "Cash");
+  const payLabel = order.paymentStatus==="paid" ? "Paid" : order.paymentStatus==="partial" ? "Partial" : "Unpaid";
+  const payStatusColor = order.paymentStatus==="paid" ? "#15803d" : order.paymentStatus==="partial" ? "#b45309" : "#b91c1c";
+  const payStatusBg = order.paymentStatus==="paid" ? "#f0fdf4" : order.paymentStatus==="partial" ? "#fffbeb" : "#fef2f2";
 
-// ── Date filter bar ──────────────────────────────────────────────────────────
-function DateFilterBar({
-  from, to, setFrom, setTo, applied, onApply,
-}: {
-  from: string; to: string;
-  setFrom: (v: string) => void; setTo: (v: string) => void;
-  applied: { from: string; to: string };
-  onApply: (f?: string, t?: string) => void;
-}) {
-  const PRESETS = [
-    { label: "Today", f: today(), t: today() },
-    { label: "Last 7 Days", f: daysAgo(7), t: today() },
-    { label: "Last 30 Days", f: daysAgo(30), t: today() },
-  ];
+  const handlePrint = async () => {
+    const itemRows = items.map((it:any) => {
+      const qty = Number(it.quantity)||1, rate = Number(it.price)||0;
+      return `<tr><td style="padding:5px 4px;border-bottom:1px solid #eee;">${it.name}</td><td style="padding:5px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}${it.unit?` ${it.unit}`:""}</td><td style="padding:5px 4px;border-bottom:1px solid #eee;text-align:right;">${rate.toFixed(2)}</td><td style="padding:5px 4px;border-bottom:1px solid #eee;text-align:right;">${(qty*rate).toFixed(2)}</td></tr>`;
+    }).join("");
+    const slotRow = slotCharge>0 ? `<tr><td style="padding:4px 2px;" colspan="3">Slot Charge :</td><td style="padding:4px 2px;text-align:right;">+ ${slotCharge.toFixed(2)}</td></tr>` : "";
+    const delivRow = deliveryCharge>0 ? `<tr><td style="padding:4px 2px;" colspan="3">Delivery Charge :</td><td style="padding:4px 2px;text-align:right;">+ ${deliveryCharge.toFixed(2)}</td></tr>` : "";
+    const walletRow = walletAmt>0 ? `<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:13px;"><span>Wallet Applied:</span><span>− ${walletAmt.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;margin:4px 0;font-size:14px;font-weight:700;"><span>Balance Due:</span><span>${Math.max(0,grandTotal-walletAmt).toFixed(2)}</span></div>` : "";
+    const paidDueRow = (order.paidAmount!==undefined||order.dueAmount!==undefined) ? `<div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:12px;"><span>Paid: <strong style="color:#16a34a;">₹${paidAmt.toFixed(2)}</strong></span><span>Due: <strong style="color:${dueAmt>0?"#ef4444":"#16a34a"};">₹${dueAmt.toFixed(2)}</strong></span></div>` : "";
+    const notesRow = order.notes ? `<div style="border-top:1px dashed #bbb;margin:10px 0;"></div><div style="font-size:12px;"><b>Note:</b> ${order.notes}</div>` : "";
+    const slotLabel = formatTimeSlot(order);
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${invoiceNo}</title><style>* { margin:0;padding:0;box-sizing:border-box; } body { font-family:Arial,sans-serif;color:#111;background:#fff; } @page { size:80mm auto;margin:0; }</style></head><body><div style="padding:4px 8px;font-size:13px;color:#111;"><h2 style="text-align:center;font-size:16px;font-weight:700;margin-bottom:2px;">Atha Foods${order.superHubName?` - ${order.superHubName}`:""}</h2><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="text-align:center;font-size:12px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone||"—"}</div><div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px;"><span><b>Invoice No:</b> ${invoiceNo}</span><span><b>Date:</b> ${deliveryDateStr}</span></div><div style="display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:12px;"><span><b>Payment Mode:</b> ${payMode} <span style="margin-left:5px;font-size:10px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span></span><span><b>Time:</b> ${timeStr}</span></div><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="font-size:12px;margin:2px 0;"><b>Name:</b> ${order.customerName}</div>${order.address?`<div style="font-size:12px;margin:2px 0;"><b>Add :</b> ${order.address}</div>`:""} ${slotLabel?`<div style="font-size:12px;margin:2px 0;"><b>Delivery Slot:</b> ${slotLabel}</div>`:""}<div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0;"><thead><tr style="border-bottom:1px solid #555;"><th style="padding:5px 4px;text-align:left;font-weight:600;">Item</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Qty</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Rate</th><th style="padding:5px 4px;text-align:right;font-weight:600;">Amount</th></tr></thead><tbody>${itemRows}<tr style="border-top:1px solid #aaa;"><td style="padding:5px 4px;font-weight:600;">Total Items: ${items.length}</td><td style="padding:5px 4px;text-align:right;font-weight:600;">${totalQty}</td><td></td><td style="padding:5px 4px;text-align:right;font-weight:600;">${subtotal.toFixed(2)}</td></tr><tr><td style="padding:4px 2px;" colspan="3">Discount${order.couponCode?` (${order.couponCode})`:""} :</td><td style="padding:4px 2px;text-align:right;">- ${discount.toFixed(2)}</td></tr>${slotRow}${delivRow}</tbody></table><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>${walletRow}<div style="text-align:center;font-style:italic;font-size:11px;color:#555;margin:4px 0 8px;">( ${numberToWords(grandTotal)} )</div>${paidDueRow}${notesRow}<div style="text-align:center;font-size:11px;color:#555;line-height:1.8;margin-top:14px;">Thank you for your business!<br/>For any query - 9220200100</div></div></body></html>`;
+    toast({ title: "Printing..." });
+    const qzResult = await printHtmlWithQZ(html);
+    if (qzResult.success) return;
+    toast({ title: "Print failed, opening dialog...", variant: "destructive" });
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 400);
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-      <div className="flex gap-2">
-        {PRESETS.map(({ label, f, t }) => (
-          <button
-            key={label}
-            onClick={() => { setFrom(f); setTo(t); onApply(f, t); }}
-            className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
-              applied.from === f && applied.to === t
-                ? "bg-brand-primary text-white"
-                : "bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label className="text-xs font-semibold text-gray-500 block mb-1">From</label>
-          <Input type="date" value={from}
-            onChange={(e) => { setFrom(e.target.value); onApply(e.target.value, to); }}
-            className="w-full text-sm h-9" />
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden" style={POPPINS}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-black">Voucher Preview — {invoiceNo}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
         </div>
-        <div className="flex-1">
-          <label className="text-xs font-semibold text-gray-500 block mb-1">To</label>
-          <Input type="date" value={to}
-            onChange={(e) => { setTo(e.target.value); onApply(from, e.target.value); }}
-            className="w-full text-sm h-9" />
+        <div className="max-h-[70vh] overflow-y-auto p-5 bg-gray-50">
+          <div className="bg-white max-w-md mx-auto p-5 text-[13px] text-gray-800 shadow-sm border border-gray-200 rounded" style={POPPINS}>
+            <h3 className="text-center font-bold text-[15px] mb-1">Atha Foods{order.superHubName ? ` - ${order.superHubName}` : ""}</h3>
+            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="text-center text-[12px]">Mobile No: {order.phone || "—"}</div>
+            <div className="flex justify-between mt-2 text-[12px]">
+              <span><b>Invoice No:</b> {invoiceNo}</span>
+              <span><b>Date:</b> {deliveryDateStr}</span>
+            </div>
+            <div className="flex justify-between text-[12px]">
+              <span><b>Payment Mode:</b> {payMode}
+                <span className={`ml-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${order.paymentStatus==="paid" ? "text-green-700 bg-green-50 border-green-200" : order.paymentStatus==="partial" ? "text-amber-700 bg-amber-50 border-amber-200" : "text-red-700 bg-red-50 border-red-200"}`}>{payLabel}</span>
+              </span>
+              <span><b>Time:</b> {timeStr}</span>
+            </div>
+            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="text-[12px]"><b>Name:</b> {order.customerName}</div>
+            {order.address && <div className="text-[12px]"><b>Add :</b> {order.address}</div>}
+            {formatTimeSlot(order) && <div className="text-[12px]"><b>Delivery Slot:</b> {formatTimeSlot(order)}</div>}
+            <div className="border-t border-dashed border-gray-400 my-2" />
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-gray-700 text-left">
+                  <th className="py-1">Item</th><th className="py-1 text-right">Qty</th><th className="py-1 text-right">Rate</th><th className="py-1 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it:any,i:number)=>{const qty=Number(it.quantity)||1,rate=Number(it.price)||0;return(<tr key={i}><td className="py-1">{it.name}</td><td className="py-1 text-right">{qty}{it.unit?` ${it.unit}`:""}</td><td className="py-1 text-right">{rate.toFixed(2)}</td><td className="py-1 text-right">{(qty*rate).toFixed(2)}</td></tr>);})}
+                <tr className="border-t border-gray-400"><td className="py-1"><b>Total Items: {items.length}</b></td><td className="py-1 text-right"><b>{totalQty}</b></td><td/><td className="py-1 text-right"><b>{subtotal.toFixed(2)}</b></td></tr>
+                <tr><td className="py-1" colSpan={3}>Discount{order.couponCode?` (${order.couponCode})`:""} :</td><td className="py-1 text-right">- {discount.toFixed(2)}</td></tr>
+                {slotCharge>0&&<tr><td className="py-1" colSpan={3}>Slot Charge :</td><td className="py-1 text-right">+ {slotCharge.toFixed(2)}</td></tr>}
+                {deliveryCharge>0&&<tr><td className="py-1" colSpan={3}>Delivery Charge :</td><td className="py-1 text-right">+ {deliveryCharge.toFixed(2)}</td></tr>}
+              </tbody>
+            </table>
+            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="flex justify-between text-[15px] font-bold"><span>Grand Total:</span><span>{grandTotal.toFixed(2)}</span></div>
+            {walletAmt>0&&<><div className="flex justify-between text-[13px] mt-1"><span>Wallet Applied:</span><span>− {walletAmt.toFixed(2)}</span></div><div className="flex justify-between text-[14px] font-bold mt-0.5"><span>Balance Due (Cash/UPI):</span><span>{Math.max(0,grandTotal-walletAmt).toFixed(2)}</span></div></>}
+            <div className="text-center text-[11px] text-gray-600 mt-1">( {numberToWords(grandTotal)} )</div>
+            {(order.paidAmount!==undefined||order.dueAmount!==undefined)&&<div className="flex justify-between text-[12px] mt-2"><span>Paid: <strong className="text-green-600">{formatRupees(paidAmt)}</strong></span><span>Due: <strong className={dueAmt>0?"text-red-500":"text-green-600"}>{formatRupees(dueAmt)}</strong></span></div>}
+            {order.notes&&<><div className="border-t border-dashed border-gray-400 my-2"/><div className="text-[12px]"><b>Note:</b> {order.notes}</div></>}
+            <div className="text-center text-[12px] text-gray-600 mt-3">Thank you for your business!<br/>For any query - 9220200100</div>
+          </div>
         </div>
-      </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-white">
+          <Button variant="outline" onClick={onClose} className="h-9" style={POPPINS}>Close</Button>
+          <Button onClick={handlePrint} className="h-9 gap-1.5 bg-[#1A56DB] hover:bg-[#1447B4] text-white" style={POPPINS}>
+            <Printer className="w-3.5 h-3.5" /> Print Invoice
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="flex-1 min-w-[140px]" style={POPPINS}>
+      <p style={{ fontSize: 11, fontWeight: 500, color: "#555", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: 22, fontWeight: 700, color: "#000", lineHeight: 1.1 }}>{value}</p>
+      {sub && <p style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{sub}</p>}
     </div>
   );
 }
 
-// ── Hub selector ─────────────────────────────────────────────────────────────
-function HubSelector({
-  subHubs, selectedSubHubId, onChange,
-}: {
-  subHubs: any[]; selectedSubHubId: string; onChange: (id: string) => void;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-      <label className="text-xs font-semibold text-gray-500 block mb-2">Sub Hub</label>
-      <select
-        value={selectedSubHubId}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full text-sm border border-gray-200 rounded-lg px-3 h-9 bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-      >
-        <option value="">— Select Sub Hub —</option>
-        {subHubs.map((h) => (
-          <option key={h.id || h._id} value={h.id || h._id}>{h.name}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-// ── ORDERS REPORT ────────────────────────────────────────────────────────────
-function OrdersReport({ subHubs }: { subHubs: any[] }) {
+// ── ORDERS REPORT ─────────────────────────────────────────────────────────────
+function OrdersReport({ onDownload, downloadRef }: { onDownload: (fn: () => void) => void; downloadRef: any }) {
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
-  const [applied, setApplied] = useState({ from: today(), to: today() });
-  const [subHubId, setSubHubId] = useState("");
+  const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
 
-  const admin = getAdmin();
-  const isSubHub = admin?.role === "sub_hub";
-
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ["day-end-orders", applied.from, applied.to, subHubId],
+  const { data, isLoading, isError, isFetching } = useQuery({
+    queryKey: ["day-end-orders", from, to],
     queryFn: () => {
-      const p = new URLSearchParams({ from: applied.from, to: applied.to });
-      if (subHubId) p.set("subHubId", subHubId);
+      const p = new URLSearchParams({ from, to });
       return apiFetch(`/api/reports/day-end/orders?${p}`);
     },
   });
 
   const orders: any[] = data?.orders ?? [];
 
+  // Stats
+  const stats = useMemo(() => {
+    let cash = 0, upi = 0, wallet = 0, totalRev = 0, unpaid = 0;
+    for (const o of orders) {
+      totalRev += o.total || 0;
+      const pays: any[] = Array.isArray(o.payments) ? o.payments : [];
+      if (pays.length > 0) {
+        for (const p of pays) {
+          const mode = String(p?.mode || "").toLowerCase();
+          const amt = Number(p?.amount) || 0;
+          if (mode === "cash" || mode === "cod") cash += amt;
+          else if (mode === "upi") upi += amt;
+          else if (mode === "wallet") wallet += amt;
+        }
+      } else {
+        const mode = String(o.paymentMode || "").toLowerCase();
+        const amt = o.total || 0;
+        if (mode === "cash" || mode === "cod") cash += amt;
+        else if (mode === "upi") upi += amt;
+        else if (mode === "wallet") wallet += amt;
+      }
+      if (o.paymentStatus === "unpaid" || o.paymentStatus === "partial") {
+        unpaid += Number(o.dueAmount) || Math.max(0, (o.total || 0) - (Number(o.paidAmount) || 0));
+      }
+    }
+    return { cash, upi, wallet, totalRev, unpaid };
+  }, [orders]);
+
   const handleDownload = useCallback(() => {
     if (!orders.length) return;
-
-    const rows: any[] = [];
-    rows.push([
-      "Invoice No", "Customer Name", "Phone", "Address",
-      "Ordered Items", "Total Price (₹)", "Delivery Partner",
-      "Payment Mode", "Payment Status", "Order Status",
-      "Delivery Date", "Sub Hub",
-    ]);
-
+    const rows: any[] = [["Invoice No","Customer Name","Phone","Address","Ordered Items","Total Price (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status","Delivery Date","Sub Hub"]];
     for (const o of orders) {
-      rows.push([
-        o.invoiceNo,
-        o.customerName,
-        o.phone,
-        o.address,
-        o.itemsSummary,
-        o.total,
-        o.deliveryPerson,
-        o.paymentMode,
-        o.paymentStatus,
-        o.status,
-        o.deliveryDate || "—",
-        o.subHubName,
-      ]);
+      rows.push([o.invoiceNo,o.customerName,o.phone,o.address,o.itemsSummary,o.total,o.deliveryPerson,o.paymentMode,o.paymentStatus,o.status,o.deliveryDate||"—",o.subHubName]);
     }
-
     const ws = XLSX.utils.aoa_to_sheet(rows);
-
-    // Column widths
-    ws["!cols"] = [
-      { wch: 20 }, { wch: 22 }, { wch: 14 }, { wch: 35 },
-      { wch: 45 }, { wch: 16 }, { wch: 22 },
-      { wch: 14 }, { wch: 16 }, { wch: 16 },
-      { wch: 14 }, { wch: 20 },
-    ];
-
+    ws["!cols"] = [{wch:20},{wch:22},{wch:14},{wch:35},{wch:45},{wch:16},{wch:22},{wch:14},{wch:16},{wch:16},{wch:14},{wch:20}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Orders Report");
-    const filename = `orders-report-${applied.from}-to-${applied.to}.xlsx`;
-    XLSX.writeFile(wb, filename);
-  }, [orders, applied]);
+    XLSX.writeFile(wb, `orders-report-${from}-to-${to}.xlsx`);
+  }, [orders, from, to]);
+
+  // Expose download fn to parent
+  downloadRef.current = handleDownload;
 
   return (
-    <div className="space-y-4">
-      {/* Filters */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <DateFilterBar from={from} to={to} setFrom={setFrom} setTo={setTo}
-            applied={applied} onApply={(f, t) => setApplied({ from: f ?? from, to: t ?? to })} />
+    <div style={POPPINS}>
+      {/* Date bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <label style={{ fontSize: 12, fontWeight: 500, color: "#555" }}>From</label>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 13, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", height: 36 }} />
         </div>
-        {!isSubHub && subHubs.length > 0 && (
-          <HubSelector subHubs={subHubs} selectedSubHubId={subHubId} onChange={setSubHubId} />
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <label style={{ fontSize: 12, fontWeight: 500, color: "#555" }}>To</label>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 10px", fontSize: 13, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", height: 36 }} />
+        </div>
+        {isFetching && <span style={{ fontSize: 12, color: "#888" }}>Loading…</span>}
       </div>
 
-      {/* Summary + Download */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3">
-            <p className="text-xs font-semibold text-gray-500">Total Orders</p>
-            <p className="text-xl font-bold text-brand-primary">{orders.length}</p>
+      {/* Stats strip */}
+      <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
+        {[
+          { label: "Total Orders", value: String(orders.length) },
+          { label: "Cash Revenue", value: formatRupees(stats.cash) },
+          { label: "UPI Revenue", value: formatRupees(stats.upi) },
+          { label: "Total Revenue", value: formatRupees(stats.totalRev) },
+          { label: "Wallet Collected", value: formatRupees(stats.wallet) },
+          { label: "Unpaid Dues", value: formatRupees(stats.unpaid) },
+        ].map((s, i, arr) => (
+          <div key={s.label} style={{ flex: 1, padding: "16px 18px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
+            <p style={{ fontSize: 10, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
+            <p style={{ fontSize: 20, fontWeight: 700, color: i === 5 ? "#dc2626" : "#000", lineHeight: 1.1 }}>{s.value}</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3">
-            <p className="text-xs font-semibold text-gray-500">Total Revenue</p>
-            <p className="text-xl font-bold text-green-600">
-              {formatRupees(orders.reduce((s, o) => s + (o.total || 0), 0))}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-1.5">
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleDownload}
-            disabled={!orders.length || isFetching}
-            className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Download Excel
-          </Button>
-        </div>
+        ))}
       </div>
 
       {/* States */}
-      {isLoading && (
-        <div className="flex items-center justify-center py-20 gap-2 text-gray-400">
-          <RefreshCw className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading orders…</span>
-        </div>
-      )}
-      {isError && (
-        <div className="text-center py-12 text-red-500 text-sm">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-60" />
-          Failed to load orders. Please try again.
-        </div>
-      )}
+      {isLoading && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>Loading orders…</div>}
+      {isError && <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
       {!isLoading && !isError && orders.length === 0 && (
-        <div className="text-center py-20 text-gray-400">
-          <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-base font-medium">No orders found for this period</p>
-          <p className="text-sm mt-1">Try adjusting the date range or hub filter</p>
+        <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa" }}>
+          <Package style={{ width: 40, height: 40, margin: "0 auto 10px", opacity: 0.3 }} />
+          <p style={{ fontSize: 14, fontWeight: 500 }}>No orders found for this period</p>
         </div>
       )}
 
       {/* Table */}
       {!isLoading && !isError && orders.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Invoice No</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Customer</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Phone</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap min-w-[180px]">Address</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap min-w-[200px]">Items & Qty</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap text-right">Total</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Delivery Partner</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Payment Mode</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Payment Status</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Order Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o, i) => (
-                  <tr key={i} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50">
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs font-semibold text-brand-secondary bg-blue-50 px-2 py-1 rounded">
-                        {o.invoiceNo}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{o.customerName}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{o.phone}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs max-w-[200px]">
-                      <span className="line-clamp-2">{o.address}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="space-y-0.5">
-                        {o.items.map((it: any, j: number) => (
-                          <div key={j} className="text-xs text-gray-700">
-                            <span className="font-medium">{it.name}</span>
-                            <span className="text-gray-400"> × {it.quantity}{it.unit ? ` ${it.unit}` : ""}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-800 whitespace-nowrap">
-                      {formatRupees(o.total)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{o.deliveryPerson}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-xs font-semibold text-gray-700">{o.paymentMode}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                        STATUS_COLORS[(o.paymentStatus || "").toLowerCase()] || "bg-gray-100 text-gray-600"
-                      }`}>
-                        {o.paymentStatus}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`text-xs font-semibold px-2 py-1 rounded-full capitalize ${
-                        ORDER_STATUS_COLORS[(o.status || "").toLowerCase()] || "bg-gray-100 text-gray-600"
-                      }`}>
-                        {(o.status || "").replace(/_/g, " ")}
-                      </span>
-                    </td>
-                  </tr>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                {["Invoice No","Customer","Phone","Address","Items & Qty","Total","Delivery Partner","Payment Mode","Payment Status","Order Status","View"].map(h => (
+                  <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#555", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#fafafa")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                  <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "#364F9F", background: "#eff3ff", padding: "2px 8px", borderRadius: 6 }}>{o.invoiceNo}</span>
+                  </td>
+                  <td style={{ padding: "10px 14px", fontWeight: 600, color: "#000", whiteSpace: "nowrap" }}>{o.customerName}</td>
+                  <td style={{ padding: "10px 14px", color: "#444", whiteSpace: "nowrap" }}>{o.phone}</td>
+                  <td style={{ padding: "10px 14px", color: "#555", fontSize: 12, maxWidth: 180 }}>
+                    <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{o.address}</span>
+                  </td>
+                  <td style={{ padding: "10px 14px", minWidth: 160 }}>
+                    {(o.items || []).map((it: any, j: number) => (
+                      <div key={j} style={{ fontSize: 12, color: "#222" }}>
+                        <span style={{ fontWeight: 600 }}>{it.name}</span>
+                        <span style={{ color: "#888" }}> × {it.quantity}{it.unit ? ` ${it.unit}` : ""}</span>
+                      </div>
+                    ))}
+                  </td>
+                  <td style={{ padding: "10px 14px", fontWeight: 700, color: "#000", whiteSpace: "nowrap", textAlign: "right" }}>{formatRupees(o.total)}</td>
+                  <td style={{ padding: "10px 14px", color: "#444", whiteSpace: "nowrap" }}>{o.deliveryPerson}</td>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: "#000", whiteSpace: "nowrap" }}>{o.paymentMode}</td>
+                  <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, ...paymentBadgeStyle(o.paymentStatus) }}>
+                      {o.paymentStatus}
+                    </span>
+                  </td>
+                  <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, textTransform: "capitalize", ...orderStatusBadgeStyle(o.status) }}>
+                      {String(o.status || "").replace(/_/g, " ")}
+                    </span>
+                  </td>
+                  <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                    <button
+                      onClick={() => setInvoiceOrder(o)}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#364F9F", background: "#eff3ff", border: "none", borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontFamily: "Poppins, sans-serif" }}
+                    >
+                      <FileText style={{ width: 13, height: 13 }} /> View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+
+      {invoiceOrder && <InvoiceModal order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
     </div>
   );
 }
 
-// ── INVENTORY REPORT ─────────────────────────────────────────────────────────
-function InventoryReport({ subHubs }: { subHubs: any[] }) {
-  const [subHubId, setSubHubId] = useState(subHubs[0]?.id || subHubs[0]?._id || "");
+// ── INVENTORY REPORT ──────────────────────────────────────────────────────────
+function InventoryReport({ firstSubHubId, onDownload, downloadRef }: { firstSubHubId: string; onDownload: (fn: () => void) => void; downloadRef: any }) {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
 
-  const admin = getAdmin();
-  const isSubHub = admin?.role === "sub_hub";
-
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ["day-end-inventory", subHubId],
-    queryFn: () => apiFetch(`/api/reports/day-end/inventory?subHubId=${subHubId}`),
-    enabled: !!subHubId,
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["day-end-inventory", firstSubHubId],
+    queryFn: () => apiFetch(`/api/reports/day-end/inventory?subHubId=${firstSubHubId}`),
+    enabled: !!firstSubHubId,
   });
 
   const products: any[] = data?.products ?? [];
+  const grandTotal = useMemo(() => products.reduce((s, p) => s + p.totalQuantity, 0), [products]);
 
-  const toggleProduct = (id: string) => {
-    setExpandedProducts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const expandAll = () => setExpandedProducts(new Set(products.map((p) => p.productId)));
+  const toggleProduct = (id: string) => setExpandedProducts(prev => {
+    const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next;
+  });
+  const expandAll = () => setExpandedProducts(new Set(products.map(p => p.productId)));
   const collapseAll = () => setExpandedProducts(new Set());
 
   const handleDownload = useCallback(() => {
     if (!products.length) return;
-
-    const rows: any[] = [];
-
-    // Header
-    rows.push([
-      "Product Name", "Category", "Unit", "Price (₹)",
-      "Batch No.", "Batch Qty", "Received Date", "Expiry Date",
-      "Shelf Life (Days)", "Days Left", "Status", "Notes",
-      "", "Product Total Qty",
-    ]);
-
+    const rows: any[] = [["Product Name","Category","Unit","Price (₹)","Batch No.","Batch Qty","Received Date","Expiry Date","Shelf Life (Days)","Days Left","Status","Notes","","Product Total Qty"]];
     for (const p of products) {
       const batches: any[] = p.batches ?? [];
-      if (batches.length === 0) {
-        rows.push([
-          p.name, p.category, p.unit, p.price,
-          "—", 0, "—", "—", "—", "—", p.status === "available" ? "Available" : "Unavailable", "—",
-          "", p.totalQuantity,
-        ]);
-        continue;
-      }
-
+      if (!batches.length) { rows.push([p.name,p.category,p.unit,p.price,"—",0,"—","—","—","—",p.status==="available"?"Available":"Unavailable","—","",p.totalQuantity]); continue; }
       batches.forEach((b, idx) => {
-        const daysLeftLabel = b.daysLeft === null ? "No Expiry"
-          : b.isExpired ? `Expired (${Math.abs(b.daysLeft)}d ago)`
-          : `${b.daysLeft}d left`;
-
-        rows.push([
-          idx === 0 ? p.name : "",
-          idx === 0 ? p.category : "",
-          idx === 0 ? p.unit : "",
-          idx === 0 ? p.price : "",
-          b.batchNumber,
-          b.quantity,
-          b.receivedDate || "—",
-          b.expiryDate || "—",
-          b.shelfLifeDays ?? "—",
-          daysLeftLabel,
-          b.isExpired ? "Expired" : "Active",
-          b.notes || "—",
-          "",
-          idx === batches.length - 1 ? p.totalQuantity : "",
-        ]);
+        const daysLeftLabel = b.daysLeft===null?"No Expiry":b.isExpired?`Expired (${Math.abs(b.daysLeft)}d ago)`:`${b.daysLeft}d left`;
+        rows.push([idx===0?p.name:"",idx===0?p.category:"",idx===0?p.unit:"",idx===0?p.price:"",b.batchNumber,b.quantity,b.receivedDate||"—",b.expiryDate||"—",b.shelfLifeDays??"—",daysLeftLabel,b.isExpired?"Expired":"Active",b.notes||"—","",idx===batches.length-1?p.totalQuantity:""]);
       });
-
-      // Subtotal row
-      rows.push([
-        "", "", "", "",
-        "↳ SUBTOTAL", p.totalQuantity, "", "", "", "", "", "",
-        "", "",
-      ]);
+      rows.push(["","","","","↳ SUBTOTAL",p.totalQuantity,"","","","","","","",""]);
     }
-
-    // Grand total
-    const grandTotal = products.reduce((s, p) => s + p.totalQuantity, 0);
-    rows.push([]);
-    rows.push(["GRAND TOTAL (All Products)", "", "", "", "", grandTotal]);
-
+    rows.push([]); rows.push(["GRAND TOTAL (All Products)","","","","",grandTotal]);
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [
-      { wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 10 },
-      { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
-      { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 22 },
-      { wch: 2 }, { wch: 16 },
-    ];
-
+    ws["!cols"] = [{wch:28},{wch:18},{wch:12},{wch:10},{wch:16},{wch:10},{wch:14},{wch:14},{wch:16},{wch:16},{wch:12},{wch:22},{wch:2},{wch:16}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory Report");
-    const subHubName = data?.subHub?.name || "inventory";
-    XLSX.writeFile(wb, `${subHubName.replace(/\s+/g, "-")}-inventory-${new Date().toISOString().slice(0, 10)}.xlsx`);
-  }, [products, data]);
+    XLSX.writeFile(wb, `${(data?.subHub?.name||"inventory").replace(/\s+/g,"-")}-inventory-${today()}.xlsx`);
+  }, [products, data, grandTotal]);
 
-  const grandTotal = useMemo(() => products.reduce((s, p) => s + p.totalQuantity, 0), [products]);
+  downloadRef.current = handleDownload;
 
   return (
-    <div className="space-y-4">
-      {/* Hub selector + controls */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        {!isSubHub && subHubs.length > 0 ? (
-          <div className="w-full sm:w-72">
-            <HubSelector subHubs={subHubs} selectedSubHubId={subHubId} onChange={setSubHubId} />
-          </div>
-        ) : (
-          <div />
+    <div style={POPPINS}>
+      {/* Controls */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+        {products.length > 0 && (
+          <>
+            <button onClick={expandAll} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#555", background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontFamily: "Poppins, sans-serif" }}>
+              <ChevronDown style={{ width: 13, height: 13 }} /> Expand All
+            </button>
+            <button onClick={collapseAll} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#555", background: "#f3f4f6", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontFamily: "Poppins, sans-serif" }}>
+              <ChevronRight style={{ width: 13, height: 13 }} /> Collapse All
+            </button>
+          </>
         )}
-        <div className="flex gap-2 flex-shrink-0">
-          {products.length > 0 && (
-            <>
-              <Button variant="outline" size="sm" onClick={expandAll} className="gap-1 text-xs">
-                <ChevronDown className="w-3.5 h-3.5" /> Expand All
-              </Button>
-              <Button variant="outline" size="sm" onClick={collapseAll} className="gap-1 text-xs">
-                <ChevronRight className="w-3.5 h-3.5" /> Collapse All
-              </Button>
-            </>
-          )}
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-1.5">
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleDownload}
-            disabled={!products.length || isFetching || !subHubId}
-            className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Download Excel
-          </Button>
-        </div>
+        {!firstSubHubId && <span style={{ fontSize: 13, color: "#888" }}>No sub hub linked to your account</span>}
       </div>
 
-      {/* No hub selected */}
-      {!subHubId && (
-        <div className="text-center py-20 text-gray-400">
-          <Boxes className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-base font-medium">Select a Sub Hub to view inventory</p>
+      {/* Stats strip */}
+      {products.length > 0 && (
+        <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
+          {[
+            { label: "Total Products", value: String(products.length) },
+            { label: "Total Stock", value: grandTotal.toLocaleString("en-IN") },
+            { label: "Out of Stock", value: String(products.filter(p => p.activeQuantity === 0).length) },
+            { label: "Expiring Soon (≤3d)", value: String(products.filter(p => p.batches.some((b:any) => !b.isExpired && b.daysLeft !== null && b.daysLeft <= 3)).length) },
+          ].map((s, i, arr) => (
+            <div key={s.label} style={{ flex: 1, padding: "16px 18px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
+              <p style={{ fontSize: 10, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: i === 2 ? "#dc2626" : i === 3 ? "#d97706" : "#000", lineHeight: 1.1 }}>{s.value}</p>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* States */}
-      {subHubId && isLoading && (
-        <div className="flex items-center justify-center py-20 gap-2 text-gray-400">
-          <RefreshCw className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading inventory…</span>
-        </div>
-      )}
-      {subHubId && isError && (
-        <div className="text-center py-12 text-red-500 text-sm">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-60" />
-          Failed to load inventory. Please try again.
-        </div>
-      )}
-      {subHubId && !isLoading && !isError && products.length === 0 && (
-        <div className="text-center py-20 text-gray-400">
-          <Boxes className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-base font-medium">No inventory products found for this hub</p>
-        </div>
-      )}
+      {!firstSubHubId && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>No sub hub linked to your account.</div>}
+      {firstSubHubId && isLoading && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>Loading inventory…</div>}
+      {firstSubHubId && isError && <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
+      {firstSubHubId && !isLoading && !isError && products.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>No inventory products found.</div>}
 
-      {/* Summary strip */}
-      {subHubId && !isLoading && !isError && products.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Products</p>
-            <p className="text-2xl font-bold text-brand-primary">{products.length}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Stock</p>
-            <p className="text-2xl font-bold text-gray-800">{grandTotal.toLocaleString("en-IN")}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Out of Stock</p>
-            <p className="text-2xl font-bold text-red-500">
-              {products.filter((p) => p.activeQuantity === 0).length}
-            </p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Expiring Soon</p>
-            <p className="text-2xl font-bold text-amber-500">
-              {products.filter((p) =>
-                p.batches.some((b: any) => !b.isExpired && b.daysLeft !== null && b.daysLeft <= 3)
-              ).length}
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Table */}
+      {firstSubHubId && !isLoading && !isError && products.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                <th style={{ width: 28, padding: "10px 8px" }}></th>
+                {["Product Name","Category","Unit","Total Qty","Status"].map(h => (
+                  <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#555", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(p => {
+                const isExpanded = expandedProducts.has(p.productId);
+                const hasBatches = p.batches && p.batches.length > 0;
+                return (
+                  <>
+                    <tr key={p.productId}
+                      style={{ borderBottom: "1px solid #f3f4f6", cursor: hasBatches ? "pointer" : "default", background: "transparent" }}
+                      onClick={() => hasBatches && toggleProduct(p.productId)}
+                      onMouseEnter={e => hasBatches && (e.currentTarget.style.background = "#f8faff")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                      <td style={{ padding: "10px 8px", color: "#999" }}>{hasBatches ? (isExpanded ? <ChevronDown style={{width:14,height:14}} /> : <ChevronRight style={{width:14,height:14}} />) : null}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{ fontWeight: 600, color: "#000" }}>{p.name}</span>
+                        {hasBatches && <span style={{ marginLeft: 6, fontSize: 11, color: "#888", fontWeight: 400 }}>{p.batches.length} batch{p.batches.length !== 1 ? "es" : ""}</span>}
+                      </td>
+                      <td style={{ padding: "10px 14px", color: "#444" }}>{p.category}</td>
+                      <td style={{ padding: "10px 14px", color: "#666" }}>{p.unit || "—"}</td>
+                      <td style={{ padding: "10px 14px", fontWeight: 700, fontSize: 16, color: p.activeQuantity === 0 ? "#dc2626" : "#000" }}>{p.totalQuantity.toLocaleString("en-IN")}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, ...(p.activeQuantity === 0 ? { background: "#fee2e2", color: "#b91c1c" } : p.status === "available" ? { background: "#dcfce7", color: "#15803d" } : { background: "#f3f4f6", color: "#555" }) }}>
+                          {p.activeQuantity === 0 ? "Out of Stock" : p.status === "available" ? "Available" : "Unavailable"}
+                        </span>
+                      </td>
+                    </tr>
 
-      {/* Inventory table */}
-      {subHubId && !isLoading && !isError && products.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap w-8"></th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Product Name</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Category</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Unit</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap text-right">
-                    Total Qty
-                  </th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => {
-                  const isExpanded = expandedProducts.has(p.productId);
-                  const hasBatches = p.batches && p.batches.length > 0;
-                  return (
-                    <>
-                      {/* Product row */}
-                      <tr
-                        key={p.productId}
-                        className={`border-b border-gray-100 transition-colors ${
-                          hasBatches ? "cursor-pointer hover:bg-blue-50/50" : "hover:bg-gray-50/50"
-                        }`}
-                        onClick={() => hasBatches && toggleProduct(p.productId)}
-                      >
-                        <td className="px-4 py-3 text-gray-400">
-                          {hasBatches ? (
-                            isExpanded
-                              ? <ChevronDown className="w-4 h-4" />
-                              : <ChevronRight className="w-4 h-4" />
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="font-semibold text-gray-900">{p.name}</span>
-                          {hasBatches && (
-                            <span className="ml-2 text-xs text-gray-400 font-normal">
-                              {p.batches.length} batch{p.batches.length !== 1 ? "es" : ""}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">{p.category}</td>
-                        <td className="px-4 py-3 text-gray-500">{p.unit || "—"}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`font-bold text-base ${
-                            p.activeQuantity === 0 ? "text-red-500" : "text-gray-900"
-                          }`}>
-                            {p.totalQuantity.toLocaleString("en-IN")}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                            p.activeQuantity === 0
-                              ? "bg-red-100 text-red-700"
-                              : p.status === "available"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-100 text-gray-600"
-                          }`}>
-                            {p.activeQuantity === 0 ? "Out of Stock" : p.status === "available" ? "Available" : "Unavailable"}
-                          </span>
-                        </td>
-                      </tr>
-
-                      {/* Batch detail rows */}
-                      {isExpanded && hasBatches && (
-                        <>
-                          {/* Batch header */}
-                          <tr className="bg-blue-50/60 border-b border-blue-100">
-                            <td className="px-4 py-2"></td>
-                            <td className="px-4 py-2 text-xs font-semibold text-blue-700">Batch No.</td>
-                            <td className="px-4 py-2 text-xs font-semibold text-blue-700">Batch Qty</td>
-                            <td className="px-4 py-2 text-xs font-semibold text-blue-700">Date Added</td>
-                            <td className="px-4 py-2 text-xs font-semibold text-blue-700">Expiry Date</td>
-                            <td className="px-4 py-2 text-xs font-semibold text-blue-700">Days Left</td>
-                          </tr>
-
-                          {p.batches.map((b: any, bi: number) => (
-                            <tr key={bi} className="border-b border-blue-50 bg-blue-50/30 hover:bg-blue-50/60">
-                              <td className="px-4 py-2.5"></td>
-                              <td className="px-4 py-2.5">
-                                <span className="text-xs font-mono font-semibold text-gray-700">
-                                  {b.batchNumber || `Batch ${bi + 1}`}
-                                </span>
-                                {b.notes && (
-                                  <p className="text-xs text-gray-400 mt-0.5">{b.notes}</p>
-                                )}
-                              </td>
-                              <td className="px-4 py-2.5">
-                                <span className={`text-sm font-bold ${
-                                  b.isExpired ? "text-gray-400 line-through" : "text-gray-800"
-                                }`}>
-                                  {b.quantity.toLocaleString("en-IN")}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2.5 text-xs text-gray-600">
-                                {formatDate(b.receivedDate)}
-                              </td>
-                              <td className="px-4 py-2.5 text-xs text-gray-600">
-                                {b.expiryDate ? formatDate(b.expiryDate) : <span className="text-gray-400">No Expiry</span>}
-                              </td>
-                              <td className="px-4 py-2.5">
-                                {b.daysLeft === null ? (
-                                  <span className="text-xs text-gray-400">—</span>
-                                ) : b.isExpired ? (
-                                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-red-100 text-red-700">
-                                    Expired {Math.abs(b.daysLeft)}d ago
-                                  </span>
-                                ) : b.daysLeft <= 3 ? (
-                                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
-                                    {b.daysLeft}d left ⚠️
-                                  </span>
-                                ) : (
-                                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700">
-                                    {b.daysLeft}d left
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
+                    {isExpanded && hasBatches && (
+                      <>
+                        <tr style={{ background: "#eff6ff" }}>
+                          <td style={{ padding: "8px 8px" }}></td>
+                          {["Batch No.","Batch Qty","Date Added","Expiry Date","Days Left"].map(h => (
+                            <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#3b82f6", textTransform: "uppercase", letterSpacing: "0.03em" }}>{h}</th>
                           ))}
-
-                          {/* Product subtotal row */}
-                          <tr className="bg-brand-primary/5 border-b border-brand-primary/10">
-                            <td className="px-4 py-2.5"></td>
-                            <td className="px-4 py-2.5 text-xs font-bold text-brand-secondary" colSpan={1}>
-                              ↳ {p.name} — Subtotal
+                        </tr>
+                        {p.batches.map((b: any, bi: number) => (
+                          <tr key={bi} style={{ background: "#f5f9ff", borderBottom: "1px solid #dbeafe" }}>
+                            <td style={{ padding: "9px 8px" }}></td>
+                            <td style={{ padding: "9px 14px" }}>
+                              <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 600, color: "#222" }}>{b.batchNumber || `Batch ${bi+1}`}</span>
+                              {b.notes && <p style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{b.notes}</p>}
                             </td>
-                            <td className="px-4 py-2.5">
-                              <span className="text-sm font-bold text-brand-secondary">
-                                {p.totalQuantity.toLocaleString("en-IN")} {p.unit}
-                              </span>
-                            </td>
-                            <td colSpan={3} className="px-4 py-2.5 text-xs text-gray-500">
-                              Active: {p.activeQuantity.toLocaleString("en-IN")} {p.unit}
-                              {p.totalQuantity !== p.activeQuantity && (
-                                <span className="ml-2 text-red-400">
-                                  ({(p.totalQuantity - p.activeQuantity).toLocaleString("en-IN")} expired)
-                                </span>
-                              )}
+                            <td style={{ padding: "9px 14px", fontWeight: 700, fontSize: 15, color: b.isExpired ? "#aaa" : "#000" }}>{b.quantity.toLocaleString("en-IN")}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "#444" }}>{formatDate(b.receivedDate)}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "#444" }}>{b.expiryDate ? formatDate(b.expiryDate) : <span style={{ color: "#aaa" }}>No Expiry</span>}</td>
+                            <td style={{ padding: "9px 14px" }}>
+                              {b.daysLeft === null ? <span style={{ color: "#aaa", fontSize: 12 }}>—</span>
+                                : b.isExpired ? <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#fee2e2", color: "#b91c1c" }}>Expired {Math.abs(b.daysLeft)}d ago</span>
+                                : b.daysLeft <= 3 ? <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#fef9c3", color: "#a16207" }}>{b.daysLeft}d left ⚠️</span>
+                                : <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "#dcfce7", color: "#15803d" }}>{b.daysLeft}d left</span>}
                             </td>
                           </tr>
-                        </>
-                      )}
-                    </>
-                  );
-                })}
-
-                {/* Grand total row */}
-                <tr className="bg-brand-secondary/5 border-t-2 border-brand-secondary/20">
-                  <td className="px-4 py-4"></td>
-                  <td className="px-4 py-4 font-bold text-brand-secondary text-sm" colSpan={3}>
-                    OVERALL TOTAL — {data?.subHub?.name || "All Products"}
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <span className="text-lg font-black text-brand-secondary">
-                      {grandTotal.toLocaleString("en-IN")}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                        ))}
+                        <tr style={{ background: "#eef2ff", borderBottom: "2px solid #c7d2fe" }}>
+                          <td style={{ padding: "9px 8px" }}></td>
+                          <td style={{ padding: "9px 14px", fontWeight: 700, color: "#364F9F", fontSize: 13 }} colSpan={1}>↳ {p.name} — Subtotal</td>
+                          <td style={{ padding: "9px 14px", fontWeight: 700, color: "#364F9F", fontSize: 15 }}>{p.totalQuantity.toLocaleString("en-IN")} {p.unit}</td>
+                          <td colSpan={3} style={{ padding: "9px 14px", fontSize: 12, color: "#666" }}>
+                            Active: {p.activeQuantity.toLocaleString("en-IN")} {p.unit}
+                            {p.totalQuantity !== p.activeQuantity && <span style={{ marginLeft: 8, color: "#dc2626" }}>({(p.totalQuantity - p.activeQuantity).toLocaleString("en-IN")} expired)</span>}
+                          </td>
+                        </tr>
+                      </>
+                    )}
+                  </>
+                );
+              })}
+              <tr style={{ background: "#1e3a6e", borderTop: "2px solid #364F9F" }}>
+                <td style={{ padding: "14px 8px" }}></td>
+                <td style={{ padding: "14px 14px", fontWeight: 700, color: "#fff", fontSize: 14 }} colSpan={3}>OVERALL TOTAL — {data?.subHub?.name || "All Products"}</td>
+                <td style={{ padding: "14px 14px", fontWeight: 800, fontSize: 22, color: "#fff" }}>{grandTotal.toLocaleString("en-IN")}</td>
+                <td style={{ padding: "14px 14px" }}></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -704,76 +555,107 @@ type Tab = "orders" | "inventory";
 
 export default function DayEndReportPage() {
   const [activeTab, setActiveTab] = useState<Tab>("orders");
+  const ordersDownloadRef = { current: null as (() => void) | null };
+  const inventoryDownloadRef = { current: null as (() => void) | null };
   const admin = getAdmin();
   const isMaster = admin?.role === "master_admin";
   const isSuperHub = admin?.role === "super_hub";
 
-  // Fetch sub-hubs list for hub selector
+  // Fetch sub-hubs for master/super hub to auto-pick first
   const { data: subHubsData } = useQuery({
     queryKey: ["sub-hubs-for-report"],
     queryFn: () => apiFetch("/api/sub-hubs"),
     enabled: isMaster || isSuperHub,
   });
 
-  const subHubs: any[] = useMemo(() => {
+  const firstSubHubId = useMemo(() => {
+    if (admin?.role === "sub_hub") {
+      return admin?.subHubIds?.[0] || admin?.subHubId || "";
+    }
     const raw = subHubsData?.subHubs ?? subHubsData?.data ?? [];
-    return raw.map((h: any) => ({ id: h._id || h.id, name: h.name }));
-  }, [subHubsData]);
+    return raw[0]?._id || raw[0]?.id || "";
+  }, [subHubsData, admin]);
 
-  // For sub_hub role, use their own assigned sub hubs
-  const adminSubHubs: any[] = useMemo(() => {
-    if (!admin) return [];
-    const ids: string[] = admin.subHubIds?.length
-      ? admin.subHubIds
-      : admin.subHubId
-      ? [admin.subHubId]
-      : [];
-    return ids.map((id: string, i: number) => ({ id, name: admin.subHubNames?.[i] || `Sub Hub ${i + 1}` }));
-  }, [admin]);
-
-  const availableSubHubs = isMaster || isSuperHub ? subHubs : adminSubHubs;
-
-  const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "orders", label: "Orders Report", icon: <ClipboardList className="w-4 h-4" /> },
-    { key: "inventory", label: "Inventory Report", icon: <Boxes className="w-4 h-4" /> },
-  ];
+  const handleDownload = () => {
+    if (activeTab === "orders" && ordersDownloadRef.current) ordersDownloadRef.current();
+    else if (activeTab === "inventory" && inventoryDownloadRef.current) inventoryDownloadRef.current();
+  };
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-brand-primary/10 flex items-center justify-center">
-          <FileSpreadsheet className="w-5 h-5 text-brand-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Day End Report</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Orders and inventory summary — download in Excel format
-          </p>
+    <div style={{ minHeight: "100vh", background: "#f4f6fa", padding: "0 0 40px" }}>
+      {/* Top header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #ebebeb", padding: "18px 28px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", ...POPPINS }}>
+          {/* Left: title */}
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#000", margin: 0, lineHeight: 1.2 }}>Day End Report</h1>
+            <p style={{ fontSize: 12, color: "#888", margin: "3px 0 0", fontWeight: 400 }}>Orders and inventory summary — download in Excel format</p>
+          </div>
+
+          {/* Right: tabs + download */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Tab buttons */}
+            <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 10, padding: 3, gap: 2 }}>
+              {[
+                { key: "orders" as Tab, label: "Orders Report" },
+                { key: "inventory" as Tab, label: "Inventory Report" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  style={{
+                    padding: "7px 18px",
+                    borderRadius: 8,
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: "Poppins, sans-serif",
+                    transition: "all 0.15s",
+                    background: activeTab === key ? "#fff" : "transparent",
+                    color: activeTab === key ? "#F05B4E" : "#666",
+                    boxShadow: activeTab === key ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Download icon button */}
+            <button
+              onClick={handleDownload}
+              title="Download Excel"
+              style={{
+                width: 38, height: 38, borderRadius: 10, border: "1px solid #e5e7eb",
+                background: "#fff", cursor: "pointer", display: "flex", alignItems: "center",
+                justifyContent: "center", color: "#15803d", transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f0fdf4"; (e.currentTarget as HTMLElement).style.borderColor = "#86efac"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#fff"; (e.currentTarget as HTMLElement).style.borderColor = "#e5e7eb"; }}
+            >
+              <Download style={{ width: 17, height: 17 }} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {TABS.map(({ key, label, icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === key
-                ? "bg-white text-brand-primary shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {icon}
-            {label}
-          </button>
-        ))}
+      {/* Content */}
+      <div style={{ padding: "24px 28px" }}>
+        {activeTab === "orders" && (
+          <OrdersReport
+            onDownload={() => {}}
+            downloadRef={ordersDownloadRef}
+          />
+        )}
+        {activeTab === "inventory" && (
+          <InventoryReport
+            firstSubHubId={firstSubHubId}
+            onDownload={() => {}}
+            downloadRef={inventoryDownloadRef}
+          />
+        )}
       </div>
-
-      {/* Tab content */}
-      {activeTab === "orders" && <OrdersReport subHubs={availableSubHubs} />}
-      {activeTab === "inventory" && <InventoryReport subHubs={availableSubHubs} />}
     </div>
   );
 }
