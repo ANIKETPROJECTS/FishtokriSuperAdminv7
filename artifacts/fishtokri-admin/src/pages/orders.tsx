@@ -1508,7 +1508,7 @@ export default function Orders() {
     let email = "";
     let customerId: string | undefined;
 
-    if (customerMode === "existing") {
+    if (customerMode === "existing" && !isNewCustomerEntry) {
       if (!chosenCustomer) {
         toast({ title: "Select a customer", description: "Pick an existing customer or switch to 'New Customer'.", variant: "destructive" });
         return;
@@ -1694,8 +1694,8 @@ export default function Orders() {
         subHubName: subHub?.name ?? "",
         notes: orderNotes.trim(),
         status: orderDeliveryType === "takeaway" ? "takeaway" : "pending",
-        createCustomerIfMissing: customerMode === "new",
-        newCustomerExtras: customerMode === "new" ? {
+        createCustomerIfMissing: customerMode === "new" || isNewCustomerEntry,
+        newCustomerExtras: (customerMode === "new" || isNewCustomerEntry) ? {
           dateOfBirth: newCustomer.dateOfBirth.trim(),
         } : undefined,
         // Pricing breakdown
