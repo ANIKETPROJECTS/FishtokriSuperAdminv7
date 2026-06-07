@@ -3552,7 +3552,7 @@ export default function Orders() {
                         <Input value={newAddress.pincode} onChange={(e) => setNewAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="Pincode" className="h-8 text-sm border-0 border-b border-gray-300 rounded-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0" inputMode="numeric" />
                       </div>
                       <div className="flex gap-2 pt-1">
-                        {chosenCustomer?.id && (
+                        {chosenCustomer?.id ? (
                           newAddressSaved ? (
                             <p className="flex-1 text-xs font-semibold text-emerald-600 text-center py-1">✓ Saved to profile</p>
                           ) : (
@@ -3582,13 +3582,26 @@ export default function Orders() {
                               {savingAddress ? "Saving…" : "Save to Profile"}
                             </button>
                           )
+                        ) : isNewCustomerEntry && (
+                          newAddressSaved ? (
+                            <p className="flex-1 text-xs font-semibold text-emerald-600 text-center py-1">✓ Address added to order</p>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={!newAddress.building.trim()}
+                              onClick={() => setNewAddressSaved(true)}
+                              className="flex-1 h-7 rounded-lg bg-[#1A56DB] text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            >
+                              Save
+                            </button>
+                          )
                         )}
                         <button
                           type="button"
-                          onClick={() => setNewAddress({ label: "Home", name: "", phone: "", building: "", street: "", area: "", pincode: "" })}
+                          onClick={() => { setNewAddress({ label: "Home", name: "", phone: "", building: "", street: "", area: "", pincode: "" }); setNewAddressSaved(false); }}
                           className="flex-1 h-7 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition-colors"
                         >
-                          Clear
+                          Cancel
                         </button>
                       </div>
                     </div>
