@@ -1362,17 +1362,6 @@ export default function Orders() {
   // Save/Cancel only appear when this is true.
   const savedAddrDirty = JSON.stringify(editedSavedAddress) !== JSON.stringify(originalSavedAddress);
 
-  // True when the user has typed a full 10-digit phone that has no matching customer —
-  // i.e. the "New customer — fill in details" form is visible in the customer section.
-  const isNewCustomerFormVisible = (() => {
-    const trimmed = customerSearch.trim();
-    if (!/^\d+$/.test(trimmed)) return customerMode === "new";
-    const digits = trimmed.replace(/\D/g, "").slice(0, 10);
-    if (digits.length < 10) return customerMode === "new";
-    const phoneMatches = (allCustomers ?? []).filter((c: any) => (c.phone || "").replace(/\D/g, "").includes(digits));
-    return phoneMatches.length === 0 || customerMode === "new";
-  })();
-
   // Sync delivery charge input from pincode-based charge whenever it changes,
   // unless we just restored it from an existing order (skipDeliveryChargeSyncRef).
   useEffect(() => {
@@ -3435,7 +3424,7 @@ export default function Orders() {
               )}
 
               {/* Optional address for takeaway */}
-              {orderDeliveryType === "takeaway" && (chosenCustomer || isNewCustomerFormVisible) && (
+              {orderDeliveryType === "takeaway" && (chosenCustomer || customerMode === "new") && (
                 <div className="px-4 pt-3 pb-3 border-b border-gray-100">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-normal text-gray-900 flex items-center gap-1.5">
