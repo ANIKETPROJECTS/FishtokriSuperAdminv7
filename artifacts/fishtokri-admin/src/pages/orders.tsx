@@ -943,10 +943,14 @@ export default function Orders() {
   // that was manually restored when loading an existing order for editing.
   const skipDeliveryChargeSyncRef = useRef(false);
   const [savingAddress, setSavingAddress] = useState(false);
-  // Track whether the address was just saved so the Save button hides until
-  // the user makes a new change.
+  // Track whether the new address form has been saved so the Save button hides
+  // until the user makes a new change.
   const [newAddressSaved, setNewAddressSaved] = useState(false);
-  const [savedAddrSaved, setSavedAddrSaved] = useState(false);
+  // Stores the last-committed version of the saved address. Save/Cancel only
+  // appear when editedSavedAddress differs from this baseline (i.e. user has
+  // made a change). After saving, the baseline is updated so buttons hide.
+  const emptyAddr = { label: "Home", name: "", phone: "", building: "", street: "", area: "", landmark: "", pincode: "", city: "", state: "" };
+  const [originalSavedAddress, setOriginalSavedAddress] = useState(emptyAddr);
 
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
@@ -1108,13 +1112,14 @@ export default function Orders() {
     setSelectedTimeslotId("");
   }, [selectedSubHubId]);
 
-  // Sync editedSavedAddress whenever the selected saved address index changes
+  // Sync editedSavedAddress (and the baseline) whenever the selected saved address changes.
+  // Both are set together so Save/Cancel don't appear until the user edits something.
   useEffect(() => {
     if (selectedAddressIdx === null || !chosenCustomer) return;
     const a = (chosenCustomer.addresses ?? [])[selectedAddressIdx];
     const f = getAddressFields(a);
     if (!f) return;
-    setEditedSavedAddress({
+    const fresh = {
       label: f.label || "Home",
       name: f.contactName || "",
       phone: f.phone || "",
@@ -1125,7 +1130,9 @@ export default function Orders() {
       pincode: f.pincode || "",
       city: f.city || "",
       state: f.state || "",
-    });
+    };
+    setEditedSavedAddress(fresh);
+    setOriginalSavedAddress(fresh);
   }, [selectedAddressIdx, chosenCustomer]);
 
   // Poll timeslot counts every 5 s while the create-order panel is open so
@@ -1348,9 +1355,12 @@ export default function Orders() {
     if (!isOutstationNeeded) setIsOutstationDelivery(false);
   }, [isOutstationNeeded]);
 
-  // Reset "address saved" flags whenever the user edits any address field.
+  // Reset new-address "saved" flag whenever the user edits any field.
   useEffect(() => { setNewAddressSaved(false); }, [newAddress]);
-  useEffect(() => { setSavedAddrSaved(false); }, [editedSavedAddress]);
+
+  // Derive whether the user has changed anything vs the last-committed baseline.
+  // Save/Cancel only appear when this is true.
+  const savedAddrDirty = JSON.stringify(editedSavedAddress) !== JSON.stringify(originalSavedAddress);
 
   // Sync delivery charge input from pincode-based charge whenever it changes,
   // unless we just restored it from an existing order (skipDeliveryChargeSyncRef).
@@ -3287,10 +3297,8 @@ export default function Orders() {
                             <Input value={editedSavedAddress.area} onChange={(e) => setEditedSavedAddress((a) => ({ ...a, area: e.target.value }))} placeholder="Area *" className="h-8 text-sm border-0 border-b border-gray-300 rounded-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0" />
                             <Input value={editedSavedAddress.pincode} onChange={(e) => setEditedSavedAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="Pincode *" className="h-8 text-sm border-0 border-b border-gray-300 rounded-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0" inputMode="numeric" />
                           </div>
-                          {/* Save / Cancel for saved address — hidden once saved, reappears on edit */}
-                          {savedAddrSaved ? (
-                            <p className="pt-2 text-xs font-semibold text-emerald-600 text-center">✓ Address saved</p>
-                          ) : (
+                          {/* Save / Cancel — only shown when user has changed something vs the original */}
+                          {savedAddrDirty && (
                             <div className="flex gap-2 pt-2">
                               <button
                                 type="button"
@@ -3303,8 +3311,9 @@ export default function Orders() {
                                     const f = editedSavedAddress;
                                     currentAddresses[selectedAddressIdx] = { ...(currentAddresses[selectedAddressIdx] ?? {}), label: f.label, name: f.name, phone: f.phone, building: f.building, street: f.street, area: f.area, landmark: f.landmark, pincode: f.pincode, city: f.city, state: f.state };
                                     await apiFetch(`/api/customers/${chosenCustomer.id}`, { method: "PUT", body: JSON.stringify({ addresses: currentAddresses }) });
+                                    // Update baseline — makes dirty = false, buttons hide immediately
+                                    setOriginalSavedAddress({ ...editedSavedAddress });
                                     setChosenCustomer((c: any) => ({ ...c, addresses: currentAddresses }));
-                                    setSavedAddrSaved(true);
                                     toast({ title: "Address saved" });
                                   } catch {
                                     toast({ title: "Failed to save address", variant: "destructive" });
@@ -3319,9 +3328,8 @@ export default function Orders() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const a = (chosenCustomer?.addresses ?? [])[selectedAddressIdx];
-                                  const f = getAddressFields(a);
-                                  if (f) setEditedSavedAddress({ label: f.label || "Home", name: f.contactName || "", phone: f.phone || "", building: [f.houseNo, f.building].filter(Boolean).join(", ") || "", street: f.street || "", area: f.area || "", landmark: f.landmark || "", pincode: f.pincode || "", city: f.city || "", state: f.state || "" });
+                                  // Revert to the baseline — makes dirty = false, buttons hide
+                                  setEditedSavedAddress({ ...originalSavedAddress });
                                 }}
                                 className="flex-1 h-7 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition-colors"
                               >
