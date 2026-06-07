@@ -943,6 +943,10 @@ export default function Orders() {
   // that was manually restored when loading an existing order for editing.
   const skipDeliveryChargeSyncRef = useRef(false);
   const [savingAddress, setSavingAddress] = useState(false);
+  // Track whether the address was just saved so the Save button hides until
+  // the user makes a new change.
+  const [newAddressSaved, setNewAddressSaved] = useState(false);
+  const [savedAddrSaved, setSavedAddrSaved] = useState(false);
 
   const resetCreateForm = useCallback(() => {
     setCustomerMode("existing");
@@ -1343,6 +1347,10 @@ export default function Orders() {
   useEffect(() => {
     if (!isOutstationNeeded) setIsOutstationDelivery(false);
   }, [isOutstationNeeded]);
+
+  // Reset "address saved" flags whenever the user edits any address field.
+  useEffect(() => { setNewAddressSaved(false); }, [newAddress]);
+  useEffect(() => { setSavedAddrSaved(false); }, [editedSavedAddress]);
 
   // Sync delivery charge input from pincode-based charge whenever it changes,
   // unless we just restored it from an existing order (skipDeliveryChargeSyncRef).
@@ -3279,43 +3287,48 @@ export default function Orders() {
                             <Input value={editedSavedAddress.area} onChange={(e) => setEditedSavedAddress((a) => ({ ...a, area: e.target.value }))} placeholder="Area *" className="h-8 text-sm border-0 border-b border-gray-300 rounded-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0" />
                             <Input value={editedSavedAddress.pincode} onChange={(e) => setEditedSavedAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="Pincode *" className="h-8 text-sm border-0 border-b border-gray-300 rounded-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0" inputMode="numeric" />
                           </div>
-                          {/* Save / Cancel for saved address */}
-                          <div className="flex gap-2 pt-2">
-                            <button
-                              type="button"
-                              disabled={savingAddress}
-                              onClick={async () => {
-                                if (!chosenCustomer?.id) return;
-                                setSavingAddress(true);
-                                try {
-                                  const currentAddresses = Array.isArray(chosenCustomer.addresses) ? [...chosenCustomer.addresses] : [];
-                                  const f = editedSavedAddress;
-                                  currentAddresses[selectedAddressIdx] = { ...(currentAddresses[selectedAddressIdx] ?? {}), label: f.label, name: f.name, phone: f.phone, building: f.building, street: f.street, area: f.area, landmark: f.landmark, pincode: f.pincode, city: f.city, state: f.state };
-                                  await apiFetch(`/api/customers/${chosenCustomer.id}`, { method: "PUT", body: JSON.stringify({ addresses: currentAddresses }) });
-                                  setChosenCustomer((c: any) => ({ ...c, addresses: currentAddresses }));
-                                  toast({ title: "Address saved" });
-                                } catch {
-                                  toast({ title: "Failed to save address", variant: "destructive" });
-                                } finally {
-                                  setSavingAddress(false);
-                                }
-                              }}
-                              className="flex-1 h-7 rounded-lg bg-[#1A56DB] text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                            >
-                              {savingAddress ? "Saving…" : "Save Address"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const a = (chosenCustomer?.addresses ?? [])[selectedAddressIdx];
-                                const f = getAddressFields(a);
-                                if (f) setEditedSavedAddress({ label: f.label || "Home", name: f.contactName || "", phone: f.phone || "", building: [f.houseNo, f.building].filter(Boolean).join(", ") || "", street: f.street || "", area: f.area || "", landmark: f.landmark || "", pincode: f.pincode || "", city: f.city || "", state: f.state || "" });
-                              }}
-                              className="flex-1 h-7 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                          {/* Save / Cancel for saved address — hidden once saved, reappears on edit */}
+                          {savedAddrSaved ? (
+                            <p className="pt-2 text-xs font-semibold text-emerald-600 text-center">✓ Address saved</p>
+                          ) : (
+                            <div className="flex gap-2 pt-2">
+                              <button
+                                type="button"
+                                disabled={savingAddress}
+                                onClick={async () => {
+                                  if (!chosenCustomer?.id) return;
+                                  setSavingAddress(true);
+                                  try {
+                                    const currentAddresses = Array.isArray(chosenCustomer.addresses) ? [...chosenCustomer.addresses] : [];
+                                    const f = editedSavedAddress;
+                                    currentAddresses[selectedAddressIdx] = { ...(currentAddresses[selectedAddressIdx] ?? {}), label: f.label, name: f.name, phone: f.phone, building: f.building, street: f.street, area: f.area, landmark: f.landmark, pincode: f.pincode, city: f.city, state: f.state };
+                                    await apiFetch(`/api/customers/${chosenCustomer.id}`, { method: "PUT", body: JSON.stringify({ addresses: currentAddresses }) });
+                                    setChosenCustomer((c: any) => ({ ...c, addresses: currentAddresses }));
+                                    setSavedAddrSaved(true);
+                                    toast({ title: "Address saved" });
+                                  } catch {
+                                    toast({ title: "Failed to save address", variant: "destructive" });
+                                  } finally {
+                                    setSavingAddress(false);
+                                  }
+                                }}
+                                className="flex-1 h-7 rounded-lg bg-[#1A56DB] text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                              >
+                                {savingAddress ? "Saving…" : "Save Address"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const a = (chosenCustomer?.addresses ?? [])[selectedAddressIdx];
+                                  const f = getAddressFields(a);
+                                  if (f) setEditedSavedAddress({ label: f.label || "Home", name: f.contactName || "", phone: f.phone || "", building: [f.houseNo, f.building].filter(Boolean).join(", ") || "", street: f.street || "", area: f.area || "", landmark: f.landmark || "", pincode: f.pincode || "", city: f.city || "", state: f.state || "" });
+                                }}
+                                className="flex-1 h-7 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3334,32 +3347,37 @@ export default function Orders() {
                         <Input value={newAddress.area} onChange={(e) => setNewAddress((a) => ({ ...a, area: e.target.value }))} placeholder="Area *" className="h-8 text-sm border-0 border-b border-gray-300 rounded-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0" />
                         <Input value={newAddress.pincode} onChange={(e) => setNewAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="Pincode *" className="h-8 text-sm border-0 border-b border-gray-300 rounded-none bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0" inputMode="numeric" />
                       </div>
-                      {/* Save to Profile / Clear buttons for new address */}
+                      {/* Save to Profile / Clear buttons for new address — Save hides once saved, reappears on edit */}
                       <div className="flex gap-2 pt-1">
                         {chosenCustomer?.id && (
-                          <button
-                            type="button"
-                            disabled={savingAddress || !newAddress.building.trim() || !newAddress.area.trim() || !newAddress.pincode.trim()}
-                            onClick={async () => {
-                              if (!chosenCustomer?.id) return;
-                              setSavingAddress(true);
-                              try {
-                                const currentAddresses = Array.isArray(chosenCustomer.addresses) ? [...chosenCustomer.addresses] : [];
-                                const entry = { label: newAddress.label || "Home", name: newAddress.name, phone: newAddress.phone, building: newAddress.building, street: newAddress.street, area: newAddress.area, pincode: newAddress.pincode };
-                                const updated = [...currentAddresses, entry];
-                                await apiFetch(`/api/customers/${chosenCustomer.id}`, { method: "PUT", body: JSON.stringify({ addresses: updated }) });
-                                setChosenCustomer((c: any) => ({ ...c, addresses: updated }));
-                                toast({ title: "Address saved to profile" });
-                              } catch {
-                                toast({ title: "Failed to save address", variant: "destructive" });
-                              } finally {
-                                setSavingAddress(false);
-                              }
-                            }}
-                            className="flex-1 h-7 rounded-lg bg-[#1A56DB] text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                          >
-                            {savingAddress ? "Saving…" : "Save to Profile"}
-                          </button>
+                          newAddressSaved ? (
+                            <p className="flex-1 text-xs font-semibold text-emerald-600 text-center py-1">✓ Saved to profile</p>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={savingAddress || !newAddress.building.trim() || !newAddress.area.trim() || !newAddress.pincode.trim()}
+                              onClick={async () => {
+                                if (!chosenCustomer?.id) return;
+                                setSavingAddress(true);
+                                try {
+                                  const currentAddresses = Array.isArray(chosenCustomer.addresses) ? [...chosenCustomer.addresses] : [];
+                                  const entry = { label: newAddress.label || "Home", name: newAddress.name, phone: newAddress.phone, building: newAddress.building, street: newAddress.street, area: newAddress.area, pincode: newAddress.pincode };
+                                  const updated = [...currentAddresses, entry];
+                                  await apiFetch(`/api/customers/${chosenCustomer.id}`, { method: "PUT", body: JSON.stringify({ addresses: updated }) });
+                                  setChosenCustomer((c: any) => ({ ...c, addresses: updated }));
+                                  setNewAddressSaved(true);
+                                  toast({ title: "Address saved to profile" });
+                                } catch {
+                                  toast({ title: "Failed to save address", variant: "destructive" });
+                                } finally {
+                                  setSavingAddress(false);
+                                }
+                              }}
+                              className="flex-1 h-7 rounded-lg bg-[#1A56DB] text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            >
+                              {savingAddress ? "Saving…" : "Save to Profile"}
+                            </button>
+                          )
                         )}
                         <button
                           type="button"
