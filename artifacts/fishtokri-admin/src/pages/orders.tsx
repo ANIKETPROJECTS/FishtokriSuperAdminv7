@@ -1287,6 +1287,15 @@ export default function Orders() {
     );
   }, [allCustomers, customerSearch]);
 
+  const isNewCustomerEntry = useMemo(() => {
+    const searchTrimmed = customerSearch.trim();
+    if (!/^\d+$/.test(searchTrimmed)) return false;
+    const digits = searchTrimmed.replace(/\D/g, "");
+    if (digits.length !== 10) return false;
+    const phoneMatches = allCustomers.filter((c: any) => (c.phone || "").replace(/\D/g, "").includes(digits));
+    return phoneMatches.length === 0;
+  }, [customerSearch, allCustomers]);
+
   const itemsSubtotal = useMemo(() => {
     const customSum = orderItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
     const productSum = selectedProducts.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.quantity) || 0), 0);
@@ -3434,7 +3443,7 @@ export default function Orders() {
               )}
 
               {/* Optional address for takeaway */}
-              {orderDeliveryType === "takeaway" && (chosenCustomer || customerMode === "new") && (
+              {orderDeliveryType === "takeaway" && (chosenCustomer || customerMode === "new" || isNewCustomerEntry) && (
                 <div className="px-4 pt-3 pb-3 border-b border-gray-100">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-normal text-gray-900 flex items-center gap-1.5">
