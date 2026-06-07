@@ -614,6 +614,24 @@ function resolveAddressLabel(baseLabel: string, existingAddresses: any[]): strin
   return `${baseLabel} ${count + 1}`;
 }
 
+function buildDisplayLabels(addresses: any[]): string[] {
+  const normalize = (lbl: string) => (lbl || "").replace(/\s+\d+$/, "").trim().toLowerCase();
+  const totalCounts: Record<string, number> = {};
+  for (const a of addresses) {
+    const raw = a?.label || "";
+    const key = normalize(raw);
+    totalCounts[key] = (totalCounts[key] ?? 0) + 1;
+  }
+  const seen: Record<string, number> = {};
+  return addresses.map((a) => {
+    const raw = (a?.label || "").replace(/\s+\d+$/, "").trim() || "Address";
+    const key = normalize(raw);
+    seen[key] = (seen[key] ?? 0) + 1;
+    if (totalCounts[key] <= 1) return raw;
+    return seen[key] === 1 ? raw : `${raw} ${seen[key]}`;
+  });
+}
+
 // ─── ADDRESS FORMATTING ───────────────────────────────────────────────────────
 function getAddressFields(a: any) {
   if (!a) return null;
@@ -3302,15 +3320,15 @@ export default function Orders() {
                     <div className="space-y-2">
                       {/* Address selector tabs — always shown for saved addresses */}
                       <div className="flex gap-1.5 flex-wrap">
-                        {chosenCustomer.addresses.map((a: any, i: number) => {
-                          const f = getAddressFields(a);
-                          return (
+                        {(() => {
+                          const displayLabels = buildDisplayLabels(chosenCustomer.addresses);
+                          return chosenCustomer.addresses.map((a: any, i: number) => (
                             <button key={i} type="button" onClick={() => setSelectedAddressIdx(i)}
                               className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${selectedAddressIdx === i ? "bg-[#1A56DB] text-white border-[#1A56DB]" : "border-gray-200 text-gray-500 bg-white hover:bg-gray-50"}`}>
-                              {f?.label || `Address ${i + 1}`}
+                              {displayLabels[i]}
                             </button>
-                          );
-                        })}
+                          ));
+                        })()}
                       </div>
                       {/* Prompt to select address when none chosen yet */}
                       {selectedAddressIdx === null ? (
@@ -3460,15 +3478,15 @@ export default function Orders() {
                   {chosenCustomer && orderAddressMode === "saved" && Array.isArray(chosenCustomer.addresses) && chosenCustomer.addresses.length > 0 ? (
                     <div className="space-y-2">
                       <div className="flex gap-1.5 flex-wrap">
-                        {chosenCustomer.addresses.map((a: any, i: number) => {
-                          const f = getAddressFields(a);
-                          return (
+                        {(() => {
+                          const displayLabels = buildDisplayLabels(chosenCustomer.addresses);
+                          return chosenCustomer.addresses.map((a: any, i: number) => (
                             <button key={i} type="button" onClick={() => setSelectedAddressIdx(i)}
                               className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${selectedAddressIdx === i ? "bg-[#1A56DB] text-white border-[#1A56DB]" : "border-gray-200 text-gray-500 bg-white hover:bg-gray-50"}`}>
-                              {f?.label || `Address ${i + 1}`}
+                              {displayLabels[i]}
                             </button>
-                          );
-                        })}
+                          ));
+                        })()}
                       </div>
                       {selectedAddressIdx !== null && (
                         <div className="space-y-0">
