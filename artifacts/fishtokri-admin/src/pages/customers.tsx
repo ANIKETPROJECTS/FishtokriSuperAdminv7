@@ -1672,7 +1672,14 @@ function CustomerModal({ isOpen, onClose, customer, onSuccess }: {
         return out;
       })
       .filter((a) => Object.keys(a).filter((k) => k !== "label" && k !== "type").length > 0);
-    const payload: any = { name: name.trim(), email: email.trim(), phone: phone.trim(), dateOfBirth: dob.trim(), addresses: cleanAddresses };
+    const labelCounts: Record<string, number> = {};
+    const numberedAddresses = cleanAddresses.map((a) => {
+      const base = (a.label || "Home").replace(/\s+\d+$/, "").trim();
+      const key = base.toLowerCase();
+      labelCounts[key] = (labelCounts[key] ?? 0) + 1;
+      return { ...a, label: labelCounts[key] === 1 ? base : `${base} ${labelCounts[key]}` };
+    });
+    const payload: any = { name: name.trim(), email: email.trim(), phone: phone.trim(), dateOfBirth: dob.trim(), addresses: numberedAddresses };
     if (isEditing) {
       payload.walletBalance = Math.max(0, Number(walletBalance) || 0);
       updateMutation.mutate(payload);

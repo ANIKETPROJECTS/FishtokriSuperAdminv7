@@ -605,6 +605,15 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   );
 }
 
+// ─── ADDRESS LABEL AUTO-NUMBERING ─────────────────────────────────────────────
+function resolveAddressLabel(baseLabel: string, existingAddresses: any[]): string {
+  const normalize = (lbl: string) => (lbl || "").replace(/\s+\d+$/, "").trim().toLowerCase();
+  const base = normalize(baseLabel);
+  const count = existingAddresses.filter((a) => normalize(a.label || "") === base).length;
+  if (count === 0) return baseLabel;
+  return `${baseLabel} ${count + 1}`;
+}
+
 // ─── ADDRESS FORMATTING ───────────────────────────────────────────────────────
 function getAddressFields(a: any) {
   if (!a) return null;
@@ -3383,7 +3392,8 @@ export default function Orders() {
                                 setSavingAddress(true);
                                 try {
                                   const currentAddresses = Array.isArray(chosenCustomer.addresses) ? [...chosenCustomer.addresses] : [];
-                                  const entry = { label: newAddress.label || "Home", name: newAddress.name, phone: newAddress.phone, building: newAddress.building, street: newAddress.street, area: newAddress.area, pincode: newAddress.pincode };
+                                  const resolvedLabel = resolveAddressLabel(newAddress.label || "Home", currentAddresses);
+                                  const entry = { label: resolvedLabel, name: newAddress.name, phone: newAddress.phone, building: newAddress.building, street: newAddress.street, area: newAddress.area, pincode: newAddress.pincode };
                                   const updated = [...currentAddresses, entry];
                                   await apiFetch(`/api/customers/${chosenCustomer.id}`, { method: "PUT", body: JSON.stringify({ addresses: updated }) });
                                   setChosenCustomer((c: any) => ({ ...c, addresses: updated }));
@@ -3527,7 +3537,8 @@ export default function Orders() {
                                 setSavingAddress(true);
                                 try {
                                   const currentAddresses = Array.isArray(chosenCustomer.addresses) ? [...chosenCustomer.addresses] : [];
-                                  const entry = { label: newAddress.label || "Home", name: newAddress.name, phone: newAddress.phone, building: newAddress.building, street: newAddress.street, area: newAddress.area, pincode: newAddress.pincode };
+                                  const resolvedLabel = resolveAddressLabel(newAddress.label || "Home", currentAddresses);
+                                  const entry = { label: resolvedLabel, name: newAddress.name, phone: newAddress.phone, building: newAddress.building, street: newAddress.street, area: newAddress.area, pincode: newAddress.pincode };
                                   const updated = [...currentAddresses, entry];
                                   await apiFetch(`/api/customers/${chosenCustomer.id}`, { method: "PUT", body: JSON.stringify({ addresses: updated }) });
                                   setChosenCustomer((c: any) => ({ ...c, addresses: updated }));
