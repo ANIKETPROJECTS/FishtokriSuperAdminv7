@@ -213,11 +213,10 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   const orders: any[] = data?.orders ?? [];
 
   const stats = useMemo(() => {
-    let cash = 0, upi = 0, wallet = 0, totalRev = 0, unpaid = 0;
+    let cash = 0, upi = 0, wallet = 0, other = 0, unpaid = 0;
     for (const o of orders) {
       if (String(o.orderStatus || o.status || "").toLowerCase() === "cancelled") continue;
       const total = o.total || 0;
-      totalRev += total;
 
       const statusLower = String(o.paymentStatus || "").toLowerCase();
       const isUnpaid = statusLower === "unpaid";
@@ -247,7 +246,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
           if (mode === "cash" || mode === "cod") { cash += amt; nonWalletPaid += amt; }
           else if (mode === "upi") { upi += amt; nonWalletPaid += amt; }
           else if (mode === "wallet") wallet += amt;
-          else nonWalletPaid += amt;
+          else { other += amt; nonWalletPaid += amt; }
         }
         // Excess collected beyond order total → credited to customer wallet
         const excessToWallet = Math.max(0, nonWalletPaid - (Number(o.total) || 0));
@@ -261,9 +260,11 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         if (mode === "cash" || mode === "cod") cash += paidAmt;
         else if (mode === "upi") upi += paidAmt;
         else if (mode === "wallet") wallet += paidAmt;
-        // mixed modes without a payments array — can't split accurately, skip
+        else other += paidAmt;
       }
     }
+    // Total Revenue = actual collected amounts (cash + upi + other non-wallet modes)
+    const totalRev = cash + upi + other;
     return { cash, upi, wallet, totalRev, unpaid };
   }, [orders]);
 
