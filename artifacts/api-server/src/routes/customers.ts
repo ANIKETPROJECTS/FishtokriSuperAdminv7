@@ -323,6 +323,37 @@ router.get("/", async (req: ScopedRequest, res) => {
   }
 });
 
+// Lean POS search — id/name/phone/addresses only, no order enrichment.
+// Used by the point-of-sale customer lookup for fast as-you-type searching.
+router.get("/pos-search", async (req: ScopedRequest, res) => {
+  try {
+    const Customer = await getCustomerModel();
+    const q = String(req.query.q ?? "").trim();
+    if (!q) return void res.json({ customers: [] });
+
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+    const filter: any = { $or: [{ name: regex }, { phone: regex }] };
+
+    const docs = await Customer.find(filter)
+      .sort({ name: 1 })
+      .limit(25)
+      .select("name phone addresses");
+
+    const customers = docs.map((d: any) => ({
+      id: String(d._id),
+      name: d.name ?? "",
+      phone: d.phone ?? "",
+      addresses: d.addresses ?? [],
+    }));
+
+    res.json({ customers });
+  } catch (err) {
+    req.log.error({ err }, "Failed to pos-search customers");
+    res.status(500).json({ error: "InternalError", message: "Failed to search customers" });
+  }
+});
+
 router.get("/:id", async (req: ScopedRequest, res) => {
   try {
     const Customer = await getCustomerModel();

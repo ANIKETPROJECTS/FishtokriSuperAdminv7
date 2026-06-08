@@ -1036,16 +1036,30 @@ export default function Orders() {
     }
   }, []);
 
-  // Load all customers when create-order modal opens
+  // Debounced server-side customer search — fires when the POS search box changes.
+  // Replaces the old bulk 100-customer local load; now searches all 2700+ customers instantly.
+  const customerSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isCreatePage) return;
-    if (allCustomers.length === 0) {
+    const q = customerSearch.trim();
+    if (customerSearchDebounceRef.current) clearTimeout(customerSearchDebounceRef.current);
+    if (!q) {
+      setAllCustomers([]);
+      return;
+    }
+    customerSearchDebounceRef.current = setTimeout(() => {
       setLoadingCustomers(true);
-      apiFetch(`/api/customers?limit=100&sort=name_asc`)
+      apiFetch(`/api/customers/pos-search?q=${encodeURIComponent(q)}`)
         .then((d) => setAllCustomers(d.customers ?? []))
         .catch(() => setAllCustomers([]))
         .finally(() => setLoadingCustomers(false));
-    }
+    }, 300);
+    return () => { if (customerSearchDebounceRef.current) clearTimeout(customerSearchDebounceRef.current); };
+  }, [isCreatePage, customerSearch]);
+
+  // Load super-hubs when create-order modal opens
+  useEffect(() => {
+    if (!isCreatePage) return;
     if (superHubs.length === 0) {
       setLoadingSuperHubs(true);
       apiFetch(`/api/super-hubs`)
@@ -1053,7 +1067,7 @@ export default function Orders() {
         .catch(() => setSuperHubs([]))
         .finally(() => setLoadingSuperHubs(false));
     }
-  }, [isCreatePage, allCustomers.length, superHubs.length]);
+  }, [isCreatePage, superHubs.length]);
 
   // Refs to avoid wiping pre-populated edit-form values when super/sub-hub effects fire.
   const skipSubHubResetRef = useRef(false);
