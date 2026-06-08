@@ -327,6 +327,21 @@ export default function DeliveryReportPersonPage() {
   const primaryModes = modeBreakdown.slice(0, 2);
   const extraModes = modeBreakdown.slice(2);
 
+  // Wallet credits from excess cash collections (e.g. ₹400 collected for ₹305 order → ₹95 credit)
+  const walletCreditStats = useMemo(() => {
+    let total = 0, count = 0;
+    orders.forEach((o) => {
+      const pays: any[] = Array.isArray(o.payments) ? o.payments : [];
+      const nonWalletPaid = pays.reduce((s: number, p: any) => {
+        const m = String(p?.mode || "").toLowerCase();
+        return m !== "wallet" ? s + (Number(p.amount) || 0) : s;
+      }, 0);
+      const excess = Math.max(0, nonWalletPaid - (Number(o.total) || 0));
+      if (excess > 0) { total += excess; count++; }
+    });
+    return { total: Math.round(total * 100) / 100, count };
+  }, [orders]);
+
   return (
     <div className="space-y-4 max-w-2xl mx-auto w-full" style={{ fontFamily: FONT }}>
       {/* Date filter */}
@@ -376,6 +391,21 @@ export default function DeliveryReportPersonPage() {
               icon={<CheckCircle2 className="w-4 h-4" />}
             />
           </div>
+
+          {/* Wallet Credits Row */}
+          {walletCreditStats.total > 0 && (
+            <div className="grid grid-cols-1 gap-3">
+              <StatCard
+                label="Wallet Credited"
+                value={formatRupees(walletCreditStats.total)}
+                sub={`${walletCreditStats.count} order${walletCreditStats.count !== 1 ? "s" : ""} · extra collected → customer wallet`}
+                accent="text-blue-600"
+                iconBg="bg-blue-50"
+                icon={<Wallet className="w-4 h-4" />}
+                fullWidth
+              />
+            </div>
+          )}
 
           {/* Row 2: First 2 payment modes side by side */}
           {primaryModes.length > 0 && (
