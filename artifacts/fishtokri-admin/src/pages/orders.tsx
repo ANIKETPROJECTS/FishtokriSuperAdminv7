@@ -2056,9 +2056,18 @@ export default function Orders() {
     const orderId = String(order._id);
     setAcceptingId(orderId);
     try {
-      await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify({ status: "confirmed" }) });
-      toast({ title: "Order accepted", description: "Status set to Confirmed." });
-      setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, status: "confirmed" } : o));
+      const isPorter = !!order.isExpress || order.scheduleType === "express";
+      const payload: Record<string, any> = { status: "confirmed" };
+      if (isPorter) {
+        payload.assignedDeliveryPersonId = "porter_delivery";
+        payload.assignedDeliveryPersonName = "Porter Delivery";
+      }
+      await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast({
+        title: "Order accepted",
+        description: isPorter ? "Status set to Confirmed and assigned to Porter Delivery." : "Status set to Confirmed.",
+      });
+      setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, ...payload } : o));
       loadStats();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
