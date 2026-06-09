@@ -114,9 +114,10 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   })();
   const timeStr = d.toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit", hour12:true });
   const payMode = order.paymentMode || (invPays.length>0 ? [...new Set(invPays.map((p:any)=>p.method))].join(", ") : "Cash");
-  const payLabel = order.paymentStatus==="paid" ? "Paid" : order.paymentStatus==="partial" ? "Partial" : "Unpaid";
-  const payStatusColor = order.paymentStatus==="paid" ? "#15803d" : order.paymentStatus==="partial" ? "#b45309" : "#b91c1c";
-  const payStatusBg = order.paymentStatus==="paid" ? "#f0fdf4" : order.paymentStatus==="partial" ? "#fffbeb" : "#fef2f2";
+  const payStatusNorm = String(order.paymentStatus || "").toLowerCase();
+  const payLabel = payStatusNorm==="paid" ? "Paid" : payStatusNorm==="partial" ? "Partial" : "Unpaid";
+  const payStatusColor = payStatusNorm==="paid" ? "#15803d" : payStatusNorm==="partial" ? "#b45309" : "#b91c1c";
+  const payStatusBg = payStatusNorm==="paid" ? "#f0fdf4" : payStatusNorm==="partial" ? "#fffbeb" : "#fef2f2";
 
   const handlePrint = async () => {
     const itemRows = items.map((it:any) => {
