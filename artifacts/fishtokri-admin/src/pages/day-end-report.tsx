@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Download, Package, ChevronDown, ChevronRight,
-  Printer, X,
+  Printer, X, Search, ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -390,6 +390,9 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
 // ── INVENTORY REPORT ──────────────────────────────────────────────────────────
 function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef, collapseAllRef, onHasProducts }: { firstSubHubId: string; onDownload: (fn: () => void) => void; downloadRef: any; expandAllRef: any; collapseAllRef: any; onHasProducts: (v: boolean) => void }) {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+  const [invSearch, setInvSearch] = useState("");
+  const [invStockFilter, setInvStockFilter] = useState<"all" | "in_stock" | "out_of_stock" | "expiring">("all");
+  const [invSort, setInvSort] = useState<"default" | "name_az" | "name_za" | "qty_desc" | "qty_asc" | "cat_az">("default");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["day-end-inventory", firstSubHubId],
@@ -400,10 +403,25 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef,
   const products: any[] = data?.products ?? [];
   const grandTotal = useMemo(() => products.reduce((s, p) => s + p.totalQuantity, 0), [products]);
 
+  const filteredProducts = useMemo(() => {
+    let list = [...products];
+    const q = invSearch.trim().toLowerCase();
+    if (q) list = list.filter(p => p.name?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q));
+    if (invStockFilter === "in_stock") list = list.filter(p => p.activeQuantity > 0);
+    else if (invStockFilter === "out_of_stock") list = list.filter(p => p.activeQuantity === 0);
+    else if (invStockFilter === "expiring") list = list.filter(p => p.batches?.some((b: any) => !b.isExpired && b.daysLeft !== null && b.daysLeft <= 1));
+    if (invSort === "name_az") list.sort((a, b) => a.name.localeCompare(b.name));
+    else if (invSort === "name_za") list.sort((a, b) => b.name.localeCompare(a.name));
+    else if (invSort === "qty_desc") list.sort((a, b) => b.totalQuantity - a.totalQuantity);
+    else if (invSort === "qty_asc") list.sort((a, b) => a.totalQuantity - b.totalQuantity);
+    else if (invSort === "cat_az") list.sort((a, b) => (a.category || "").localeCompare(b.category || ""));
+    return list;
+  }, [products, invSearch, invStockFilter, invSort]);
+
   const toggleProduct = (id: string) => setExpandedProducts(prev => {
     const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next;
   });
-  const expandAll = () => setExpandedProducts(new Set(products.map(p => p.productId)));
+  const expandAll = () => setExpandedProducts(new Set(filteredProducts.map(p => p.productId)));
   const collapseAll = () => setExpandedProducts(new Set());
 
   // Expose expand/collapse to parent portal
@@ -459,9 +477,72 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef,
       {firstSubHubId && isError && <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
       {firstSubHubId && !isLoading && !isError && products.length === 0 && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>No inventory products found.</div>}
 
+      {/* Search / Filter / Sort toolbar */}
+      {firstSubHubId && !isLoading && !isError && products.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+          {/* Search */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: "#aaa", pointerEvents: "none" }} />
+            <input
+              type="text"
+              placeholder="Search product or category…"
+              value={invSearch}
+              onChange={e => setInvSearch(e.target.value)}
+              style={{ paddingLeft: 28, paddingRight: 10, height: 32, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", width: 220, outline: "none" }}
+            />
+          </div>
+
+          {/* Stock filter pills */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {([ ["all","All"], ["in_stock","In Stock"], ["out_of_stock","Out of Stock"], ["expiring","Expiring Soon"] ] as [typeof invStockFilter, string][]).map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setInvStockFilter(val)}
+                style={{
+                  height: 32, padding: "0 12px", borderRadius: 20, border: "1px solid",
+                  fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Poppins, sans-serif",
+                  whiteSpace: "nowrap",
+                  background: invStockFilter === val ? (val === "out_of_stock" ? "#dc2626" : val === "expiring" ? "#d97706" : val === "in_stock" ? "#16a34a" : "#364F9F") : "#f3f4f6",
+                  color: invStockFilter === val ? "#fff" : "#555",
+                  borderColor: invStockFilter === val ? "transparent" : "#e5e7eb",
+                }}
+              >{label}</button>
+            ))}
+          </div>
+
+          {/* Sort */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <ArrowUpDown style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", width: 12, height: 12, color: "#aaa", pointerEvents: "none" }} />
+            <select
+              value={invSort}
+              onChange={e => setInvSort(e.target.value as typeof invSort)}
+              style={{ paddingLeft: 26, paddingRight: 10, height: 32, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", cursor: "pointer", outline: "none" }}
+            >
+              <option value="default">Sort: Default</option>
+              <option value="name_az">Name A → Z</option>
+              <option value="name_za">Name Z → A</option>
+              <option value="qty_desc">Qty: High → Low</option>
+              <option value="qty_asc">Qty: Low → High</option>
+              <option value="cat_az">Category A → Z</option>
+            </select>
+          </div>
+
+          {/* Results count */}
+          <span style={{ fontSize: 11, color: "#888", fontFamily: "Poppins, sans-serif", marginLeft: "auto" }}>
+            Showing <strong style={{ color: "#000" }}>{filteredProducts.length}</strong> of {products.length} products
+          </span>
+        </div>
+      )}
+
       {/* Table — no wrapper card, full width */}
       {firstSubHubId && !isLoading && !isError && products.length > 0 && (
         <div style={{ overflowX: "auto" }}>
+          {filteredProducts.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "#aaa" }}>
+              <Package style={{ width: 32, height: 32, margin: "0 auto 8px", opacity: 0.3 }} />
+              <p style={{ fontSize: 13, fontWeight: 500 }}>No products match your search or filter</p>
+            </div>
+          ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
@@ -472,7 +553,7 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef,
               </tr>
             </thead>
             <tbody>
-              {products.map(p => {
+              {filteredProducts.map(p => {
                 const isExpanded = expandedProducts.has(p.productId);
                 const hasBatches = p.batches && p.batches.length > 0;
                 const inStock = p.activeQuantity > 0;
@@ -539,12 +620,19 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef,
               })}
               <tr style={{ background: "#1e3a6e", borderTop: "2px solid #364F9F" }}>
                 <td style={{ padding: "14px 8px" }}></td>
-                <td style={{ padding: "14px 14px", fontWeight: 700, color: "#fff", fontSize: 14 }} colSpan={2}>OVERALL TOTAL — {data?.subHub?.name || "All Products"}</td>
-                <td style={{ padding: "14px 14px", fontWeight: 800, fontSize: 22, color: "#fff" }}>{grandTotal.toLocaleString("en-IN")}</td>
+                <td style={{ padding: "14px 14px", fontWeight: 700, color: "#fff", fontSize: 14 }} colSpan={2}>
+                  {filteredProducts.length < products.length
+                    ? `FILTERED TOTAL — ${filteredProducts.length} products`
+                    : `OVERALL TOTAL — ${data?.subHub?.name || "All Products"}`}
+                </td>
+                <td style={{ padding: "14px 14px", fontWeight: 800, fontSize: 22, color: "#fff" }}>
+                  {filteredProducts.reduce((s, p) => s + p.totalQuantity, 0).toLocaleString("en-IN")}
+                </td>
                 <td style={{ padding: "14px 14px" }}></td>
               </tr>
             </tbody>
           </table>
+          )}
         </div>
       )}
     </div>
