@@ -205,6 +205,10 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 // ── ORDERS REPORT ─────────────────────────────────────────────────────────────
 function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to: string; onDownload: (fn: () => void) => void; downloadRef: any }) {
   const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
+  const [ordSearch, setOrdSearch] = useState("");
+  const [ordPayFilter, setOrdPayFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
+  const [ordStatusFilter, setOrdStatusFilter] = useState<"all" | "confirmed" | "out_for_delivery" | "delivered" | "cancelled">("all");
+  const [ordSort, setOrdSort] = useState<"default" | "total_desc" | "total_asc" | "customer_az" | "invoice_az">("default");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["day-end-orders", from, to],
@@ -215,6 +219,24 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   });
 
   const orders: any[] = data?.orders ?? [];
+
+  const filteredOrders = useMemo(() => {
+    let list = [...orders];
+    const q = ordSearch.trim().toLowerCase();
+    if (q) list = list.filter(o =>
+      o.customerName?.toLowerCase().includes(q) ||
+      o.phone?.toLowerCase().includes(q) ||
+      o.invoiceNo?.toLowerCase().includes(q) ||
+      o.deliveryPerson?.toLowerCase().includes(q)
+    );
+    if (ordPayFilter !== "all") list = list.filter(o => String(o.paymentStatus || "").toLowerCase() === ordPayFilter);
+    if (ordStatusFilter !== "all") list = list.filter(o => String(o.status || "").toLowerCase() === ordStatusFilter);
+    if (ordSort === "total_desc") list.sort((a, b) => (b.total || 0) - (a.total || 0));
+    else if (ordSort === "total_asc") list.sort((a, b) => (a.total || 0) - (b.total || 0));
+    else if (ordSort === "customer_az") list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
+    else if (ordSort === "invoice_az") list.sort((a, b) => (a.invoiceNo || "").localeCompare(b.invoiceNo || ""));
+    return list;
+  }, [orders, ordSearch, ordPayFilter, ordStatusFilter, ordSort]);
 
   const stats = useMemo(() => {
     let cash = 0, upi = 0, wallet = 0, other = 0, unpaid = 0;
@@ -324,8 +346,88 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         </div>
       )}
 
-      {/* Table — no wrapper card, full width */}
+      {/* Search / Filter / Sort toolbar */}
       {!isLoading && !isError && orders.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+          {/* Search */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: "#aaa", pointerEvents: "none" }} />
+            <input
+              type="text"
+              placeholder="Search customer, phone, invoice…"
+              value={ordSearch}
+              onChange={e => setOrdSearch(e.target.value)}
+              style={{ paddingLeft: 28, paddingRight: 10, height: 32, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", width: 230, outline: "none" }}
+            />
+          </div>
+
+          {/* Payment status pills */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {([
+              ["all", "All Pay"],
+              ["paid", "Paid"],
+              ["partial", "Partial"],
+              ["unpaid", "Unpaid"],
+            ] as [typeof ordPayFilter, string][]).map(([val, label]) => (
+              <button key={val} onClick={() => setOrdPayFilter(val)} style={{
+                height: 32, padding: "0 12px", borderRadius: 20, border: "1px solid",
+                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Poppins, sans-serif", whiteSpace: "nowrap",
+                background: ordPayFilter === val ? (val === "paid" ? "#16a34a" : val === "partial" ? "#d97706" : val === "unpaid" ? "#dc2626" : "#364F9F") : "#f3f4f6",
+                color: ordPayFilter === val ? "#fff" : "#555",
+                borderColor: ordPayFilter === val ? "transparent" : "#e5e7eb",
+              }}>{label}</button>
+            ))}
+          </div>
+
+          {/* Order status pills */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {([
+              ["all", "All Status"],
+              ["confirmed", "Confirmed"],
+              ["out_for_delivery", "Out for Delivery"],
+              ["delivered", "Delivered"],
+              ["cancelled", "Cancelled"],
+            ] as [typeof ordStatusFilter, string][]).map(([val, label]) => (
+              <button key={val} onClick={() => setOrdStatusFilter(val)} style={{
+                height: 32, padding: "0 12px", borderRadius: 20, border: "1px solid",
+                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Poppins, sans-serif", whiteSpace: "nowrap",
+                background: ordStatusFilter === val ? (val === "delivered" ? "#16a34a" : val === "cancelled" ? "#dc2626" : val === "out_for_delivery" ? "#2563eb" : val === "confirmed" ? "#7c3aed" : "#364F9F") : "#f3f4f6",
+                color: ordStatusFilter === val ? "#fff" : "#555",
+                borderColor: ordStatusFilter === val ? "transparent" : "#e5e7eb",
+              }}>{label}</button>
+            ))}
+          </div>
+
+          {/* Sort */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <ArrowUpDown style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", width: 12, height: 12, color: "#aaa", pointerEvents: "none" }} />
+            <select value={ordSort} onChange={e => setOrdSort(e.target.value as typeof ordSort)}
+              style={{ paddingLeft: 26, paddingRight: 10, height: 32, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "Poppins, sans-serif", color: "#000", background: "#fff", cursor: "pointer", outline: "none" }}>
+              <option value="default">Sort: Default</option>
+              <option value="total_desc">Total: High → Low</option>
+              <option value="total_asc">Total: Low → High</option>
+              <option value="customer_az">Customer A → Z</option>
+              <option value="invoice_az">Invoice A → Z</option>
+            </select>
+          </div>
+
+          {/* Count */}
+          <span style={{ fontSize: 11, color: "#888", fontFamily: "Poppins, sans-serif", marginLeft: "auto" }}>
+            Showing <strong style={{ color: "#000" }}>{filteredOrders.length}</strong> of {orders.length} orders
+          </span>
+        </div>
+      )}
+
+      {/* No-results message when search/filter returns nothing */}
+      {!isLoading && !isError && orders.length > 0 && filteredOrders.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 0", color: "#aaa" }}>
+          <Package style={{ width: 32, height: 32, margin: "0 auto 8px", opacity: 0.3 }} />
+          <p style={{ fontSize: 13, fontWeight: 500 }}>No orders match your search or filter</p>
+        </div>
+      )}
+
+      {/* Table — no wrapper card, full width */}
+      {!isLoading && !isError && filteredOrders.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
@@ -336,7 +438,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
               </tr>
             </thead>
             <tbody>
-              {orders.map((o, i) => (
+              {filteredOrders.map((o, i) => (
                 <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}
                   onMouseEnter={e => (e.currentTarget.style.background = "#fafafa")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
@@ -534,15 +636,17 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef,
         </div>
       )}
 
+      {/* No-results message when search/filter returns nothing */}
+      {firstSubHubId && !isLoading && !isError && products.length > 0 && filteredProducts.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 0", color: "#aaa" }}>
+          <Package style={{ width: 32, height: 32, margin: "0 auto 8px", opacity: 0.3 }} />
+          <p style={{ fontSize: 13, fontWeight: 500 }}>No products match your search or filter</p>
+        </div>
+      )}
+
       {/* Table — no wrapper card, full width */}
-      {firstSubHubId && !isLoading && !isError && products.length > 0 && (
+      {firstSubHubId && !isLoading && !isError && filteredProducts.length > 0 && (
         <div style={{ overflowX: "auto" }}>
-          {filteredProducts.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 0", color: "#aaa" }}>
-              <Package style={{ width: 32, height: 32, margin: "0 auto 8px", opacity: 0.3 }} />
-              <p style={{ fontSize: 13, fontWeight: 500 }}>No products match your search or filter</p>
-            </div>
-          ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
@@ -632,7 +736,6 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef,
               </tr>
             </tbody>
           </table>
-          )}
         </div>
       )}
     </div>
