@@ -760,6 +760,16 @@ function InlineDeliverySelect({
     );
   }
 
+  // Porter/express orders are locked — no dropdown
+  const isPorter = !!order.isExpress || order.scheduleType === "express" || assigned === "porter_delivery";
+  if (isPorter) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-full border border-orange-300 bg-orange-50 px-3 py-1 max-w-[130px]">
+        <span className="text-xs font-semibold text-orange-700 truncate">Porter Deliv.</span>
+      </div>
+    );
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
