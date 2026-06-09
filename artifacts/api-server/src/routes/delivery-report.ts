@@ -27,7 +27,7 @@ const ORDER_PROJECTION = {
   _id: 1, orderId: 1, orderNumber: 1, customerName: 1, phone: 1, total: 1,
   paidAmount: 1, dueAmount: 1, payments: 1, paymentStatus: 1, status: 1,
   deliveryType: 1, assignedDeliveryPersonId: 1, assignedDeliveryPersonName: 1,
-  createdAt: 1, subHubName: 1, deliveryArea: 1, items: 1,
+  createdAt: 1, subHubName: 1, deliveryArea: 1, items: 1, isExpress: 1,
 };
 
 interface ModeData { count: number; amount: number; }
@@ -36,10 +36,15 @@ function processOrders(orders: any[]) {
   const personMap = new Map<string, any>();
 
   for (const order of orders) {
-    const personId = String(order.assignedDeliveryPersonId || "unassigned");
-    const personName =
-      order.assignedDeliveryPersonName ||
-      (order.deliveryType === "takeaway" ? "Takeaway (Counter)" : "Unassigned");
+    // Porter/express orders always group under the virtual "Porter Delivery" person
+    const isPorter = !!order.isExpress || String(order.assignedDeliveryPersonId || "") === "porter_delivery";
+    const personId = isPorter
+      ? "porter_delivery"
+      : String(order.assignedDeliveryPersonId || "unassigned");
+    const personName = isPorter
+      ? "Porter Delivery"
+      : order.assignedDeliveryPersonName ||
+        (order.deliveryType === "takeaway" ? "Takeaway (Counter)" : "Unassigned");
 
     if (!personMap.has(personId)) {
       personMap.set(personId, {

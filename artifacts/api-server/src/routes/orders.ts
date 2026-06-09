@@ -852,6 +852,7 @@ router.post("/", async (req: ScopedRequest, res) => {
       timeslotLabel,
       timeslotStart,
       timeslotEnd,
+      isExpress,
     } = req.body ?? {};
 
     // Fall back to the name stored in the delivery address if the account has no name
@@ -1002,7 +1003,8 @@ router.post("/", async (req: ScopedRequest, res) => {
       dueAmount: Math.max(0, totalNum - (Number(paidAmount) || 0)),
       paymentMode: paymentMode ? String(paymentMode) : undefined,
       // Schedule
-      scheduleType: scheduleType === "instant" ? "instant" : "slot",
+      scheduleType: scheduleType === "instant" ? "instant" : scheduleType === "express" ? "express" : "slot",
+      isExpress: !!isExpress,
       deliveryDate: deliveryDate ? String(deliveryDate) : undefined,
       timeslotId: timeslotId ? String(timeslotId) : undefined,
       timeslotLabel: timeslotLabel ?? undefined,
@@ -1280,6 +1282,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       cancellationReason,
       walletTopup,
       walletAdjustment,
+      isExpress,
     } = req.body;
     if (status !== undefined && !VALID_ORDER_STATUSES.has(String(status))) {
       res.status(400).json({ error: "ValidationError", message: `Invalid order status: ${status}` });
@@ -1302,6 +1305,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     if (subHubId !== undefined) update.subHubId = subHubId;
     if (subHubName !== undefined) update.subHubName = subHubName;
     if (scheduleType !== undefined) update.scheduleType = scheduleType;
+    if (isExpress !== undefined) update.isExpress = !!isExpress;
     if (deliveryDate !== undefined) update.deliveryDate = deliveryDate;
     if (timeslotId !== undefined) update.timeslotId = timeslotId;
     if (timeslotLabel !== undefined) update.timeslotLabel = timeslotLabel;

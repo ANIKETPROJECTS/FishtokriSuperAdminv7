@@ -157,33 +157,38 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
 }
 
 function PersonCard({ person, userProfile, onView }: { person: any; userProfile?: any; onView: () => void }) {
-  const ac = avatarColor(person.personName);
-  const ini = initials(person.personName);
+  const isPorter = person.personId === "porter_delivery";
+  const ac = isPorter ? "bg-orange-100 text-orange-700" : avatarColor(person.personName);
+  const ini = isPorter ? "🚚" : initials(person.personName);
   const modes = Object.entries(person.byMode || {}) as [string, { count: number; amount: number }][];
   const phone = userProfile?.phone;
   const hubNames: string[] = userProfile?.subHubNames ?? userProfile?.superHubNames ?? [];
   const isActive = userProfile?.status !== "Inactive";
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+    <div className={`bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow ${isPorter ? "border-orange-300" : "border-gray-200"}`}>
       {/* Card header */}
-      <div className="p-4 flex items-start gap-3">
+      <div className={`p-4 flex items-start gap-3 ${isPorter ? "bg-orange-50" : ""}`}>
         <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${ac}`}>
-          {userProfile?.profileImageUrl
+          {!isPorter && userProfile?.profileImageUrl
             ? <img src={userProfile.profileImageUrl} alt={person.personName} className="w-full h-full rounded-full object-cover" />
             : ini}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-bold text-gray-900 truncate">{person.personName}</p>
-            {userProfile && (
+            <p className={`text-sm font-bold truncate ${isPorter ? "text-orange-800" : "text-gray-900"}`}>{person.personName}</p>
+            {isPorter ? (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0 bg-orange-100 text-orange-700">Express</span>
+            ) : userProfile && (
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0 ${
                 isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
               }`}>{isActive ? "Active" : "Inactive"}</span>
             )}
           </div>
-          {phone && <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">📞 {phone}</p>}
-          {hubNames.length > 0 && (
+          {isPorter
+            ? <p className="text-xs text-orange-600 mt-0.5">All express/porter orders</p>
+            : phone && <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">📞 {phone}</p>}
+          {!isPorter && hubNames.length > 0 && (
             <p className="text-xs text-gray-400 mt-0.5 truncate">🏠 {hubNames.slice(0, 2).join(", ")}</p>
           )}
         </div>

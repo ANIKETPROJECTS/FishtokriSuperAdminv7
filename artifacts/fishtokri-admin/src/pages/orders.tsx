@@ -2229,7 +2229,7 @@ export default function Orders() {
     setUseWallet(hadWallet);
     // Schedule
     setOrderScheduleType("slot");
-    setIsExpressOrder(!!o.isExpress);
+    setIsExpressOrder(!!o.isExpress || o.scheduleType === "express");
     if (o.deliveryDate) setOrderDate(String(o.deliveryDate).slice(0, 10));
     if (o.timeslotId) setSelectedTimeslotId(String(o.timeslotId));
     // Restore delivery charge override + extra discount from saved order.
@@ -4247,6 +4247,47 @@ export default function Orders() {
                       </div>
                     </div>
                   </div>
+                ) : selectedOrder.isExpress ? (
+                  <div className="px-6 py-6">
+                    <div className="flex items-center gap-2.5 mb-5">
+                      <MaskIcon src={iconGroup} color="#364F9F" className="w-[20px] h-[20px]" />
+                      <span className="text-xs font-bold text-[#364F9F] uppercase tracking-widest">Delivery Partner</span>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl">
+                        <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                          <MaskIcon src={iconMotorbike} color="#EA580C" className="w-[18px] h-[18px]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-extrabold text-orange-800">Porter Delivery</p>
+                          <p className="text-xs font-semibold text-orange-600 mt-0.5">Express order — handled by Porter</p>
+                        </div>
+                      </div>
+                      {selectedOrder.assignedDeliveryPersonId !== "porter_delivery" && (
+                        <Button
+                          onClick={async () => {
+                            setAssigningDelivery(true);
+                            try {
+                              const payload = { assignedDeliveryPersonId: "porter_delivery", assignedDeliveryPersonName: "Porter Delivery" };
+                              await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+                              toast({ title: "Assigned to Porter Delivery" });
+                              setSelectedOrder((o: any) => ({ ...o, ...payload }));
+                              setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, ...payload } : o));
+                            } catch (err: any) {
+                              toast({ title: "Error", description: err.message, variant: "destructive" });
+                            } finally { setAssigningDelivery(false); }
+                          }}
+                          disabled={assigningDelivery}
+                          className="w-full bg-orange-500 hover:bg-orange-600 h-11 text-white font-bold rounded-xl"
+                        >
+                          {assigningDelivery ? "Saving..." : "Confirm Porter Delivery"}
+                        </Button>
+                      )}
+                      {selectedOrder.assignedDeliveryPersonId === "porter_delivery" && (
+                        <p className="text-xs font-semibold text-orange-600 text-center">✓ Assigned to Porter Delivery</p>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div className="px-6 py-6">
                     <div className="flex items-center justify-between mb-5">
@@ -4345,7 +4386,7 @@ export default function Orders() {
                   <div className="space-y-3">
                     {(() => {
                       const isTakeaway = selectedOrder.deliveryType === "takeaway";
-                      const hasAssignee = !!selectedOrder.assignedDeliveryPersonId;
+                      const hasAssignee = !!selectedOrder.assignedDeliveryPersonId || !!selectedOrder.isExpress;
                       const requiresAssignee = (s: string) => !isTakeaway && !hasAssignee && (s === "out_for_delivery" || s === "delivered");
                       // "Next day" orders (deliveryDate is exactly tomorrow) cannot be
                       // dispatched or marked delivered until the delivery day arrives.
