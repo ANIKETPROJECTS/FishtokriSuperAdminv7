@@ -560,7 +560,14 @@ function BatchSelector({
   onSelect: (batchId: string) => void;
   mode?: "remove" | "add_existing";
 }) {
-  const activeBatches = batches.filter((b) => b.quantity > 0);
+  const activeBatches = batches.filter((b) => {
+    if (b.quantity <= 0) return false;
+    if (b.expiryDate) {
+      const exp = new Date(b.expiryDate);
+      if (!isNaN(exp.getTime()) && exp.getTime() <= Date.now()) return false;
+    }
+    return true;
+  });
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const portalRef = useRef<HTMLDivElement>(null);
@@ -1124,7 +1131,14 @@ export default function InventoryStockAdjustment() {
 
                 const prod = products.find((p) => p.id === row.productId);
                 const prodBatches: Batch[] = prod?.batches ?? [];
-                const activeBatches = prodBatches.filter(b => b.quantity > 0);
+                const activeBatches = prodBatches.filter(b => {
+                  if (b.quantity <= 0) return false;
+                  if (b.expiryDate) {
+                    const exp = new Date(b.expiryDate);
+                    if (!isNaN(exp.getTime()) && exp.getTime() <= Date.now()) return false;
+                  }
+                  return true;
+                });
 
                 const badgeClass = isAdd
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"

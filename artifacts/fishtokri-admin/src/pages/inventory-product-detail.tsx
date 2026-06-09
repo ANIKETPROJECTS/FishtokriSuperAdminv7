@@ -79,8 +79,8 @@ function daysUntil(iso: string | null | undefined) {
 function getBatchStatus(b: Batch): "live" | "expired" | "completed" {
   if (b.quantity <= 0) return "completed";
   if (!b.expiryDate) return "live";
-  const dl = daysUntil(b.expiryDate);
-  if (dl !== null && dl < 0) return "expired";
+  const d = new Date(b.expiryDate);
+  if (!isNaN(d.getTime()) && d.getTime() <= Date.now()) return "expired";
   return "live";
 }
 
