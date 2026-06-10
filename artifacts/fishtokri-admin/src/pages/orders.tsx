@@ -1730,8 +1730,8 @@ export default function Orders() {
       }
     }
 
-    // Validate payment
-    if (paymentStatus !== "unpaid") {
+    // Validate payment (takeaway orders are always paid at pickup — skip validation)
+    if (orderDeliveryType !== "takeaway" && paymentStatus !== "unpaid") {
       const validEntries = paymentEntries.filter((p) => p.mode && Number(p.amount) > 0);
       if (validEntries.length === 0) {
         toast({ title: "Add payment details", description: "Enter at least one payment with mode and amount.", variant: "destructive" });
@@ -1789,17 +1789,22 @@ export default function Orders() {
           discountValue: Number(c.discountValue) || 0,
           minOrderAmount: Number(c.minOrderAmount) || 0,
         })),
-        // Payment
-        paymentStatus,
-        paidAmount: paidTotal,
-        paymentMode: paymentEntries[0]?.mode,
-        payments: paymentEntries
-          .filter((p) => p.mode && Number(p.amount) > 0)
-          .map((p) => ({
-            mode: p.mode,
-            amount: Number(p.amount) || 0,
-            reference: p.reference?.trim() || "",
-          })),
+        // Payment — takeaway orders are always collected at pickup so force paid
+        paymentStatus: orderDeliveryType === "takeaway" ? "paid" : paymentStatus,
+        paidAmount: orderDeliveryType === "takeaway" ? newOrderTotal : paidTotal,
+        dueAmount: orderDeliveryType === "takeaway" ? 0 : undefined,
+        paymentMode: orderDeliveryType === "takeaway"
+          ? (mainPaymentMode || "cash")
+          : paymentEntries[0]?.mode,
+        payments: orderDeliveryType === "takeaway"
+          ? [{ mode: mainPaymentMode || "cash", amount: newOrderTotal, reference: "" }]
+          : paymentEntries
+              .filter((p) => p.mode && Number(p.amount) > 0)
+              .map((p) => ({
+                mode: p.mode,
+                amount: Number(p.amount) || 0,
+                reference: p.reference?.trim() || "",
+              })),
         // Schedule (takeaway is forced to instant fulfillment for today)
         isExpress: isExpressOrder,
         scheduleType: orderDeliveryType === "takeaway" ? "instant" : isExpressOrder ? "express" : orderScheduleType,
