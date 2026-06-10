@@ -304,13 +304,15 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
 
   const handleDownload = useCallback(() => {
     if (!orders.length) return;
-    const rows: any[] = [["Invoice No","Customer","Phone","Items & Qty","Total (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status"]];
+    const rows: any[] = [["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status"]];
     for (const o of orders) {
       const itemsQty = (o.items || []).map((it: any) => `${it.name} × ${it.quantity}`).join(", ");
-      rows.push([o.invoiceNo, o.customerName, o.phone, itemsQty, o.total, o.deliveryPerson || "—", o.paymentMode, o.paymentStatus, String(o.status || "").replace(/_/g, " ")]);
+      const placedDate = o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+      const delivDate = o.deliveryDate ? formatDate(o.deliveryDate) : "—";
+      rows.push([o.invoiceNo, placedDate, delivDate, o.customerName, o.phone, itemsQty, o.total, o.deliveryPerson || "—", o.paymentMode, o.paymentStatus, String(o.status || "").replace(/_/g, " ")]);
     }
     rows.push([]);
-    rows.push(["SUMMARY", "", "", "", "", "", "", "", ""]);
+    rows.push(["SUMMARY", "", "", "", "", "", "", "", "", "", ""]);
     rows.push(["Total Orders", orders.length]);
     rows.push(["Cash Revenue", stats.cash]);
     rows.push(["UPI Revenue", stats.upi]);
@@ -440,7 +442,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                {["Invoice No","Customer","Phone","Items & Qty","Total","Delivery Partner","Payment Mode","Payment Status","Order Status","Receipt"].map(h => (
+                {["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total","Delivery Partner","Payment Mode","Payment Status","Order Status","Receipt"].map(h => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#555", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                 ))}
               </tr>
@@ -452,6 +454,12 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                   <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
                     <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "#364F9F", background: "#eff3ff", padding: "2px 8px", borderRadius: 6 }}>{o.invoiceNo}</span>
+                  </td>
+                  <td style={{ padding: "10px 14px", whiteSpace: "nowrap", color: "#444", fontSize: 12 }}>
+                    {o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                  </td>
+                  <td style={{ padding: "10px 14px", whiteSpace: "nowrap", color: "#444", fontSize: 12 }}>
+                    {o.deliveryDate ? formatDate(o.deliveryDate) : "—"}
                   </td>
                   <td style={{ padding: "10px 14px", fontWeight: 600, color: "#000", whiteSpace: "nowrap" }}>{o.customerName}</td>
                   <td style={{ padding: "10px 14px", color: "#444", whiteSpace: "nowrap" }}>{o.phone}</td>
