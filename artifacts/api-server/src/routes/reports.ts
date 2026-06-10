@@ -117,6 +117,8 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
         subtotal: Number(o.subtotal) || 0,
         total: Number(o.total) || 0,
         discount: Number(o.discount) || 0,
+        extraDiscount: Number(o.extraDiscount) || 0,
+        extraDiscountType: o.extraDiscountType || "flat",
         couponCode: o.couponCode || "",
         slotCharge: Number(o.slotCharge) || 0,
         deliveryCharge: Number(o.deliveryCharge) || 0,
