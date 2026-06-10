@@ -3401,13 +3401,17 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
   const [type, setType] = useState("percentage");
   const [discountValue, setDiscountValue] = useState(""); const [minOrderAmount, setMinOrderAmount] = useState("");
   const [maxUsage, setMaxUsage] = useState(""); const [isFirstTimeOnly, setIsFirstTimeOnly] = useState(false);
-  const [isActive, setIsActive] = useState(true); const [expiresAt, setExpiresAt] = useState("");
+  const [isActive, setIsActive] = useState(true); const [visibleOnWebsite, setVisibleOnWebsite] = useState(true);
+  const [expiresAt, setExpiresAt] = useState("");
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [availableCategories, setAvailableCategories] = useState<any[]>([]);
   const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [availableCustomers, setAvailableCustomers] = useState<any[]>([]);
   const [categorySearch, setCategorySearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
   const [productCatFilter, setProductCatFilter] = useState("all");
   const [saving, setSaving] = useState(false);
 
@@ -3415,20 +3419,24 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
     if (!isOpen) return;
     apiFetch(`/api/sub-hubs/${subHubId}/menu/categories`).then((d) => setAvailableCategories(d.categories ?? [])).catch(() => {});
     apiFetch(`/api/sub-hubs/${subHubId}/menu/products`).then((d) => setAvailableProducts(d.products ?? [])).catch(() => {});
+    apiFetch(`/api/customers?limit=100&sort=name_asc`).then((d) => setAvailableCustomers(d.customers ?? [])).catch(() => {});
     if (coupon) {
       setCode(coupon.code ?? ""); setTitle(coupon.title ?? ""); setDescription(coupon.description ?? "");
       setType(coupon.type ?? "percentage"); setDiscountValue(String(coupon.discountValue ?? ""));
       setMinOrderAmount(String(coupon.minOrderAmount ?? "")); setMaxUsage(coupon.maxUsage ? String(coupon.maxUsage) : "");
       setIsFirstTimeOnly(coupon.isFirstTimeOnly === true); setIsActive(coupon.isActive !== false);
+      setVisibleOnWebsite(coupon.isActive !== false ? (coupon.visibleOnWebsite !== false) : false);
       setExpiresAt(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().split("T")[0] : "");
       setSelectedCategoryIds(Array.isArray(coupon.applicableCategories) ? coupon.applicableCategories : []);
       setSelectedProductIds(Array.isArray(coupon.applicableProducts) ? coupon.applicableProducts : []);
+      setSelectedCustomerIds(Array.isArray(coupon.applicableCustomers) ? coupon.applicableCustomers : []);
     } else {
       setCode(""); setTitle(""); setDescription(""); setType("percentage");
       setDiscountValue(""); setMinOrderAmount(""); setMaxUsage(""); setIsFirstTimeOnly(false);
-      setIsActive(true); setExpiresAt(""); setSelectedCategoryIds([]); setSelectedProductIds([]);
+      setIsActive(true); setVisibleOnWebsite(true); setExpiresAt("");
+      setSelectedCategoryIds([]); setSelectedProductIds([]); setSelectedCustomerIds([]);
     }
-    setCategorySearch(""); setProductSearch(""); setProductCatFilter("all");
+    setCategorySearch(""); setProductSearch(""); setCustomerSearch(""); setProductCatFilter("all");
   }, [isOpen, coupon]);
 
   const toggleCategory = (id: string) =>
@@ -3436,6 +3444,9 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
 
   const toggleProduct = (id: string) =>
     setSelectedProductIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+
+  const toggleCustomer = (id: string) =>
+    setSelectedCustomerIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   const filteredCategories = availableCategories.filter((c) =>
     !categorySearch || c.name?.toLowerCase().includes(categorySearch.toLowerCase())
@@ -3466,7 +3477,9 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
       discountValue: Number(discountValue) || 0, minOrderAmount: Number(minOrderAmount) || 0,
       applicableCategories: selectedCategoryIds,
       applicableProducts: selectedProductIds,
+      applicableCustomers: selectedCustomerIds,
       isFirstTimeOnly, isActive,
+      visibleOnWebsite: isActive ? visibleOnWebsite : false,
     };
     if (isFirstTimeOnly) payload.maxUsage = 1;
     else if (maxUsage) payload.maxUsage = Number(maxUsage);
@@ -3630,9 +3643,76 @@ function CouponModal({ isOpen, onClose, coupon, subHubId, onSaved }: any) {
             </div>
           </div>
 
+          {/* Applicable Customers */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-gray-600">
+              Applicable Customers
+              <span className="font-normal text-gray-400 ml-1">
+                {selectedCustomerIds.length > 0 ? `(${selectedCustomerIds.length} selected)` : "(all customers)"}
+              </span>
+            </Label>
+            {selectedCustomerIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-1">
+                {selectedCustomerIds.map((id) => {
+                  const cust = availableCustomers.find((c) => String(c.id) === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-100 text-xs rounded-full px-2 py-0.5">
+                      {cust ? (cust.name || cust.phone || id) : id}
+                      <button type="button" onClick={() => toggleCustomer(id)} className="hover:text-purple-900 ml-0.5">×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex items-center gap-1.5 p-1.5 border-b border-gray-100 bg-gray-50">
+                <Input value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} placeholder="Search by name or phone..." className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-1 flex-1" />
+                {selectedCustomerIds.length > 0 && (
+                  <button type="button" onClick={() => setSelectedCustomerIds([])} className="text-xs text-gray-400 hover:text-gray-600 px-1 flex-shrink-0">Clear all</button>
+                )}
+              </div>
+              <div className="max-h-32 overflow-y-auto">
+                {availableCustomers.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-3">Loading customers…</p>
+                ) : (() => {
+                  const filtered = availableCustomers.filter((c) => {
+                    if (!customerSearch) return true;
+                    const q = customerSearch.toLowerCase();
+                    return (c.name ?? "").toLowerCase().includes(q) || (c.phone ?? "").includes(q);
+                  });
+                  return filtered.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-3">No customers found</p>
+                  ) : (
+                    filtered.map((cust) => {
+                      const id = String(cust.id);
+                      const checked = selectedCustomerIds.includes(id);
+                      return (
+                        <label key={id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                          <input type="checkbox" checked={checked} onChange={() => toggleCustomer(id)} className="rounded text-[#1A56DB]" />
+                          <span className="text-xs text-gray-700 flex-1">{cust.name || "—"}</span>
+                          {cust.phone && <span className="text-xs text-gray-400">{cust.phone}</span>}
+                        </label>
+                      );
+                    })
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-3">
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">First Time Only</Label><Switch checked={isFirstTimeOnly} onCheckedChange={setIsFirstTimeOnly} className="data-[state=checked]:bg-[#1A56DB]" /></div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1"><Label className="text-sm">Active</Label><Switch checked={isActive} onCheckedChange={setIsActive} className="data-[state=checked]:bg-[#1A56DB]" /></div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg flex-1">
+              <Label className="text-sm">Active</Label>
+              <Switch checked={isActive} onCheckedChange={(v) => { setIsActive(v); if (!v) setVisibleOnWebsite(false); }} className="data-[state=checked]:bg-[#1A56DB]" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div>
+              <Label className="text-sm">Visible on Website</Label>
+              <p className="text-xs text-gray-400 mt-0.5">{!isActive ? "Requires Active to be on" : visibleOnWebsite ? "Coupon is visible to customers" : "Hidden from customers"}</p>
+            </div>
+            <Switch checked={visibleOnWebsite && isActive} onCheckedChange={(v) => { if (isActive) setVisibleOnWebsite(v); }} disabled={!isActive} className="data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-gray-400 disabled:opacity-40 disabled:cursor-not-allowed" />
           </div>
           <DialogFooter className="pt-1"><Button type="button" variant="outline" onClick={onClose} className="h-9">Cancel</Button><Button type="submit" disabled={saving} className="bg-[#1A56DB] hover:bg-[#1447B4] h-9">{isEditing ? "Save Changes" : "Add Coupon"}</Button></DialogFooter>
         </form>
