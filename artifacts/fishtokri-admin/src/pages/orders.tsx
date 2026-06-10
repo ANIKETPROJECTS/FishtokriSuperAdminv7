@@ -296,6 +296,9 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   const slotCharge = Number(order.slotCharge) || 0;
   const deliveryCharge = Number(order.deliveryCharge) || 0;
   const grandTotal = effectiveOrderTotal(order);
+  const extraDiscAmt = Number(order.extraDiscount) || 0;
+  const couponAmt = Math.max(0, discount - extraDiscAmt);
+  const extraDiscType: string = order.extraDiscountType || "flat";
   const paidAmt = Number(order.paidAmount) || 0;
   const dueAmt = Number(order.dueAmount) || Math.max(0, grandTotal - paidAmt);
   const invPays: any[] = Array.isArray(order.payments) ? order.payments : [];
@@ -373,6 +376,12 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
         <td style="padding:4px 2px;text-align:right;">+ ${deliveryCharge.toFixed(2)}</td>
       </tr>` : "";
 
+    const discountRows = [
+      couponAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="3">Coupon${order.couponCode ? ` (${order.couponCode})` : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${couponAmt.toFixed(2)}</td></tr>` : "",
+      extraDiscAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="3">Extra discount${extraDiscType === "percentage" ? " (%)" : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${extraDiscAmt.toFixed(2)}</td></tr>` : "",
+      couponAmt === 0 && extraDiscAmt === 0 && discount > 0 ? `<tr><td style="padding:4px 2px;" colspan="3">Discount :</td><td style="padding:4px 2px;text-align:right;">- ${discount.toFixed(2)}</td></tr>` : "",
+    ].join("");
+
     const payStatusColor = order.paymentStatus === "paid" ? "#15803d" : order.paymentStatus === "partial" ? "#b45309" : "#b91c1c";
     const payStatusBg = order.paymentStatus === "paid" ? "#f0fdf4" : order.paymentStatus === "partial" ? "#fffbeb" : "#fef2f2";
 
@@ -430,10 +439,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
               <td></td>
               <td style="padding:5px 4px;text-align:right;font-weight:600;">${subtotal.toFixed(2)}</td>
             </tr>
-            <tr>
-              <td style="padding:4px 2px;" colspan="3">Discount${order.couponCode ? ` (${order.couponCode})` : ""} :</td>
-              <td style="padding:4px 2px;text-align:right;">- ${discount.toFixed(2)}</td>
-            </tr>
+            ${discountRows}
             ${slotRow}
             ${deliveryRow}
           </tbody>
@@ -540,12 +546,24 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
                   <td></td>
                   <td className="py-1 text-right"><b>{subtotal.toFixed(2)}</b></td>
                 </tr>
-                <tr>
-                  <td className="py-1" colSpan={3}>
-                    Discount{order.couponCode ? ` (${order.couponCode})` : ""} :
-                  </td>
-                  <td className="py-1 text-right">- {discount.toFixed(2)}</td>
-                </tr>
+                {couponAmt > 0 && (
+                  <tr>
+                    <td className="py-1" colSpan={3}>Coupon{order.couponCode ? ` (${order.couponCode})` : ""} :</td>
+                    <td className="py-1 text-right">- {couponAmt.toFixed(2)}</td>
+                  </tr>
+                )}
+                {extraDiscAmt > 0 && (
+                  <tr>
+                    <td className="py-1" colSpan={3}>Extra discount{extraDiscType === "percentage" ? " (%)" : ""} :</td>
+                    <td className="py-1 text-right">- {extraDiscAmt.toFixed(2)}</td>
+                  </tr>
+                )}
+                {couponAmt === 0 && extraDiscAmt === 0 && discount > 0 && (
+                  <tr>
+                    <td className="py-1" colSpan={3}>Discount :</td>
+                    <td className="py-1 text-right">- {discount.toFixed(2)}</td>
+                  </tr>
+                )}
                 {slotCharge > 0 && (
                   <tr>
                     <td className="py-1" colSpan={3}>Slot Charge :</td>
@@ -975,6 +993,7 @@ export default function Orders() {
   // Delivery charge override + extra discount
   const [deliveryChargeInput, setDeliveryChargeInput] = useState<string>("");
   const [extraDiscount, setExtraDiscount] = useState<string>("");
+  const [extraDiscountType, setExtraDiscountType] = useState<"percentage" | "flat">("percentage");
 
   // Payment
   type PaymentEntry = { mode: string; amount: string; reference: string };
@@ -1022,6 +1041,7 @@ export default function Orders() {
     setIsExpressOrder(false);
     setDeliveryChargeInput("");
     setExtraDiscount("");
+    setExtraDiscountType("percentage");
     setPaymentStatus("unpaid");
     setPaymentEntries([]);
     setMainPaymentMode("cash");
@@ -1459,8 +1479,14 @@ export default function Orders() {
 
   const extraDiscountAmount = useMemo(() => {
     const v = Number(extraDiscount);
-    return isNaN(v) || v < 0 ? 0 : Math.floor(v);
-  }, [extraDiscount]);
+    if (isNaN(v) || v < 0) return 0;
+    if (extraDiscountType === "percentage") {
+      const pct = Math.min(100, v);
+      const base = Math.max(0, itemsSubtotal - couponDiscount);
+      return Math.floor(base * pct / 100);
+    }
+    return Math.floor(v);
+  }, [extraDiscount, extraDiscountType, itemsSubtotal, couponDiscount]);
 
   const newOrderTotal = useMemo(
     () => Math.max(0, itemsSubtotal - couponDiscount - extraDiscountAmount + slotExtraCharge + effectiveDeliveryCharge),
@@ -1745,6 +1771,7 @@ export default function Orders() {
         subtotal: itemsSubtotal,
         discount: couponDiscount + extraDiscountAmount,
         extraDiscount: extraDiscountAmount,
+        extraDiscountType: extraDiscountType,
         slotCharge: slotExtraCharge,
         deliveryCharge: effectiveDeliveryCharge,
         total: newOrderTotal,
@@ -2275,6 +2302,7 @@ export default function Orders() {
     setDeliveryChargeInput(savedDeliveryCharge > 0 ? String(savedDeliveryCharge) : "");
     const savedExtraDiscount = Number(o.extraDiscount);
     setExtraDiscount(savedExtraDiscount > 0 ? String(savedExtraDiscount) : "");
+    setExtraDiscountType("flat");
   }, [allCustomers]);
 
   const openEditOrder = (o: any) => {
@@ -3904,9 +3932,23 @@ export default function Orders() {
                 )}
                 {/* Extra discount input */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">Extra discount</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-emerald-600 font-medium">−₹</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">Extra discount</span>
+                    <div className="flex rounded overflow-hidden border border-emerald-200 text-[10px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => { setExtraDiscountType("percentage"); setExtraDiscount(""); }}
+                        className={`px-1.5 py-0.5 transition-colors ${extraDiscountType === "percentage" ? "bg-emerald-500 text-white" : "bg-white text-emerald-600 hover:bg-emerald-50"}`}
+                      >%</button>
+                      <button
+                        type="button"
+                        onClick={() => { setExtraDiscountType("flat"); setExtraDiscount(""); }}
+                        className={`px-1.5 py-0.5 transition-colors ${extraDiscountType === "flat" ? "bg-emerald-500 text-white" : "bg-white text-emerald-600 hover:bg-emerald-50"}`}
+                      >₹</button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-xs text-emerald-600 font-medium">−</span>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -3915,14 +3957,24 @@ export default function Orders() {
                       onChange={(e) => {
                         const val = e.target.value.replace(/[^0-9]/g, "");
                         const num = Number(val);
-                        const maxDiscount = Math.max(0, itemsSubtotal - couponDiscount + slotExtraCharge + effectiveDeliveryCharge);
-                        if (num > maxDiscount) return;
+                        if (extraDiscountType === "percentage") {
+                          if (num > 100) return;
+                        } else {
+                          const maxDiscount = Math.max(0, itemsSubtotal - couponDiscount + slotExtraCharge + effectiveDeliveryCharge);
+                          if (num > maxDiscount) return;
+                        }
                         setExtraDiscount(val);
                       }}
-                      className="w-16 text-right text-xs font-semibold text-emerald-600 border-0 border-b border-emerald-300 bg-transparent outline-none focus:border-emerald-500 py-0.5 px-0"
+                      className="w-12 text-right text-xs font-semibold text-emerald-600 border-0 border-b border-emerald-300 bg-transparent outline-none focus:border-emerald-500 py-0.5 px-0"
                     />
+                    <span className="text-xs text-emerald-600 font-medium">{extraDiscountType === "percentage" ? "%" : "₹"}</span>
                   </div>
                 </div>
+                {extraDiscount !== "" && extraDiscountType === "percentage" && extraDiscountAmount > 0 && (
+                  <div className="flex justify-end">
+                    <span className="text-[10px] text-emerald-500">= −₹{extraDiscountAmount.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
                 {slotExtraCharge > 0 && (
                   <div className="flex justify-between text-xs text-[#1A56DB] font-medium">
                     <span>Slot charge</span>
@@ -4135,7 +4187,9 @@ export default function Orders() {
                         )}
                         {extraDiscountAmt > 0 && (
                           <div className="flex justify-between text-sm font-semibold">
-                            <span className="text-emerald-600">Extra discount</span>
+                            <span className="text-emerald-600">
+                              Extra discount{selectedOrder.extraDiscountType === "percentage" ? " (%)" : ""}
+                            </span>
                             <span className="text-emerald-600">− {formatRupees(extraDiscountAmt)}</span>
                           </div>
                         )}
