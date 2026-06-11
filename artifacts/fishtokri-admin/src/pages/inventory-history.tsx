@@ -35,6 +35,7 @@ type Movement = {
   orderRef?: string;
   invoiceId?: string;
   customerName?: string;
+  batchNumbers?: string;
   subReason?: string;
   reason?: string;
   notes?: string;
@@ -245,15 +246,16 @@ export default function InventoryHistory() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Order</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Batch</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Change</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {loading ? (
-                      <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
                     ) : filtered.length === 0 ? (
-                      <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">No movements yet</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">No movements yet</td></tr>
                     ) : pagedMovements.pageItems.map((m) => {
                       const isPositive = m.change >= 0;
                       const typeMeta = m.type === "order_deduct"
@@ -301,6 +303,15 @@ export default function InventoryHistory() {
                                 {m.reason && <p className="text-xs font-medium text-[#162B4D]">{m.reason}</p>}
                                 {m.notes && <p className="text-[11px] text-gray-400">{m.notes}</p>}
                               </div>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {m.batchNumbers ? (
+                              <span className="font-mono text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-md font-medium">
+                                {m.batchNumbers}
+                              </span>
                             ) : (
                               <span className="text-gray-300">—</span>
                             )}

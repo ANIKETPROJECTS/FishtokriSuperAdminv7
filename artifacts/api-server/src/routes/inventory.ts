@@ -1028,6 +1028,7 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
 
     let newBatches = currentBatches;
     let appliedExpiry: Date | null = null;
+    let appliedBatchNumbers: string | undefined;
     if (direction === "deduct") {
       if (currentBatches.length > 0) {
         const now2 = new Date();
@@ -1040,6 +1041,15 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
           currentBatches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs2)
         );
         appliedExpiry = activeSorted[0]?.expiryDate ?? null;
+        // Track which batch numbers were consumed (FIFO order) for the movement record
+        const consumedNames: string[] = [];
+        let rem = qty;
+        for (const b of activeSorted) {
+          if (rem <= 0) break;
+          if (b.batchNumber) consumedNames.push(b.batchNumber);
+          rem -= b.quantity;
+        }
+        if (consumedNames.length > 0) appliedBatchNumbers = consumedNames.join(", ");
       } else {
         // legacy product with no batches — just decrement quantity
         await products.updateOne(
@@ -1071,12 +1081,12 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
       });
       const targetBatch = sortedByRecent[0];
       if (targetBatch) {
-        // Merge into the most recently received active batch
         newBatches = currentBatches.map((b) =>
           b._id && targetBatch._id && String(b._id) === String(targetBatch._id)
             ? { ...b, quantity: b.quantity + qty }
             : b
         );
+        if (targetBatch.batchNumber) appliedBatchNumbers = targetBatch.batchNumber;
       } else {
         // No active batch — create a plain new batch (no RESTORE label)
         newBatches = [...currentBatches, normalizeBatch({
@@ -1102,6 +1112,7 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
       orderId,
       orderRef,
       ...(subReason ? { subReason } : {}),
+      ...(appliedBatchNumbers ? { batchNumbers: appliedBatchNumbers } : {}),
       expiryDate: appliedExpiry || undefined,
       createdAt: now,
     });
