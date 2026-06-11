@@ -1164,8 +1164,19 @@ router.post("/", async (req: ScopedRequest, res) => {
     const result = await conn.db.collection(COLLECTION).insertOne(orderDoc);
 
     // Sync inventory (deduct stock for active orders).
-    // InsufficientStockError means two concurrent orders raced for the last unit
-    // and this request lost — cancel the just-inserted order and return 409.
+    // Pre-claim the order with inventoryDeducted=true BEFORE calling applyOrderInventoryOnCreate.
+    // This prevents the background deduction job from racing between the insert and the flag
+    // being set — without this guard, both the POST handler and the background job could both
+    // see inventoryDeducted=false and each deduct independently, causing a double deduction.
+    const ORDER_DEDUCT_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
+    const shouldDeductOnCreate = ORDER_DEDUCT_STATUSES.has(String(orderDoc.status)) && !!orderDoc.subHubId;
+    if (shouldDeductOnCreate) {
+      await conn.db.collection(COLLECTION).updateOne(
+        { _id: result.insertedId },
+        { $set: { inventoryDeducted: true } }
+      );
+      orderDoc.inventoryDeducted = true;
+    }
     try {
       req.log.info({ orderId: String(result.insertedId), subHubId: orderDoc.subHubId, status: orderDoc.status, itemCount: (orderDoc.items ?? []).length }, "order create: calling applyOrderInventoryOnCreate");
       const deducted = await applyOrderInventoryOnCreate({
@@ -1176,17 +1187,18 @@ router.post("/", async (req: ScopedRequest, res) => {
         items: orderDoc.items,
       });
       req.log.info({ orderId: String(result.insertedId), deducted }, "order create: applyOrderInventoryOnCreate returned");
-      if (deducted) {
+      if (!deducted && shouldDeductOnCreate) {
+        // applyDelta found no matching products — reset flag so background job can retry later.
         await conn.db.collection(COLLECTION).updateOne(
           { _id: result.insertedId },
-          { $set: { inventoryDeducted: true } }
+          { $set: { inventoryDeducted: false } }
         );
-        orderDoc.inventoryDeducted = true;
+        orderDoc.inventoryDeducted = false;
       }
     } catch (e) {
       if (e instanceof InsufficientStockError) {
         // Race condition: another order just took the last unit inside the lock.
-        // Cancel the order we inserted so it does not appear as a live order.
+        // Reset the pre-claim flag and cancel the just-inserted order.
         req.log.warn(
           { orderId: String(result.insertedId), product: e.productName, available: e.available, requested: e.requested },
           "order create: insufficient stock — cancelling order and returning 409"
@@ -1194,7 +1206,7 @@ router.post("/", async (req: ScopedRequest, res) => {
         try {
           await conn.db.collection(COLLECTION).updateOne(
             { _id: result.insertedId },
-            { $set: { status: "cancelled", cancelReason: "out_of_stock", updatedAt: new Date() } }
+            { $set: { status: "cancelled", cancelReason: "out_of_stock", updatedAt: new Date(), inventoryDeducted: false } }
           );
         } catch (cancelErr) {
           req.log.error({ err: cancelErr, orderId: String(result.insertedId) }, "order create: failed to cancel oversell order");
@@ -1207,6 +1219,14 @@ router.post("/", async (req: ScopedRequest, res) => {
           requested: e.requested,
         });
         return;
+      }
+      // General deduction error — reset flag so background job can retry.
+      if (shouldDeductOnCreate) {
+        await conn.db.collection(COLLECTION).updateOne(
+          { _id: result.insertedId },
+          { $set: { inventoryDeducted: false } }
+        );
+        orderDoc.inventoryDeducted = false;
       }
       req.log.error({ err: e }, "Failed to sync inventory on order create");
     }
