@@ -469,7 +469,38 @@ router.get("/movements", async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit)
       .toArray();
-    res.json({ movements: rows, total: rows.length });
+
+    // Enrich order-linked movements with customer name from the orders collection
+    const orderIds = [...new Set(
+      rows
+        .filter((r: any) => r.orderId)
+        .map((r: any) => {
+          try { return new mongoose.Types.ObjectId(r.orderId); } catch { return null; }
+        })
+        .filter(Boolean)
+    )];
+    let customerMap: Map<string, string> = new Map();
+    if (orderIds.length > 0) {
+      try {
+        const ordersConn = await getSubHubDbConnection("orders");
+        const orderDocs = await ordersConn.db
+          .collection("orders")
+          .find({ _id: { $in: orderIds } }, { projection: { _id: 1, customerName: 1 } })
+          .toArray();
+        for (const o of orderDocs) {
+          customerMap.set(String(o._id), String(o.customerName ?? ""));
+        }
+      } catch (e) {
+        logger.warn({ err: e }, "movements: failed to enrich customer names — returning without");
+      }
+    }
+
+    const enriched = rows.map((r: any) => ({
+      ...r,
+      customerName: r.orderId ? (customerMap.get(String(r.orderId)) ?? "") : undefined,
+    }));
+
+    res.json({ movements: enriched, total: enriched.length });
   } catch (err) {
     req.log.error({ err }, "Failed to list inventory movements");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch movements" });

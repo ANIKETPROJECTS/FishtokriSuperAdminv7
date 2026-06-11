@@ -33,6 +33,7 @@ type Movement = {
   balance: number;
   orderId?: string;
   orderRef?: string;
+  customerName?: string;
   subReason?: string;
   reason?: string;
   notes?: string;
@@ -243,16 +244,15 @@ export default function InventoryHistory() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Order</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Reason</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Change</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {loading ? (
-                      <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
                     ) : filtered.length === 0 ? (
-                      <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">No movements yet</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">No movements yet</td></tr>
                     ) : pagedMovements.pageItems.map((m) => {
                       const isPositive = m.change >= 0;
                       const typeMeta = m.type === "order_deduct"
@@ -273,22 +273,30 @@ export default function InventoryHistory() {
                             <p className="font-medium text-[#162B4D]">{m.productName}</p>
                             {m.unit && <p className="text-[11px] text-gray-400">{m.unit}</p>}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 min-w-[200px]">
                             {m.orderRef ? (
-                              <span className="font-mono text-xs font-semibold text-[#364F9F] bg-blue-50 px-2 py-0.5 rounded-md">{m.orderRef}</span>
-                            ) : (
-                              <span className="text-gray-300">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {reasonMeta ? (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${reasonMeta.tone}`}>
-                                {reasonMeta.label}
-                              </span>
-                            ) : m.reason ? (
-                              <div>
-                                <span className="text-xs font-medium text-[#162B4D]">{m.reason}</span>
-                                {m.notes && <p className="text-[11px] text-gray-400 mt-0.5">{m.notes}</p>}
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-xs font-bold text-[#364F9F] bg-blue-50 px-2 py-0.5 rounded-md">{m.orderRef}</span>
+                                  {reasonMeta && (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${reasonMeta.tone}`}>
+                                      {reasonMeta.label}
+                                    </span>
+                                  )}
+                                </div>
+                                {m.customerName && (
+                                  <p className="text-xs text-gray-600 font-medium">{m.customerName}</p>
+                                )}
+                              </div>
+                            ) : m.type === "adjustment" ? (
+                              <div className="flex flex-col gap-1">
+                                {reasonMeta && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold w-fit ${reasonMeta.tone}`}>
+                                    {reasonMeta.label}
+                                  </span>
+                                )}
+                                {m.reason && <p className="text-xs font-medium text-[#162B4D]">{m.reason}</p>}
+                                {m.notes && <p className="text-[11px] text-gray-400">{m.notes}</p>}
                               </div>
                             ) : (
                               <span className="text-gray-300">—</span>
