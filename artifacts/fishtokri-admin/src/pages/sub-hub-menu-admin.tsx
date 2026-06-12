@@ -2836,7 +2836,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                 <Select value={unit} onValueChange={setUnit}>
                   <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {["per kg", "per 500g", "per 250g", "per 100g", "per tray", "per pack", "per piece"].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                    {["per kg", "per 500g", "per 250g", "per 100g", "per tray", "per pack", "per piece", "pack"].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
