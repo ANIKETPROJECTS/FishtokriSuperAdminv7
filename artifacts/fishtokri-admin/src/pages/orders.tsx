@@ -361,8 +361,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
       </div>` : "";
 
     const notesRow = order.notes ? `
-      <div style="border-top:1px dashed #bbb;margin:10px 0;"></div>
-      <div style="font-size:12px;"><b>Note:</b> ${order.notes}</div>` : "";
+      <div style="font-size:12px;margin:2px 0;"><b>Note: ${order.notes}</b></div>` : "";
 
     const slotRow = slotCharge > 0 ? `
       <tr>
@@ -419,6 +418,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
         <div style="font-size:12px;margin:2px 0;"><b>Name:</b> ${order.customerName}</div>
         ${order.address ? `<div style="font-size:12px;margin:2px 0;"><b>Add :</b> ${order.address}</div>` : ""}
         ${(order.isExpress || formatTimeSlot(order)) ? `<div style="font-size:12px;margin:2px 0;"><b>Delivery Slot:</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}
+        ${notesRow}
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
@@ -451,9 +451,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
           <span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span>
         </div>
         ${walletRow}
-        <div style="text-align:center;font-style:italic;font-size:11px;color:#555;margin:4px 0 8px;">( ${numberToWords(grandTotal)} )</div>
         ${paidDueRow}
-        ${notesRow}
 
         <div style="text-align:center;font-size:11px;color:#555;line-height:1.8;margin-top:14px;">
           Thank you for your business!<br/>
@@ -515,6 +513,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
             <div><b>Name:</b> {order.customerName}</div>
             {order.address && <div><b>Add :</b> {order.address}</div>}
             {(order.isExpress || formatTimeSlot(order)) && <div><b>Delivery Slot:</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
+            {order.notes && <div className="text-[12px] mt-0.5"><b>Note: {order.notes}</b></div>}
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
@@ -597,20 +596,11 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
                 <span>{Math.max(0, grandTotal - walletInvAmt).toFixed(2)}</span>
               </div>
             )}
-            <div className="text-center text-[11px] text-gray-600 mt-1">( {numberToWords(grandTotal)} )</div>
-
             {(order.paidAmount !== undefined || order.dueAmount !== undefined) && (
               <div className="flex justify-between text-[12px] mt-2">
                 <span>Paid: <strong className="text-green-600">{formatRupees(paidAmt)}</strong></span>
                 <span>Due: <strong className={dueAmt > 0 ? "text-red-500" : "text-green-600"}>{formatRupees(dueAmt)}</strong></span>
               </div>
-            )}
-
-            {order.notes && (
-              <>
-                <div className="border-t border-dashed border-gray-400 my-2" />
-                <div className="text-[12px]"><b>Note:</b> {order.notes}</div>
-              </>
             )}
 
             <div className="text-center text-[12px] text-gray-600 mt-3">
