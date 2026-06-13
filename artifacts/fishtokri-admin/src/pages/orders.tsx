@@ -339,29 +339,29 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
       const rate = Number(it.price) || 0;
       return `
         <tr>
-          <td style="padding:5px 4px;border-bottom:1px solid #eee;">${it.name}</td>
-          <td style="padding:5px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}${it.unit ? ` ${it.unit === "per pack" ? "pack" : it.unit}` : ""}</td>
-          <td style="padding:5px 4px;border-bottom:1px solid #eee;text-align:right;">${rate.toFixed(2)}</td>
-          <td style="padding:5px 4px;border-bottom:1px solid #eee;text-align:right;">${(qty * rate).toFixed(2)}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid #eee;font-weight:700;">${it.name}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}${it.unit ? ` ${it.unit === "per pack" ? "pack" : it.unit}` : ""}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${rate.toFixed(2)}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${(qty * rate).toFixed(2)}</td>
         </tr>`;
     }).join("");
 
     const walletRow = walletInvAmt > 0 ? `
-      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:15px;">
+      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:17px;">
         <span>Wallet Applied:</span><span>− ${walletInvAmt.toFixed(2)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:16px;font-weight:700;">
+      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:18px;font-weight:700;">
         <span>Balance Due (Cash/UPI):</span><span>${Math.max(0, grandTotal - walletInvAmt).toFixed(2)}</span>
       </div>` : "";
 
     const paidDueRow = (order.paidAmount !== undefined || order.dueAmount !== undefined) ? `
-      <div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:14px;">
+      <div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:17px;">
         <span>Paid: <strong style="color:#16a34a;">₹${paidAmt.toFixed(2)}</strong></span>
         <span>Due: <strong style="color:${dueAmt > 0 ? "#ef4444" : "#16a34a"};">₹${dueAmt.toFixed(2)}</strong></span>
       </div>` : "";
 
     const notesRow = order.notes ? `
-      <div style="font-size:14px;margin:2px 0;"><b>Note: ${order.notes}</b></div>` : "";
+      <div style="font-size:17px;margin:2px 0;"><b>Note: ${order.notes}</b></div>` : "";
 
     const slotRow = slotCharge > 0 ? `
       <tr>
@@ -393,51 +393,51 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
         @page { size: 80mm auto; margin: 0; }
       </style>
     </head><body>
-      <div style="padding:4px 8px;font-size:15px;color:#111;">
+      <div style="padding:6px 10px;font-size:18px;color:#111;">
 
-        <h2 style="text-align:center;font-size:18px;font-weight:700;margin-bottom:2px;">
+        <h2 style="text-align:center;font-size:22px;font-weight:700;margin-bottom:2px;">
           Atha Foods (Fishtokri)${order.subHubName ? ` - ${order.subHubName}` : ""}
         </h2>
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
-        <div style="text-align:center;font-size:14px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone || "—"}</div>
+        <div style="text-align:center;font-size:17px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone || "—"}</div>
 
-        <div style="display:flex;justify-content:space-between;margin:3px 0;font-size:14px;">
+        <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:17px;">
           <span><b>Invoice No:</b> ${invoiceNo}</span>
           <span><b>Date:</b> ${dateStr}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0;font-size:17px;">
           <span>
             <b>Payment Mode:</b> ${payMode}
-            <span style="margin-left:5px;font-size:12px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span>
+            <span style="margin-left:5px;font-size:14px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span>
           </span>
           <span><b>Time:</b> ${timeStr}</span>
         </div>
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <div style="font-size:14px;margin:2px 0;"><b>Name:</b> ${order.customerName}</div>
-        ${order.address ? `<div style="font-size:14px;margin:2px 0;"><b>Add :</b> ${order.address}</div>` : ""}
-        ${(order.isExpress || formatTimeSlot(order)) ? `<div style="font-size:14px;margin:2px 0;"><b>Delivery Slot:</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}
+        <div style="font-size:17px;margin:3px 0;"><b>Name:</b> ${order.customerName}</div>
+        ${order.address ? `<div style="font-size:17px;margin:3px 0;"><b>Add :</b> ${order.address}</div>` : ""}
+        ${(order.isExpress || formatTimeSlot(order)) ? `<div style="font-size:17px;margin:3px 0;"><b>Delivery Slot:</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}
         ${notesRow}
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <table style="width:100%;border-collapse:collapse;font-size:14px;margin:4px 0;">
+        <table style="width:100%;border-collapse:collapse;font-size:17px;margin:4px 0;">
           <thead>
             <tr style="border-bottom:1px solid #555;">
-              <th style="padding:5px 4px;text-align:left;font-weight:600;">Item</th>
-              <th style="padding:5px 4px;text-align:right;font-weight:600;">Qty</th>
-              <th style="padding:5px 4px;text-align:right;font-weight:600;">Rate</th>
-              <th style="padding:5px 4px;text-align:right;font-weight:600;">Amount</th>
+              <th style="padding:6px 4px;text-align:left;font-weight:700;">Item</th>
+              <th style="padding:6px 4px;text-align:right;font-weight:700;">Qty</th>
+              <th style="padding:6px 4px;text-align:right;font-weight:700;">Rate</th>
+              <th style="padding:6px 4px;text-align:right;font-weight:700;">Amount</th>
             </tr>
           </thead>
           <tbody>
             ${itemRows}
             <tr style="border-top:1px solid #aaa;">
-              <td style="padding:5px 4px;font-weight:600;">Total Items: ${items.length}</td>
-              <td style="padding:5px 4px;text-align:right;font-weight:600;">${totalQty}</td>
+              <td style="padding:6px 4px;font-weight:700;">Total Items: ${items.length}</td>
+              <td style="padding:6px 4px;text-align:right;font-weight:700;">${totalQty}</td>
               <td></td>
-              <td style="padding:5px 4px;text-align:right;font-weight:600;">${subtotal.toFixed(2)}</td>
+              <td style="padding:6px 4px;text-align:right;font-weight:700;">${subtotal.toFixed(2)}</td>
             </tr>
             ${discountRows}
             ${slotRow}
@@ -447,13 +447,13 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:700;margin:4px 0;">
+        <div style="display:flex;justify-content:space-between;font-size:21px;font-weight:700;margin:4px 0;">
           <span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span>
         </div>
         ${walletRow}
         ${paidDueRow}
 
-        <div style="text-align:center;font-size:13px;color:#555;line-height:1.8;margin-top:14px;">
+        <div style="text-align:center;font-size:15px;color:#555;line-height:1.8;margin-top:14px;">
           Thank you for your business!<br/>
           For any query - 9220200100
         </div>
@@ -482,21 +482,21 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto p-5 bg-gray-50">
-          <div id="invoice-print-area" className="bg-white max-w-md mx-auto p-5 text-[13px] text-gray-800 shadow-sm border border-gray-200 rounded">
-            <h3 className="text-center font-bold text-[15px] mb-1">
+          <div id="invoice-print-area" className="bg-white max-w-md mx-auto p-5 text-[16px] text-gray-800 shadow-sm border border-gray-200 rounded">
+            <h3 className="text-center font-bold text-[20px] mb-1">
               Atha Foods (Fishtokri){order.subHubName ? ` - ${order.subHubName}` : ""}
             </h3>
             <div className="border-t border-dashed border-gray-400 my-2" />
-            <div className="text-center text-[12px]">Mobile No: {order.phone || "—"}</div>
+            <div className="text-center text-[15px]">Mobile No: {order.phone || "—"}</div>
 
-            <div className="flex justify-between mt-2">
+            <div className="flex justify-between mt-2 text-[15px]">
               <span><b>Invoice No:</b> {invoiceNo}</span>
               <span><b>Date:</b> {dateStr}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between text-[15px]">
               <span>
                 <b>Payment Mode:</b> {payMode}
-                <span className={`ml-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border
+                <span className={`ml-1 text-[13px] font-bold uppercase px-1.5 py-0.5 rounded-full border
                   ${order.paymentStatus === 'paid'
                     ? 'text-green-700 bg-green-50 border-green-200'
                     : order.paymentStatus === 'partial'
@@ -510,20 +510,20 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
-            <div><b>Name:</b> {order.customerName}</div>
-            {order.address && <div><b>Add :</b> {order.address}</div>}
-            {(order.isExpress || formatTimeSlot(order)) && <div><b>Delivery Slot:</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
-            {order.notes && <div className="text-[12px] mt-0.5"><b>Note: {order.notes}</b></div>}
+            <div className="text-[15px]"><b>Name:</b> {order.customerName}</div>
+            {order.address && <div className="text-[15px]"><b>Add :</b> {order.address}</div>}
+            {(order.isExpress || formatTimeSlot(order)) && <div className="text-[15px]"><b>Delivery Slot:</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
+            {order.notes && <div className="text-[15px] mt-0.5"><b>Note: {order.notes}</b></div>}
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
-            <table className="w-full text-[12px]">
+            <table className="w-full text-[15px]">
               <thead>
                 <tr className="border-b border-gray-700 text-left">
-                  <th className="py-1">Item</th>
-                  <th className="py-1 text-right">Qty</th>
-                  <th className="py-1 text-right">Rate</th>
-                  <th className="py-1 text-right">Amount</th>
+                  <th className="py-1.5 font-bold">Item</th>
+                  <th className="py-1.5 text-right font-bold">Qty</th>
+                  <th className="py-1.5 text-right font-bold">Rate</th>
+                  <th className="py-1.5 text-right font-bold">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -532,18 +532,18 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
                   const rate = Number(it.price) || 0;
                   return (
                     <tr key={i}>
-                      <td className="py-1">{it.name}</td>
-                      <td className="py-1 text-right">{qty}{it.unit ? ` ${it.unit === "per pack" ? "pack" : it.unit}` : ""}</td>
-                      <td className="py-1 text-right">{rate.toFixed(2)}</td>
-                      <td className="py-1 text-right">{(qty * rate).toFixed(2)}</td>
+                      <td className="py-1.5 font-bold">{it.name}</td>
+                      <td className="py-1.5 text-right">{qty}{it.unit ? ` ${it.unit === "per pack" ? "pack" : it.unit}` : ""}</td>
+                      <td className="py-1.5 text-right">{rate.toFixed(2)}</td>
+                      <td className="py-1.5 text-right">{(qty * rate).toFixed(2)}</td>
                     </tr>
                   );
                 })}
                 <tr className="border-t border-gray-400">
-                  <td className="py-1"><b>Total Items: {items.length}</b></td>
-                  <td className="py-1 text-right"><b>{totalQty}</b></td>
+                  <td className="py-1.5"><b>Total Items: {items.length}</b></td>
+                  <td className="py-1.5 text-right"><b>{totalQty}</b></td>
                   <td></td>
-                  <td className="py-1 text-right"><b>{subtotal.toFixed(2)}</b></td>
+                  <td className="py-1.5 text-right"><b>{subtotal.toFixed(2)}</b></td>
                 </tr>
                 {couponAmt > 0 && (
                   <tr>
