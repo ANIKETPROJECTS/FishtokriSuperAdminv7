@@ -347,21 +347,21 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     }).join("");
 
     const walletRow = walletInvAmt > 0 ? `
-      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:15px;">
         <span>Wallet Applied:</span><span>− ${walletInvAmt.toFixed(2)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:14px;font-weight:700;">
+      <div style="display:flex;justify-content:space-between;margin:4px 0;font-size:16px;font-weight:700;">
         <span>Balance Due (Cash/UPI):</span><span>${Math.max(0, grandTotal - walletInvAmt).toFixed(2)}</span>
       </div>` : "";
 
     const paidDueRow = (order.paidAmount !== undefined || order.dueAmount !== undefined) ? `
-      <div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:12px;">
+      <div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:14px;">
         <span>Paid: <strong style="color:#16a34a;">₹${paidAmt.toFixed(2)}</strong></span>
         <span>Due: <strong style="color:${dueAmt > 0 ? "#ef4444" : "#16a34a"};">₹${dueAmt.toFixed(2)}</strong></span>
       </div>` : "";
 
     const notesRow = order.notes ? `
-      <div style="font-size:12px;margin:2px 0;"><b>Note: ${order.notes}</b></div>` : "";
+      <div style="font-size:14px;margin:2px 0;"><b>Note: ${order.notes}</b></div>` : "";
 
     const slotRow = slotCharge > 0 ? `
       <tr>
@@ -393,36 +393,36 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
         @page { size: 80mm auto; margin: 0; }
       </style>
     </head><body>
-      <div style="padding:4px 8px;font-size:13px;color:#111;">
+      <div style="padding:4px 8px;font-size:15px;color:#111;">
 
-        <h2 style="text-align:center;font-size:16px;font-weight:700;margin-bottom:2px;">
+        <h2 style="text-align:center;font-size:18px;font-weight:700;margin-bottom:2px;">
           Atha Foods (Fishtokri)${order.subHubName ? ` - ${order.subHubName}` : ""}
         </h2>
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
-        <div style="text-align:center;font-size:12px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone || "—"}</div>
+        <div style="text-align:center;font-size:14px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone || "—"}</div>
 
-        <div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;margin:3px 0;font-size:14px;">
           <span><b>Invoice No:</b> ${invoiceNo}</span>
           <span><b>Date:</b> ${dateStr}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:3px 0;font-size:14px;">
           <span>
             <b>Payment Mode:</b> ${payMode}
-            <span style="margin-left:5px;font-size:10px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span>
+            <span style="margin-left:5px;font-size:12px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span>
           </span>
           <span><b>Time:</b> ${timeStr}</span>
         </div>
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <div style="font-size:12px;margin:2px 0;"><b>Name:</b> ${order.customerName}</div>
-        ${order.address ? `<div style="font-size:12px;margin:2px 0;"><b>Add :</b> ${order.address}</div>` : ""}
-        ${(order.isExpress || formatTimeSlot(order)) ? `<div style="font-size:12px;margin:2px 0;"><b>Delivery Slot:</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}
+        <div style="font-size:14px;margin:2px 0;"><b>Name:</b> ${order.customerName}</div>
+        ${order.address ? `<div style="font-size:14px;margin:2px 0;"><b>Add :</b> ${order.address}</div>` : ""}
+        ${(order.isExpress || formatTimeSlot(order)) ? `<div style="font-size:14px;margin:2px 0;"><b>Delivery Slot:</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}
         ${notesRow}
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;margin:4px 0;">
           <thead>
             <tr style="border-bottom:1px solid #555;">
               <th style="padding:5px 4px;text-align:left;font-weight:600;">Item</th>
@@ -447,13 +447,13 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0;">
+        <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:700;margin:4px 0;">
           <span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span>
         </div>
         ${walletRow}
         ${paidDueRow}
 
-        <div style="text-align:center;font-size:11px;color:#555;line-height:1.8;margin-top:14px;">
+        <div style="text-align:center;font-size:13px;color:#555;line-height:1.8;margin-top:14px;">
           Thank you for your business!<br/>
           For any query - 9220200100
         </div>
