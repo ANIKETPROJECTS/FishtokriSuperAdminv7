@@ -1003,10 +1003,13 @@ router.post("/", async (req: ScopedRequest, res) => {
       couponIds: Array.isArray(couponIds) ? couponIds.map((x: any) => String(x)) : undefined,
       couponCodes: Array.isArray(couponCodes) ? couponCodes.map((x: any) => String(x)) : undefined,
       coupons: Array.isArray(coupons) ? coupons : undefined,
-      // Payment
-      paymentStatus: ["paid", "partial", "unpaid"].includes(String(paymentStatus))
-        ? String(paymentStatus)
-        : "unpaid",
+      // Payment — if grand total is zero (e.g. fully covered by coupon/discount),
+      // always mark the order as paid regardless of what the client sent.
+      paymentStatus: totalNum === 0
+        ? "paid"
+        : ["paid", "partial", "unpaid"].includes(String(paymentStatus))
+          ? String(paymentStatus)
+          : "unpaid",
       payments: Array.isArray(payments)
         ? payments
             .map((p: any) => ({
@@ -1017,8 +1020,8 @@ router.post("/", async (req: ScopedRequest, res) => {
             }))
             .filter((p: any) => p.mode && p.amount > 0)
         : [],
-      paidAmount: Math.max(0, Number(paidAmount) || 0),
-      dueAmount: String(paymentStatus) === "paid" ? 0 : Math.max(0, totalNum - (Number(paidAmount) || 0)),
+      paidAmount: totalNum === 0 ? 0 : Math.max(0, Number(paidAmount) || 0),
+      dueAmount: (totalNum === 0 || String(paymentStatus) === "paid") ? 0 : Math.max(0, totalNum - (Number(paidAmount) || 0)),
       paymentMode: paymentMode ? String(paymentMode) : undefined,
       // Schedule
       scheduleType: scheduleType === "instant" ? "instant" : scheduleType === "express" ? "express" : "slot",
@@ -1459,11 +1462,17 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     ) {
       clearPayments = true;
       update.payments = [];
-      update.paymentStatus = "unpaid";
       update.paidAmount = 0;
       update.paymentMode = "";
       const totalForDue = Number((update.total ?? prev.total)) || 0;
-      update.dueAmount = totalForDue;
+      // If the order total is zero (fully discounted), keep it paid; otherwise revert to unpaid.
+      if (totalForDue === 0) {
+        update.paymentStatus = "paid";
+        update.dueAmount = 0;
+      } else {
+        update.paymentStatus = "unpaid";
+        update.dueAmount = totalForDue;
+      }
     }
     // Final guard: if the resolved paymentStatus is "paid", dueAmount must be 0.
     const finalPaymentStatus = update.paymentStatus ?? String(prev.paymentStatus ?? "");
