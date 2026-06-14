@@ -340,7 +340,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
       return `
         <tr>
           <td style="padding:6px 4px;border-bottom:1px solid #eee;font-weight:700;">${it.name}</td>
-          <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}${it.unit ? ` ${it.unit === "per pack" ? "pack" : it.unit}` : ""}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}</td>
           <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${(qty * rate).toFixed(2)}</td>
         </tr>`;
     }).join("");
@@ -418,7 +418,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
           <thead>
             <tr style="border-bottom:1px solid #555;">
               <th style="padding:6px 4px;text-align:left;font-weight:700;">Item</th>
-              <th style="padding:6px 4px;text-align:right;font-weight:700;">Qty</th>
+              <th style="padding:6px 4px;text-align:right;font-weight:700;">Qty (pack)</th>
               <th style="padding:6px 4px;text-align:right;font-weight:700;">Amount</th>
             </tr>
           </thead>
@@ -504,7 +504,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
               <thead>
                 <tr className="border-b border-gray-700 text-left">
                   <th className="py-1.5 font-bold">Item</th>
-                  <th className="py-1.5 text-right font-bold">Qty</th>
+                  <th className="py-1.5 text-right font-bold">Qty (pack)</th>
                   <th className="py-1.5 text-right font-bold">Amount</th>
                 </tr>
               </thead>
@@ -515,7 +515,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
                   return (
                     <tr key={i}>
                       <td className="py-1.5 font-bold">{it.name}</td>
-                      <td className="py-1.5 text-right">{qty}{it.unit ? ` ${it.unit === "per pack" ? "pack" : it.unit}` : ""}</td>
+                      <td className="py-1.5 text-right">{qty}</td>
                       <td className="py-1.5 text-right">{(qty * rate).toFixed(2)}</td>
                     </tr>
                   );
