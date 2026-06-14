@@ -406,8 +406,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <div style="margin:4px 0;font-size:17px;"><b>Order Date :</b> ${orderDateStr}</div>
-        <div style="margin:4px 0;font-size:17px;"><b>Time :</b> ${timeStr}</div>
+        <div style="margin:4px 0;font-size:17px;"><b>Order Date :</b> ${orderDateStr} , ${timeStr}</div>
         <div style="margin:4px 0;font-size:17px;"><b>Delivery Date :</b> ${deliveryDateStr}</div>
         ${(order.isExpress || formatTimeSlot(order)) ? `<div style="margin:4px 0;font-size:17px;"><b>Delivery Slot :</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}
         ${notesRow}
@@ -483,8 +482,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
             <div className="text-[15px]"><b>Mobile :</b> {order.phone || "—"}</div>
             {order.address && <div className="text-[15px]"><b>Address :</b> {order.address}</div>}
             <div className="border-t border-dashed border-gray-400 my-2" />
-            <div className="text-[15px]"><b>Order Date :</b> {orderDateStr}</div>
-            <div className="text-[15px]"><b>Time :</b> {timeStr}</div>
+            <div className="text-[15px]"><b>Order Date :</b> {orderDateStr} , {timeStr}</div>
             <div className="text-[15px]"><b>Delivery Date :</b> {deliveryDateStr}</div>
             {(order.isExpress || formatTimeSlot(order)) && <div className="text-[15px]"><b>Delivery Slot :</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
             {order.notes && <div className="text-[15px]"><b>Notes : {order.notes}</b></div>}
