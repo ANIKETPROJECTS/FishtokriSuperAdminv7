@@ -118,10 +118,11 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   const walletAmt = (() => { const w = invPays.find((p: any) => String(p?.mode||"").toLowerCase()==="wallet"); return w ? Number(w.amount)||0 : 0; })();
   const invoiceNo = order.orderId || order.invoiceNo || ("INV-"+String(order._id||order.id||"").slice(-6).toUpperCase());
   const d = new Date(order.createdAt ?? Date.now());
+  const orderDateStr = [String(d.getDate()).padStart(2,"0"),String(d.getMonth()+1).padStart(2,"0"),d.getFullYear()].join("/");
   const deliveryDateStr = (() => {
     const s = String(order.deliveryDate ?? "");
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { const [y,m,day] = s.split("-"); return `${day}-${m}-${y}`; }
-    return [String(d.getDate()).padStart(2,"0"),String(d.getMonth()+1).padStart(2,"0"),d.getFullYear()].join("-");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { const [y,m,day] = s.split("-"); return `${day}/${m}/${y}`; }
+    return orderDateStr;
   })();
   const timeStr = d.toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit", hour12:true });
   const payMode = order.paymentMode || (invPays.length>0 ? [...new Set(invPays.map((p:any)=>p.method))].join(", ") : "Cash");
@@ -133,20 +134,20 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   const handlePrint = async () => {
     const itemRows = items.map((it:any) => {
       const qty = Number(it.quantity)||1, rate = Number(it.price)||0;
-      return `<tr><td style="padding:6px 4px;border-bottom:1px solid #eee;font-weight:700;">${it.name}</td><td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}${it.unit?` ${it.unit==="per pack"?"pack":it.unit}`:""}</td><td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${rate.toFixed(2)}</td><td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${(qty*rate).toFixed(2)}</td></tr>`;
+      return `<tr><td style="padding:6px 4px;border-bottom:1px solid #eee;font-weight:700;">${it.name}</td><td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}${it.unit?` ${it.unit==="per pack"?"pack":it.unit}`:""}</td><td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${(qty*rate).toFixed(2)}</td></tr>`;
     }).join("");
-    const slotRow = slotCharge>0 ? `<tr><td style="padding:4px 2px;" colspan="3">Slot Charge :</td><td style="padding:4px 2px;text-align:right;">+ ${slotCharge.toFixed(2)}</td></tr>` : "";
-    const delivRow = deliveryCharge>0 ? `<tr><td style="padding:4px 2px;" colspan="3">${order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td><td style="padding:4px 2px;text-align:right;">+ ${deliveryCharge.toFixed(2)}</td></tr>` : "";
+    const slotRow = slotCharge>0 ? `<tr><td style="padding:4px 2px;" colspan="2">Slot Charge :</td><td style="padding:4px 2px;text-align:right;">+ ${slotCharge.toFixed(2)}</td></tr>` : "";
+    const delivRow = deliveryCharge>0 ? `<tr><td style="padding:4px 2px;" colspan="2">${order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td><td style="padding:4px 2px;text-align:right;">+ ${deliveryCharge.toFixed(2)}</td></tr>` : "";
     const discountRows = [
-      couponAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="3">Coupon${order.couponCode ? ` (${order.couponCode})` : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${couponAmt.toFixed(2)}</td></tr>` : "",
-      extraDiscAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="3">Extra discount${extraDiscType === "percentage" ? " (%)" : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${extraDiscAmt.toFixed(2)}</td></tr>` : "",
-      couponAmt === 0 && extraDiscAmt === 0 && discount > 0 ? `<tr><td style="padding:4px 2px;" colspan="3">Discount :</td><td style="padding:4px 2px;text-align:right;">- ${discount.toFixed(2)}</td></tr>` : "",
+      couponAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="2">Coupon${order.couponCode ? ` (${order.couponCode})` : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${couponAmt.toFixed(2)}</td></tr>` : "",
+      extraDiscAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="2">Extra discount${extraDiscType === "percentage" ? " (%)" : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${extraDiscAmt.toFixed(2)}</td></tr>` : "",
+      couponAmt === 0 && extraDiscAmt === 0 && discount > 0 ? `<tr><td style="padding:4px 2px;" colspan="2">Discount :</td><td style="padding:4px 2px;text-align:right;">- ${discount.toFixed(2)}</td></tr>` : "",
     ].join("");
     const walletRow = walletAmt>0 ? `<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:17px;"><span>Wallet Applied:</span><span>− ${walletAmt.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;margin:4px 0;font-size:18px;font-weight:700;"><span>Balance Due:</span><span>${Math.max(0,grandTotal-walletAmt).toFixed(2)}</span></div>` : "";
     const paidDueRow = (order.paidAmount!==undefined||order.dueAmount!==undefined) ? `<div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:17px;"><span>Paid: <strong style="color:#16a34a;">₹${paidAmt.toFixed(2)}</strong></span><span>Due: <strong style="color:${dueAmt>0?"#ef4444":"#16a34a"};">₹${dueAmt.toFixed(2)}</strong></span></div>` : "";
-    const notesRow = order.notes ? `<div style="font-size:17px;margin:3px 0;"><b>Note: ${order.notes}</b></div>` : "";
+    const notesRow = order.notes ? `<div style="margin:4px 0;font-size:17px;"><b>Notes : ${order.notes}</b></div>` : "";
     const slotLabel = order.isExpress ? "Express order by Porter" : formatTimeSlot(order);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${invoiceNo}</title><style>* { margin:0;padding:0;box-sizing:border-box; } body { font-family:Arial,sans-serif;color:#111;background:#fff; } @page { size:80mm auto;margin:0; }</style></head><body><div style="padding:6px 10px;font-size:18px;color:#111;"><h2 style="text-align:center;font-size:22px;font-weight:700;margin-bottom:2px;">Atha Foods (Fishtokri)${order.subHubName?` - ${order.subHubName}`:""}</h2><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="text-align:center;font-size:17px;color:#555;margin-bottom:8px;">Mobile No: ${order.phone||"—"}</div><div style="margin:4px 0;font-size:17px;"><b>Invoice No:</b> ${invoiceNo}</div><div style="margin:4px 0;font-size:17px;"><b>Date:</b> ${deliveryDateStr}</div><div style="margin:4px 0;font-size:17px;"><b>Payment Mode:</b> ${payMode} <span style="margin-left:5px;font-size:14px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span></div><div style="margin:4px 0;font-size:17px;"><b>Time:</b> ${timeStr}</div><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="font-size:17px;margin:3px 0;"><b>Name:</b> ${order.customerName}</div>${order.address?`<div style="font-size:17px;margin:3px 0;"><b>Add :</b> ${order.address}</div>`:""} ${slotLabel?`<div style="font-size:17px;margin:3px 0;"><b>Delivery Slot:</b> ${slotLabel}</div>`:""}`+notesRow+`<div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:17px;margin:4px 0;"><thead><tr style="border-bottom:1px solid #555;"><th style="padding:6px 4px;text-align:left;font-weight:700;">Item</th><th style="padding:6px 4px;text-align:right;font-weight:700;">Qty</th><th style="padding:6px 4px;text-align:right;font-weight:700;">Rate</th><th style="padding:6px 4px;text-align:right;font-weight:700;">Amt</th></tr></thead><tbody>${itemRows}</tbody></table><div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;font-size:17px;"><tr><td colspan="3"><b>Total Items: ${items.length}</b></td><td style="text-align:right;"><b>${subtotal.toFixed(2)}</b></td></tr>${discountRows}${slotRow}${delivRow}</table><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="display:flex;justify-content:space-between;font-size:21px;font-weight:700;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>${walletRow}${paidDueRow}<div style="text-align:center;font-size:15px;color:#555;margin-top:12px;">Thank you for your business!<br/>For any query - 9220200100</div></div></body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${invoiceNo}</title><style>* { margin:0;padding:0;box-sizing:border-box; } body { font-family:Arial,sans-serif;color:#111;background:#fff; } @page { size:80mm auto;margin:0; }</style></head><body><div style="padding:6px 10px;font-size:18px;color:#111;"><h2 style="text-align:center;font-size:22px;font-weight:700;margin-bottom:2px;">Atha Foods (Fishtokri)${order.subHubName?` - ${order.subHubName}`:""}</h2><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="margin:4px 0;font-size:17px;"><b>Invoice :</b> ${invoiceNo}</div><div style="margin:4px 0;font-size:17px;"><b>Name :</b> ${order.customerName}</div><div style="margin:4px 0;font-size:17px;"><b>Mobile :</b> ${order.phone||"—"}</div>${order.address?`<div style="margin:4px 0;font-size:17px;"><b>Address :</b> ${order.address}</div>`:""}<div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="margin:4px 0;font-size:17px;"><b>Order Date :</b> ${orderDateStr}</div><div style="margin:4px 0;font-size:17px;"><b>Time :</b> ${timeStr}</div><div style="margin:4px 0;font-size:17px;"><b>Delivery Date :</b> ${deliveryDateStr}</div>${slotLabel?`<div style="margin:4px 0;font-size:17px;"><b>Delivery Slot :</b> ${slotLabel}</div>`:""}`+notesRow+`<div style="margin:4px 0;font-size:17px;"><b>Payment :</b> ${payMode} <span style="margin-left:5px;font-size:14px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span></div><div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:17px;margin:4px 0;"><thead><tr style="border-bottom:1px solid #555;"><th style="padding:6px 4px;text-align:left;font-weight:700;">Item</th><th style="padding:6px 4px;text-align:right;font-weight:700;">Qty</th><th style="padding:6px 4px;text-align:right;font-weight:700;">Amount</th></tr></thead><tbody>${itemRows}</tbody></table><div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;font-size:17px;"><tr><td colspan="2"><b>Total Items: ${items.length}</b></td><td style="text-align:right;"><b>${subtotal.toFixed(2)}</b></td></tr>${discountRows}${slotRow}${delivRow}</table><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="display:flex;justify-content:space-between;font-size:21px;font-weight:700;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>${walletRow}${paidDueRow}<div style="text-align:center;font-size:15px;color:#555;margin-top:12px;">Thank you for your business!<br/>For any query - 9220200100</div></div></body></html>`;
     toast({ title: "Printing..." });
     const qzResult = await printHtmlWithQZ(html);
     if (qzResult.success) return;
@@ -168,33 +169,34 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
           <div className="bg-white max-w-md mx-auto p-5 text-[16px] text-gray-800 shadow-sm border border-gray-200 rounded" style={POPPINS}>
             <h3 className="text-center font-bold text-[20px] mb-1">Atha Foods (Fishtokri){order.subHubName ? ` - ${order.subHubName}` : ""}</h3>
             <div className="border-t border-dashed border-gray-400 my-2" />
-            <div className="text-center text-[15px]">Mobile No: {order.phone || "—"}</div>
-            <div className="mt-2 text-[15px]"><b>Invoice No:</b> {invoiceNo}</div>
-            <div className="text-[15px]"><b>Date:</b> {deliveryDateStr}</div>
-            <div className="text-[15px]"><b>Payment Mode:</b> {payMode}
+            <div className="text-[15px]"><b>Invoice :</b> {invoiceNo}</div>
+            <div className="text-[15px]"><b>Name :</b> {order.customerName}</div>
+            <div className="text-[15px]"><b>Mobile :</b> {order.phone || "—"}</div>
+            {order.address && <div className="text-[15px]"><b>Address :</b> {order.address}</div>}
+            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="text-[15px]"><b>Order Date :</b> {orderDateStr}</div>
+            <div className="text-[15px]"><b>Time :</b> {timeStr}</div>
+            <div className="text-[15px]"><b>Delivery Date :</b> {deliveryDateStr}</div>
+            {(order.isExpress || formatTimeSlot(order)) && <div className="text-[15px]"><b>Delivery Slot :</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
+            {order.notes && <div className="text-[15px]"><b>Notes : {order.notes}</b></div>}
+            <div className="text-[15px]"><b>Payment :</b> {payMode}
               <span className={`ml-1 text-[13px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${payStatusNorm==="paid" ? "text-green-700 bg-green-50 border-green-200" : payStatusNorm==="partial" ? "text-amber-700 bg-amber-50 border-amber-200" : "text-red-700 bg-red-50 border-red-200"}`}>{payLabel}</span>
             </div>
-            <div className="text-[15px]"><b>Time:</b> {timeStr}</div>
-            <div className="border-t border-dashed border-gray-400 my-2" />
-            <div className="text-[15px]"><b>Name:</b> {order.customerName}</div>
-            {order.address && <div className="text-[15px]"><b>Add :</b> {order.address}</div>}
-            {(order.isExpress || formatTimeSlot(order)) && <div className="text-[15px]"><b>Delivery Slot:</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
-            {order.notes && <div className="text-[15px] mt-0.5"><b>Note: {order.notes}</b></div>}
             <div className="border-t border-dashed border-gray-400 my-2" />
             <table className="w-full text-[15px]">
               <thead>
                 <tr className="border-b border-gray-700 text-left">
-                  <th className="py-1.5 font-bold">Item</th><th className="py-1.5 text-right font-bold">Qty</th><th className="py-1.5 text-right font-bold">Rate</th><th className="py-1.5 text-right font-bold">Amount</th>
+                  <th className="py-1.5 font-bold">Item</th><th className="py-1.5 text-right font-bold">Qty</th><th className="py-1.5 text-right font-bold">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((it:any,i:number)=>{const qty=Number(it.quantity)||1,rate=Number(it.price)||0;return(<tr key={i}><td className="py-1.5 font-bold">{it.name}</td><td className="py-1.5 text-right">{qty}{it.unit?` ${it.unit==="per pack"?"pack":it.unit}`:""}</td><td className="py-1.5 text-right">{rate.toFixed(2)}</td><td className="py-1.5 text-right">{(qty*rate).toFixed(2)}</td></tr>);})}
-                <tr className="border-t border-gray-400"><td className="py-1.5"><b>Total Items: {items.length}</b></td><td className="py-1.5 text-right"><b>{totalQty}</b></td><td/><td className="py-1.5 text-right"><b>{subtotal.toFixed(2)}</b></td></tr>
-                {couponAmt > 0 && <tr><td className="py-1.5" colSpan={3}>Coupon{order.couponCode ? ` (${order.couponCode})` : ""} :</td><td className="py-1.5 text-right">- {couponAmt.toFixed(2)}</td></tr>}
-                {extraDiscAmt > 0 && <tr><td className="py-1.5" colSpan={3}>Extra discount{extraDiscType === "percentage" ? " (%)" : ""} :</td><td className="py-1.5 text-right">- {extraDiscAmt.toFixed(2)}</td></tr>}
-                {couponAmt === 0 && extraDiscAmt === 0 && discount > 0 && <tr><td className="py-1.5" colSpan={3}>Discount :</td><td className="py-1.5 text-right">- {discount.toFixed(2)}</td></tr>}
-                {slotCharge>0&&<tr><td className="py-1.5" colSpan={3}>Slot Charge :</td><td className="py-1.5 text-right">+ {slotCharge.toFixed(2)}</td></tr>}
-                {deliveryCharge>0&&<tr><td className="py-1.5" colSpan={3}>{order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td><td className="py-1.5 text-right">+ {deliveryCharge.toFixed(2)}</td></tr>}
+                {items.map((it:any,i:number)=>{const qty=Number(it.quantity)||1,rate=Number(it.price)||0;return(<tr key={i}><td className="py-1.5 font-bold">{it.name}</td><td className="py-1.5 text-right">{qty}{it.unit?` ${it.unit==="per pack"?"pack":it.unit}`:""}</td><td className="py-1.5 text-right">{(qty*rate).toFixed(2)}</td></tr>);})}
+                <tr className="border-t border-gray-400"><td className="py-1.5"><b>Total Items: {items.length}</b></td><td className="py-1.5 text-right"><b>{totalQty}</b></td><td className="py-1.5 text-right"><b>{subtotal.toFixed(2)}</b></td></tr>
+                {couponAmt > 0 && <tr><td className="py-1.5" colSpan={2}>Coupon{order.couponCode ? ` (${order.couponCode})` : ""} :</td><td className="py-1.5 text-right">- {couponAmt.toFixed(2)}</td></tr>}
+                {extraDiscAmt > 0 && <tr><td className="py-1.5" colSpan={2}>Extra discount{extraDiscType === "percentage" ? " (%)" : ""} :</td><td className="py-1.5 text-right">- {extraDiscAmt.toFixed(2)}</td></tr>}
+                {couponAmt === 0 && extraDiscAmt === 0 && discount > 0 && <tr><td className="py-1.5" colSpan={2}>Discount :</td><td className="py-1.5 text-right">- {discount.toFixed(2)}</td></tr>}
+                {slotCharge>0&&<tr><td className="py-1.5" colSpan={2}>Slot Charge :</td><td className="py-1.5 text-right">+ {slotCharge.toFixed(2)}</td></tr>}
+                {deliveryCharge>0&&<tr><td className="py-1.5" colSpan={2}>{order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td><td className="py-1.5 text-right">+ {deliveryCharge.toFixed(2)}</td></tr>}
               </tbody>
             </table>
             <div className="border-t border-dashed border-gray-400 my-2" />
