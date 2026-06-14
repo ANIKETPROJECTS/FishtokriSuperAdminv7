@@ -565,24 +565,25 @@ function InventoryReport({ firstSubHubId, onDownload, downloadRef, expandAllRef,
   useEffect(() => { onHasProducts(products.length > 0); }, [products.length]);
 
   const handleDownload = useCallback(() => {
-    if (!products.length) return;
-    const rows: any[] = [["Product Name","Category","Unit","Price (₹)","Batch No.","Batch Qty","Received Date","Expiry Date","Shelf Life (Days)","Days Left","Status","Notes","","Product Total Qty"]];
-    for (const p of products) {
+    if (!filteredProducts.length) return;
+    const filteredGrandTotal = filteredProducts.reduce((s, p) => s + (p.totalQuantity || 0), 0);
+    const rows: any[] = [["Product Name","Category","Unit","Price (₹)","Batch No.","Batch Qty","Received Date","Expiry Date","Shelf Life (Days)","Days Left","Status","Notes","Product Total Qty"]];
+    for (const p of filteredProducts) {
       const batches: any[] = p.batches ?? [];
-      if (!batches.length) { rows.push([p.name,p.category,p.unit,p.price,"—",0,"—","—","—","—",p.status==="available"?"Available":"Unavailable","—","",p.totalQuantity]); continue; }
-      batches.forEach((b, idx) => {
+      if (!batches.length) { rows.push([p.name,p.category,p.unit,p.price,"—",0,"—","—","—","—",p.status==="available"?"Available":"Unavailable","—",p.totalQuantity]); continue; }
+      batches.forEach((b) => {
         const daysLeftLabel = b.daysLeft===null?"No Expiry":b.isExpired?`Expired (${Math.abs(b.daysLeft)}d ago)`:`${b.daysLeft}d left`;
-        rows.push([idx===0?p.name:"",idx===0?p.category:"",idx===0?p.unit:"",idx===0?p.price:"",b.batchNumber,b.quantity,b.receivedDate||"—",b.expiryDate||"—",b.shelfLifeDays??"—",daysLeftLabel,b.isExpired?"Expired":"Active",b.notes||"—","",idx===batches.length-1?p.totalQuantity:""]);
+        rows.push([p.name,p.category,p.unit,p.price,b.batchNumber,b.quantity,b.receivedDate||"—",b.expiryDate||"—",b.shelfLifeDays??"—",daysLeftLabel,b.isExpired?"Expired":"Active",b.notes||"—",""]);
       });
-      rows.push(["","","","","↳ SUBTOTAL",p.totalQuantity,"","","","","","","",""]);
+      rows.push(["","","","","↳ SUBTOTAL",p.totalQuantity,"","","","","","",p.totalQuantity]);
     }
-    rows.push([]); rows.push(["GRAND TOTAL (All Products)","","","","",grandTotal]);
+    rows.push([]); rows.push(["GRAND TOTAL (Filtered)","","","","",filteredGrandTotal]);
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [{wch:28},{wch:18},{wch:12},{wch:10},{wch:16},{wch:10},{wch:14},{wch:14},{wch:16},{wch:16},{wch:12},{wch:22},{wch:2},{wch:16}];
+    ws["!cols"] = [{wch:28},{wch:18},{wch:12},{wch:10},{wch:16},{wch:10},{wch:14},{wch:14},{wch:16},{wch:16},{wch:12},{wch:22},{wch:16}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory Report");
     XLSX.writeFile(wb, `${(data?.subHub?.name||"inventory").replace(/\s+/g,"-")}-inventory-${today()}.xlsx`);
-  }, [products, data, grandTotal]);
+  }, [filteredProducts, data]);
 
   downloadRef.current = handleDownload;
 
