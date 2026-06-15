@@ -325,11 +325,14 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     return orderDateStr;
   })();
   const timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const payMode =
-    order.paymentMode ||
-    (Array.isArray(order.payments) && order.payments.length > 0
-      ? [...new Set(order.payments.map((p: any) => p.method))].join(", ")
-      : "Cash");
+  const payMode = (() => {
+    const rawMode = order.paymentMode ||
+      (Array.isArray(order.payments) && order.payments.length > 0
+        ? [...new Set(order.payments.map((p: any) => p.mode || p.method).filter(Boolean))].join(", ")
+        : "Cash");
+    if (String(rawMode).toLowerCase() === "upi" && order.upiVariant) return String(order.upiVariant).trim();
+    return rawMode;
+  })();
   const payLabel =
     order.paymentStatus === "paid" ? "Paid" :
     order.paymentStatus === "partial" ? "Partial" : "Unpaid";
@@ -4428,8 +4431,11 @@ export default function Orders() {
                       {pays.length > 0 && (
                         <div className="space-y-2">
                           {pays.map((p, i) => {
-                            const meta = PAYMENT_MODES.find((m) => m.value === String(p?.mode || "").toLowerCase());
-                            const label = meta?.label || (p?.mode ? String(p.mode) : "Payment");
+                            const modeStr = String(p?.mode || "").toLowerCase();
+                            const meta = PAYMENT_MODES.find((m) => m.value === modeStr);
+                            const label = (modeStr === "upi" && selectedOrder?.upiVariant)
+                              ? String(selectedOrder.upiVariant).trim()
+                              : meta?.label || (p?.mode ? String(p.mode) : "Payment");
                             return (
                               <div key={i} className="flex items-center justify-between py-2.5 border-t border-gray-100">
                                 <span className="text-sm font-semibold text-black">{label}</span>
