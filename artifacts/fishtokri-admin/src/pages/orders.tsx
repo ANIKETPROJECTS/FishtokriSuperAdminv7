@@ -154,13 +154,14 @@ function SolidStatusBadge({ status, deliveryType }: { status: string; deliveryTy
 }
 
 function PaymentBadge({ order }: { order: any }) {
-  // Detect mode from paymentMode or first payment entry; fallback to COD.
   const rawMode = String(
     order?.paymentMode ||
     (Array.isArray(order?.payments) && order.payments[0]?.mode) ||
     ""
   ).toLowerCase().trim();
-  const label = rawMode === "upi" ? "UPI"
+  const label = rawMode === "upi" && order?.upiVariant
+    ? order.upiVariant
+    : rawMode === "upi" ? "UPI"
     : rawMode === "card" ? "Card"
     : rawMode === "wallet" ? "Wallet"
     : (rawMode === "cash" || rawMode === "cod" || rawMode === "") ? "COD"
@@ -864,6 +865,18 @@ export default function Orders() {
   const [filterSubHubs, setFilterSubHubs] = useState<{ id: string; name: string }[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const knownSubHubsRef = useRef<Map<string, { id: string; name: string }>>(new Map());
+
+  // Paid orders client-side filter
+  const [payFilter, setPayFilter] = useState(false);
+  const [payModeFilter, setPayModeFilter] = useState("");
+
+  // UPI Variants
+  const [upiVariants, setUpiVariants] = useState<string[]>([]);
+  const [managingUpiVariants, setManagingUpiVariants] = useState(false);
+  const [upiVariantInput, setUpiVariantInput] = useState("");
+  const [editingVariant, setEditingVariant] = useState<string | null>(null);
+  const [editVariantValue, setEditVariantValue] = useState("");
+  const [assigningVariantOrderId, setAssigningVariantOrderId] = useState<string | null>(null);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -1836,6 +1849,68 @@ export default function Orders() {
       .catch(() => {});
   }, []);
 
+  // Load UPI variants list on mount
+  useEffect(() => {
+    apiFetch("/api/upi-variants")
+      .then((d) => setUpiVariants(d.variants ?? []))
+      .catch(() => {});
+  }, []);
+
+  // UPI Variant management functions
+  const assignUpiVariant = async (orderId: string, variant: string) => {
+    setAssigningVariantOrderId(orderId);
+    try {
+      await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify({ upiVariant: variant || null }) });
+      setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, upiVariant: variant || undefined } : o));
+      setSelectedOrder((o: any) => o && String(o._id) === orderId ? { ...o, upiVariant: variant || undefined } : o);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setAssigningVariantOrderId(null); }
+  };
+
+  const addUpiVariant = async () => {
+    const name = upiVariantInput.trim();
+    if (!name) return;
+    try {
+      const d = await apiFetch("/api/upi-variants", { method: "POST", body: JSON.stringify({ name }) });
+      setUpiVariants(d.variants ?? []);
+      setUpiVariantInput("");
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  const renameUpiVariant = async (oldName: string) => {
+    const newName = editVariantValue.trim();
+    if (!newName) return;
+    try {
+      const d = await apiFetch(`/api/upi-variants/${encodeURIComponent(oldName)}`, { method: "PUT", body: JSON.stringify({ newName }) });
+      setUpiVariants(d.variants ?? []);
+      setEditingVariant(null);
+      setEditVariantValue("");
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  const deleteUpiVariant = async (name: string) => {
+    try {
+      const d = await apiFetch(`/api/upi-variants/${encodeURIComponent(name)}`, { method: "DELETE" });
+      setUpiVariants(d.variants ?? []);
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  // Client-side paid filter on top of loaded orders
+  const displayedOrders = useMemo(() => {
+    let list = orders;
+    if (payFilter) {
+      list = list.filter((o) => o.paymentStatus === "paid");
+      if (payModeFilter) {
+        list = list.filter((o) => {
+          const mode = String(o.paymentMode || "").toLowerCase();
+          return mode === payModeFilter;
+        });
+      }
+    }
+    return list;
+  }, [orders, payFilter, payModeFilter]);
+
   // Persons to show in the modal (hub-filtered or all)
   const modalPersons = useMemo(() => {
     if (!selectedOrder) return deliveryPersons;
@@ -2354,10 +2429,10 @@ export default function Orders() {
   const clearFilters = () => {
     setSearch(""); setStatusFilter(""); setDeliveryTypeFilter("");
     setDateFrom(""); setDateTo(""); setSortField("createdAt"); setSortDir("desc");
-    setSubHubFilter("");
+    setSubHubFilter(""); setPayFilter(false); setPayModeFilter("");
   };
 
-  const hasFilters = !!(search || statusFilter || deliveryTypeFilter || dateFrom || dateTo || subHubFilter);
+  const hasFilters = !!(search || statusFilter || deliveryTypeFilter || dateFrom || dateTo || subHubFilter || payFilter);
 
   const totalAll = (statsTotals.total ?? 0) || (
     ACTIVE_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0) +
@@ -2456,7 +2531,7 @@ export default function Orders() {
                   <button
                     key={s}
                     onClick={() => { setStatusFilter(s === statusFilter ? "" : s); setActiveTab("all"); }}
-                    className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all ${solidBg} text-white shadow-sm`}
+                    className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all ${solidBg} text-white shadow-sm ${statusFilter === s ? "ring-2 ring-white ring-offset-1" : "opacity-80 hover:opacity-100"}`}
                   >
                     {cfg.label}
                     <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-white/25 text-white">
@@ -2465,6 +2540,13 @@ export default function Orders() {
                   </button>
                 );
               })}
+              {/* Paid filter pill */}
+              <button
+                onClick={() => { setPayFilter((f) => !f); setPayModeFilter(""); setActiveTab("all"); setStatusFilter(""); }}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-semibold transition-all bg-green-600 text-white shadow-sm ${payFilter ? "ring-2 ring-white ring-offset-1 ring-offset-green-700" : "opacity-80 hover:opacity-100"}`}
+              >
+                Paid
+              </button>
             </div>
           ) : (
             <div className="flex-1" />
@@ -2476,6 +2558,32 @@ export default function Orders() {
             <Plus className="w-3.5 h-3.5" /> New Order
           </button>
         </div>
+
+        {/* Payment mode sub-filter — shown when Paid pill is active */}
+        {payFilter && (
+          <div className="flex items-center gap-1.5 flex-wrap py-1.5">
+            <span className="text-xs text-gray-500 font-semibold mr-1">Mode:</span>
+            {(["", "cash", "upi", "card", "bank_transfer", "other"] as const).map((val) => {
+              const label = val === "" ? "All" : val === "bank_transfer" ? "Bank Transfer" : val.charAt(0).toUpperCase() + val.slice(1);
+              return (
+                <button
+                  key={val}
+                  onClick={() => setPayModeFilter(val)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${payModeFilter === val ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-700 border-gray-200 hover:border-green-400"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setManagingUpiVariants(true)}
+              className="ml-2 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              title="Manage UPI type labels"
+            >
+              ⚙ UPI Types
+            </button>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="py-2 flex flex-wrap gap-2 items-center bg-white">
@@ -2570,8 +2678,10 @@ export default function Orders() {
         <div className="py-2 text-xs text-black">
           {loading ? "Loading..." : activeTab === "invoices"
             ? `${orders.filter(o => o.status !== "cancelled").length} invoice${orders.filter(o => o.status !== "cancelled").length !== 1 ? "s" : ""}`
-            : `${total} order${total !== 1 ? "s" : ""} found`}
-          {statusFilter && activeTab !== "invoices" && <span className="ml-1">· filtered by <strong>{STATUS_CONFIG[statusFilter]?.label}</strong></span>}
+            : payFilter
+              ? `${displayedOrders.length} paid order${displayedOrders.length !== 1 ? "s" : ""}${payModeFilter ? ` · ${payModeFilter === "bank_transfer" ? "Bank Transfer" : payModeFilter.charAt(0).toUpperCase() + payModeFilter.slice(1)}` : ""} (from ${total} loaded)`
+              : `${total} order${total !== 1 ? "s" : ""} found`}
+          {statusFilter && activeTab !== "invoices" && !payFilter && <span className="ml-1">· filtered by <strong>{STATUS_CONFIG[statusFilter]?.label}</strong></span>}
         </div>
 
         {/* Orders Table / Invoices List */}
@@ -2674,7 +2784,7 @@ export default function Orders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {orders.map((o) => {
+                {displayedOrders.map((o) => {
                   const total = effectiveOrderTotal(o);
                   const items: any[] = Array.isArray(o.items) ? o.items : [];
                   const slot = formatTimeSlot(o);
@@ -2716,7 +2826,22 @@ export default function Orders() {
                           return walletAmt > 0 ? <p className="text-xs text-[#364F9F] font-medium">−{formatRupees(walletAmt)} wallet</p> : null;
                         })()}
                       </td>
-                      <td className="px-3 py-4"><PaymentBadge order={o} /></td>
+                      <td className="px-3 py-4">
+                        <PaymentBadge order={o} />
+                        {String(o.paymentMode || "").toLowerCase() === "upi" && (
+                          <div className="mt-1">
+                            <select
+                              value={o.upiVariant || ""}
+                              disabled={assigningVariantOrderId === String(o._id)}
+                              onChange={(e) => assignUpiVariant(String(o._id), e.target.value)}
+                              className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 text-gray-600 bg-white cursor-pointer hover:border-blue-300 transition-colors max-w-[110px]"
+                            >
+                              <option value="">— type —</option>
+                              {upiVariants.map((v) => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-4">
                         {o.subHubName
                           ? <span className="text-sm font-medium text-black">{o.subHubName}</span>
@@ -3032,6 +3157,71 @@ export default function Orders() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* UPI Variants Management Modal */}
+      <Dialog open={managingUpiVariants} onOpenChange={(o) => { if (!o) { setManagingUpiVariants(false); setEditingVariant(null); setUpiVariantInput(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">Manage UPI Types</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            {/* Existing variants list */}
+            {upiVariants.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-3">No UPI types yet. Add one below.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {upiVariants.map((v) => (
+                  <li key={v} className="flex items-center gap-2">
+                    {editingVariant === v ? (
+                      <>
+                        <input
+                          autoFocus
+                          value={editVariantValue}
+                          onChange={(e) => setEditVariantValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") renameUpiVariant(v); if (e.key === "Escape") { setEditingVariant(null); setEditVariantValue(""); } }}
+                          className="flex-1 border border-blue-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                        <button onClick={() => renameUpiVariant(v)} className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">Save</button>
+                        <button onClick={() => { setEditingVariant(null); setEditVariantValue(""); }} className="text-xs text-gray-400 hover:text-gray-600 px-1 py-1">✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm font-medium text-gray-800">{v}</span>
+                        <button
+                          onClick={() => { setEditingVariant(v); setEditVariantValue(v); }}
+                          className="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                        >Edit</button>
+                        <button
+                          onClick={() => deleteUpiVariant(v)}
+                          className="text-xs text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                        >Delete</button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* Add new variant */}
+            <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+              <input
+                value={upiVariantInput}
+                onChange={(e) => setUpiVariantInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addUpiVariant(); }}
+                placeholder="e.g. Paytm, GPay, PhonePe…"
+                className="flex-1 border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <button
+                onClick={addUpiVariant}
+                disabled={!upiVariantInput.trim()}
+                className="px-3 py-1.5 rounded text-sm font-semibold bg-[#1A56DB] text-white hover:bg-[#1447B4] disabled:opacity-50 transition-colors"
+              >Add</button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setManagingUpiVariants(false); setEditingVariant(null); setUpiVariantInput(""); }} className="h-9">Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -17,6 +17,7 @@ import inventoryRouter from "./inventory";
 import deliveryReportRouter from "./delivery-report";
 import reportsRouter from "./reports";
 import qzRouter from "./qz";
+import upiVariantsRouter from "./upi-variants";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use("/inventory", inventoryRouter);
 router.use("/delivery-report", deliveryReportRouter);
 router.use("/reports", reportsRouter);
 router.use(qzRouter);
+router.use("/upi-variants", upiVariantsRouter);
 
 export default router;

@@ -125,7 +125,8 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     return orderDateStr;
   })();
   const timeStr = d.toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit", hour12:true });
-  const payMode = order.paymentMode || (invPays.length>0 ? [...new Set(invPays.map((p:any)=>p.method))].join(", ") : "Cash");
+  const rawPayMode = order.paymentMode || (invPays.length>0 ? [...new Set(invPays.map((p:any)=>p.method))].join(", ") : "Cash");
+  const payMode = (String(rawPayMode).toLowerCase() === "upi" && order.upiVariant) ? order.upiVariant : rawPayMode;
   const payStatusNorm = String(order.paymentStatus || "").toLowerCase();
   const payLabel = payStatusNorm==="paid" ? "Paid" : payStatusNorm==="partial" ? "Partial" : "Unpaid";
   const payStatusColor = payStatusNorm==="paid" ? "#15803d" : payStatusNorm==="partial" ? "#b45309" : "#b91c1c";
@@ -489,7 +490,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
                   </td>
                   <td style={{ padding: "10px 14px", fontWeight: 700, color: "#000", whiteSpace: "nowrap", textAlign: "right" }}>{formatRupees(o.total)}</td>
                   <td style={{ padding: "10px 14px", color: "#444", whiteSpace: "nowrap" }}>{o.deliveryPerson}</td>
-                  <td style={{ padding: "10px 14px", fontWeight: 500, color: "#000", whiteSpace: "nowrap" }}>{o.paymentMode}</td>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: "#000", whiteSpace: "nowrap" }}>{(String(o.paymentMode || "").toLowerCase() === "upi" && o.upiVariant) ? o.upiVariant : o.paymentMode}</td>
                   <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, ...paymentBadgeStyle(o.paymentStatus) }}>
                       {o.paymentStatus}
