@@ -402,6 +402,19 @@ router.get("/", async (req: ScopedRequest, res) => {
           { address: re },
           { "items.name": re },
           { orderId: re },
+          // Match total amount — exact numeric match or partial string match
+          ...(word.replace(/^#/, "").replace(/[^0-9.]/g, "").length > 0
+            ? [
+                {
+                  $expr: {
+                    $regexMatch: {
+                      input: { $toString: "$total" },
+                      regex: escapeRe(word.replace(/[^0-9.]/g, "")),
+                    },
+                  },
+                },
+              ]
+            : []),
         ];
         // Also match by ObjectId hex — full (24 chars) or trailing fragment.
         // Strip leading '#' so searching '#FTS...' and 'FTS...' both work via orderId above;
