@@ -434,7 +434,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <div style="display:flex;justify-content:space-between;font-size:21px;font-weight:700;margin:4px 0;">
+        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0;">
           <span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span>
         </div>
         ${walletRow}
@@ -570,7 +570,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
-            <div className="flex justify-between text-[19px] font-bold">
+            <div className="flex justify-between text-[14px] font-bold">
               <span>Grand Total:</span>
               <span>{grandTotal.toFixed(2)}</span>
             </div>
