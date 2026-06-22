@@ -18,6 +18,7 @@ import deliveryReportRouter from "./delivery-report";
 import reportsRouter from "./reports";
 import qzRouter from "./qz";
 import upiVariantsRouter from "./upi-variants";
+import fishCalculatorRouter from "./fish-calculator";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use("/delivery-report", deliveryReportRouter);
 router.use("/reports", reportsRouter);
 router.use(qzRouter);
 router.use("/upi-variants", upiVariantsRouter);
+router.use("/fish-calculator", fishCalculatorRouter);
 
 export default router;

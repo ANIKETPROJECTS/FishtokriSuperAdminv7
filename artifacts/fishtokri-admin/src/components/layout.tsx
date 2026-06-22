@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History, Menu, X, FileBarChart, FileSpreadsheet, Trash2 } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History, Menu, X, FileBarChart, FileSpreadsheet, Trash2, Calculator, RefreshCw, Settings, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -9,15 +9,14 @@ const masterAdminNavItems = [
   { href: "/hubs", label: "Hubs", icon: Warehouse },
   { href: "/orders", label: "Orders", icon: ClipboardList },
   {
-    href: "/vendor-management",
-    label: "Vendor Management",
-    icon: Handshake,
+    href: "/fish-calculator",
+    label: "Fish Purchase Calculator",
+    icon: Calculator,
     children: [
-      { href: "/vendors", label: "Vendor", icon: Handshake },
-      { href: "/vendor-invoices", label: "Vendor Invoices", icon: FileText },
-      { href: "/vendor-categories", label: "Categories", icon: FolderOpen },
-      { href: "/vendor-items", label: "Items", icon: Boxes },
-      { href: "/stock-adjustment", label: "Stock Adjustment", icon: SlidersHorizontal },
+      { href: "/fish-calculator/price", label: "Price Calculator", icon: Calculator },
+      { href: "/fish-calculator/yield", label: "Yield & Price Calculator", icon: RefreshCw },
+      { href: "/fish-calculator/history", label: "History", icon: Clock },
+      { href: "/fish-calculator/config", label: "Configuration", icon: Settings },
     ],
   },
   {
@@ -242,7 +241,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     "/dashboard",
     "/hubs",
     "/orders",
-    "/vendor-management",
+    "/fish-calculator",
     "/inventory",
     "/banking",
     "/customers",

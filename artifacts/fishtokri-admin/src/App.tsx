@@ -38,6 +38,10 @@ import DeliveryReport from "@/pages/delivery-report";
 import DeliveryReportPerson from "@/pages/delivery-report-person";
 import DayEndReport from "@/pages/day-end-report";
 import WastageReport from "@/pages/wastage-report";
+import FishCalculatorPrice from "@/pages/fish-calculator-price";
+import FishCalculatorYield from "@/pages/fish-calculator-yield";
+import FishCalculatorHistory from "@/pages/fish-calculator-history";
+import FishCalculatorConfig from "@/pages/fish-calculator-config";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -267,6 +271,20 @@ function App() {
             </Route>
             <Route path="/my-hub">
               <RedirectTo to="/hubs" />
+            </Route>
+
+            {/* Fish Purchase Calculator — Master Admin only */}
+            <Route path="/fish-calculator/price">
+              <ProtectedRoute component={FishCalculatorPrice} allowedRoles={MASTER_ONLY} />
+            </Route>
+            <Route path="/fish-calculator/yield">
+              <ProtectedRoute component={FishCalculatorYield} allowedRoles={MASTER_ONLY} />
+            </Route>
+            <Route path="/fish-calculator/history">
+              <ProtectedRoute component={FishCalculatorHistory} allowedRoles={MASTER_ONLY} />
+            </Route>
+            <Route path="/fish-calculator/config">
+              <ProtectedRoute component={FishCalculatorConfig} allowedRoles={MASTER_ONLY} />
             </Route>
 
             {/* Day End Report — all admin roles */}
