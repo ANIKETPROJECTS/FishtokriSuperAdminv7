@@ -1,7 +1,7 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Search, Trash2 } from "lucide-react";
+import { Download, Search, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from "lucide-react";
 import * as XLSX from "xlsx";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
@@ -22,32 +22,36 @@ function firstOfMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
-
-function formatDate(iso: string | null) {
+function fmtDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
-function formatDateTime(iso: string | null) {
+function fmtDateTime(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit", hour12: true,
   });
 }
-function formatRupees(n: number) {
+function fmtRupees(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
+function isoToMs(iso: string | null) {
+  if (!iso) return 0;
+  return new Date(iso).getTime() || 0;
+}
 
-function TypeBadge({ type }: { type: "expired" | "reduced" }) {
+// ── Types ─────────────────────────────────────────────────────────────────────
+type SortKey = "operationDate" | "item" | "expiryDate" | "quantity" | "totalPrice" | "dateAdded";
+type SortDir = "asc" | "desc";
+
+// ── TypeBadge ─────────────────────────────────────────────────────────────────
+function TypeBadge({ type }: { type: string }) {
   const isExpired = type === "expired";
   return (
     <span style={{
-      display: "inline-block",
-      padding: "3px 10px",
-      borderRadius: 20,
-      fontSize: 11,
-      fontWeight: 700,
-      letterSpacing: "0.03em",
+      display: "inline-block", padding: "3px 10px", borderRadius: 20,
+      fontSize: 11, fontWeight: 700, letterSpacing: "0.03em",
       background: isExpired ? "#fef2f2" : "#fff7ed",
       color: isExpired ? "#dc2626" : "#c2410c",
       border: `1px solid ${isExpired ? "#fecaca" : "#fed7aa"}`,
@@ -57,35 +61,47 @@ function TypeBadge({ type }: { type: "expired" | "reduced" }) {
   );
 }
 
+// ── SortIcon ──────────────────────────────────────────────────────────────────
+function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
+  if (col !== sortKey) return <ArrowUpDown style={{ width: 11, height: 11, opacity: 0.4, flexShrink: 0 }} />;
+  return sortDir === "asc"
+    ? <ArrowUp style={{ width: 11, height: 11, color: "#F05B4E", flexShrink: 0 }} />
+    : <ArrowDown style={{ width: 11, height: 11, color: "#F05B4E", flexShrink: 0 }} />;
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function WastageReportPage() {
   const [from, setFrom] = useState(firstOfMonth());
   const [to, setTo] = useState(today());
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "expired" | "reduced">("all");
+  const [sortKey, setSortKey] = useState<SortKey>("operationDate");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedSubHubId, setSelectedSubHubId] = useState<string>("");
-
-  const downloadRef = useRef<(() => void) | null>(null);
 
   const admin = getAdmin();
   const isMaster = admin?.role === "master_admin";
   const isSuperHub = admin?.role === "super_hub";
   const isSubHub = admin?.role === "sub_hub";
 
-  // Fetch sub-hubs list for master/super hub selectors
   const { data: subHubsData } = useQuery({
     queryKey: ["sub-hubs-for-wastage"],
     queryFn: () => apiFetch("/api/sub-hubs"),
     enabled: isMaster || isSuperHub,
   });
-
   const subHubs: any[] = subHubsData?.subHubs ?? subHubsData?.data ?? [];
 
-  // Resolve active sub hub ID
   const activeSubHubId = useMemo(() => {
     if (isSubHub) return admin?.subHubIds?.[0] || admin?.subHubId || "";
     if (selectedSubHubId) return selectedSubHubId;
     return subHubs[0]?._id || subHubs[0]?.id || "";
   }, [isSubHub, admin, selectedSubHubId, subHubs]);
+
+  const activeSubHubName = useMemo(() => {
+    if (isSubHub) return admin?.subHubName || "";
+    const found = subHubs.find((s: any) => (s._id || s.id) === activeSubHubId);
+    return found?.name || "";
+  }, [isSubHub, admin, activeSubHubId, subHubs]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["wastage-report", activeSubHubId, from, to],
@@ -98,89 +114,187 @@ export default function WastageReportPage() {
 
   const records: any[] = data?.records ?? [];
 
-  const filtered = useMemo(() => {
+  // ── Column sort handler ────────────────────────────────────────────────────
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  };
+
+  // ── Filtered + sorted list ─────────────────────────────────────────────────
+  const displayRows = useMemo(() => {
     let list = [...records];
+
+    // search
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(r =>
         (r.item || "").toLowerCase().includes(q) ||
         (r.batchId || "").toLowerCase().includes(q) ||
-        (r.reason || "").toLowerCase().includes(q)
+        (r.reason || "").toLowerCase().includes(q) ||
+        (r.type || "").toLowerCase().includes(q)
       );
     }
-    if (typeFilter !== "all") list = list.filter(r => r.type === typeFilter);
-    return list;
-  }, [records, search, typeFilter]);
 
+    // type filter
+    if (typeFilter !== "all") list = list.filter(r => r.type === typeFilter);
+
+    // sort
+    list.sort((a, b) => {
+      let va: any, vb: any;
+      switch (sortKey) {
+        case "item":        va = (a.item || "").toLowerCase();      vb = (b.item || "").toLowerCase(); break;
+        case "quantity":    va = a.quantity ?? 0;                   vb = b.quantity ?? 0; break;
+        case "totalPrice":  va = a.totalPrice ?? 0;                 vb = b.totalPrice ?? 0; break;
+        case "expiryDate":  va = isoToMs(a.expiryDate);             vb = isoToMs(b.expiryDate); break;
+        case "dateAdded":   va = isoToMs(a.dateAdded);              vb = isoToMs(b.dateAdded); break;
+        default:            va = isoToMs(a.operationDate);          vb = isoToMs(b.operationDate); break;
+      }
+      if (va < vb) return sortDir === "asc" ? -1 : 1;
+      if (va > vb) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [records, search, typeFilter, sortKey, sortDir]);
+
+  // ── Summary stats (always from full records) ───────────────────────────────
   const stats = useMemo(() => {
     const expired = records.filter(r => r.type === "expired");
     const reduced = records.filter(r => r.type === "reduced");
-    const totalValue = records.reduce((s, r) => s + (r.totalPrice || 0), 0);
-    const expiredValue = expired.reduce((s, r) => s + (r.totalPrice || 0), 0);
-    const reducedValue = reduced.reduce((s, r) => s + (r.totalPrice || 0), 0);
     return {
       total: records.length,
       expired: expired.length,
       reduced: reduced.length,
-      totalValue,
-      expiredValue,
-      reducedValue,
+      totalValue: records.reduce((s, r) => s + (r.totalPrice || 0), 0),
+      expiredValue: expired.reduce((s, r) => s + (r.totalPrice || 0), 0),
+      reducedValue: reduced.reduce((s, r) => s + (r.totalPrice || 0), 0),
     };
   }, [records]);
 
+  const filteredTotal = useMemo(() => ({
+    qty: displayRows.reduce((s, r) => s + (r.quantity || 0), 0),
+    value: displayRows.reduce((s, r) => s + (r.totalPrice || 0), 0),
+  }), [displayRows]);
+
+  // ── Excel Export ───────────────────────────────────────────────────────────
   const handleDownload = useCallback(() => {
-    if (!filtered.length) return;
-    const rows: any[][] = [
-      ["Batch ID", "Date Added", "Expiry Date", "Item", "Type", "Qty", "Unit", "Total Price (₹)", "Reason", "Date of Operation"],
-    ];
-    for (const r of filtered) {
-      rows.push([
+    if (!displayRows.length) return;
+
+    const wb = XLSX.utils.book_new();
+
+    // ── Sheet 1: Data ──────────────────────────────────────────────────────
+    const dataRows: any[][] = [];
+
+    // Title block
+    dataRows.push([`Wastage Report — ${activeSubHubName || "All Sub Hubs"}`]);
+    dataRows.push([`Period: ${fmtDate(from)} to ${fmtDate(to)}`]);
+    dataRows.push([`Generated: ${fmtDateTime(new Date().toISOString())}`]);
+    dataRows.push([`Type filter: ${typeFilter === "all" ? "All" : typeFilter === "expired" ? "Expired only" : "Reduced only"}`]);
+    dataRows.push([]);
+
+    // Headers
+    dataRows.push([
+      "Batch ID", "Date Added", "Expiry Date", "Item", "Unit",
+      "Type", "Quantity", "Total Price (₹)", "Reason / Notes", "Date of Operation",
+    ]);
+
+    // Data rows — use raw numbers for Qty and Price so Excel can aggregate
+    for (const r of displayRows) {
+      dataRows.push([
         r.batchId || "—",
-        r.dateAdded ? formatDate(r.dateAdded) : "—",
-        r.expiryDate ? formatDate(r.expiryDate) : "—",
+        r.dateAdded || "—",
+        r.expiryDate || "—",
         r.item || "—",
-        r.type === "expired" ? "Expired" : "Reduced",
-        r.quantity ?? 0,
         r.unit || "",
-        r.totalPrice ?? 0,
-        r.reason || "—",
-        r.operationDate ? formatDateTime(r.operationDate) : "—",
+        r.type === "expired" ? "Expired" : "Reduced",
+        Number(r.quantity) || 0,
+        Number(r.totalPrice) || 0,
+        [r.reason, r.notes].filter(Boolean).join(" | ") || "—",
+        r.operationDate ? fmtDateTime(r.operationDate) : "—",
       ]);
     }
-    rows.push([]);
-    rows.push(["SUMMARY"]);
-    rows.push(["Total Wastage Records", stats.total]);
-    rows.push(["Expired Items", stats.expired, "", "", "", "", "", formatRupees(stats.expiredValue)]);
-    rows.push(["Reduced Items", stats.reduced, "", "", "", "", "", formatRupees(stats.reducedValue)]);
-    rows.push(["Total Wastage Value", "", "", "", "", "", "", formatRupees(stats.totalValue)]);
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [
-      { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 28 },
-      { wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 16 }, { wch: 22 }, { wch: 24 },
+    // Totals row
+    dataRows.push([]);
+    const totalsRowIdx = dataRows.length + 1; // 1-based
+    dataRows.push([
+      "TOTAL",
+      "", "", "", "",
+      `${displayRows.length} records`,
+      filteredTotal.qty,
+      filteredTotal.value,
+      "", "",
+    ]);
+
+    const ws1 = XLSX.utils.aoa_to_sheet(dataRows);
+
+    // Column widths
+    ws1["!cols"] = [
+      { wch: 24 }, // Batch ID
+      { wch: 14 }, // Date Added
+      { wch: 14 }, // Expiry Date
+      { wch: 30 }, // Item
+      { wch: 8  }, // Unit
+      { wch: 10 }, // Type
+      { wch: 10 }, // Quantity
+      { wch: 18 }, // Total Price
+      { wch: 28 }, // Reason
+      { wch: 26 }, // Date of Operation
     ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Wastage Report");
+
+    XLSX.utils.book_append_sheet(wb, ws1, "Wastage Data");
+
+    // ── Sheet 2: Summary ───────────────────────────────────────────────────
+    const summaryRows: any[][] = [
+      [`Wastage Report Summary`],
+      [`Sub Hub: ${activeSubHubName || "All"}`],
+      [`Period: ${fmtDate(from)} to ${fmtDate(to)}`],
+      [],
+      ["Metric", "Count", "Value (₹)"],
+      ["Total Wastage Records", stats.total, stats.totalValue],
+      ["Expired Items", stats.expired, stats.expiredValue],
+      ["Reduced Items", stats.reduced, stats.reducedValue],
+      [],
+      ["--- Filtered / Displayed ---"],
+      ["Filtered Records", displayRows.length, filteredTotal.value],
+      ["Filtered Qty (units)", "", filteredTotal.qty],
+    ];
+
+    const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
+    ws2["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws2, "Summary");
+
     XLSX.writeFile(wb, `wastage-report-${from}-to-${to}.xlsx`);
-  }, [filtered, stats, from, to]);
+  }, [displayRows, stats, filteredTotal, from, to, typeFilter, activeSubHubName]);
 
-  downloadRef.current = handleDownload;
-
-  const dateInputStyle: React.CSSProperties = {
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    padding: "4px 8px",
-    fontSize: 12,
-    fontFamily: "Poppins, sans-serif",
-    color: "#000",
-    background: "#fff",
-    height: 30,
+  // ── Styles ─────────────────────────────────────────────────────────────────
+  const inputStyle: React.CSSProperties = {
+    border: "1px solid #e5e7eb", borderRadius: 8,
+    padding: "4px 8px", fontSize: 12,
+    fontFamily: "Poppins, sans-serif", color: "#000",
+    background: "#fff", height: 30,
   };
 
+  const thStyle = (key: SortKey, align: "left" | "right" = "left"): React.CSSProperties => ({
+    padding: "11px 14px",
+    textAlign: align,
+    fontSize: 11, fontWeight: 700, color: "#fff",
+    whiteSpace: "nowrap", letterSpacing: "0.04em",
+    cursor: "pointer", userSelect: "none",
+    background: sortKey === key ? "#1a3560" : "transparent",
+    transition: "background 0.15s",
+  });
+
+  // ── Header portal content ──────────────────────────────────────────────────
   const headerSlot = document.getElementById("page-header-slot");
 
   const headerContent = (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", fontFamily: "Poppins, sans-serif" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", ...POPPINS }}>
+      {/* Title */}
       <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
         <Trash2 style={{ width: 16, height: 16, color: "#F05B4E" }} />
         <h1 style={{ fontSize: 15, fontWeight: 700, color: "#000", margin: 0, whiteSpace: "nowrap" }}>
@@ -190,13 +304,13 @@ export default function WastageReportPage() {
 
       <div style={{ width: 1, height: 20, background: "#e5e7eb", flexShrink: 0 }} />
 
-      {/* Sub-hub selector for master/super-hub */}
+      {/* Sub-hub selector */}
       {(isMaster || isSuperHub) && subHubs.length > 1 && (
         <>
           <select
             value={selectedSubHubId || activeSubHubId}
             onChange={e => setSelectedSubHubId(e.target.value)}
-            style={{ ...dateInputStyle, width: 160, paddingRight: 6 }}
+            style={{ ...inputStyle, width: 160 }}
           >
             {subHubs.map((s: any) => (
               <option key={s._id || s.id} value={s._id || s.id}>{s.name}</option>
@@ -209,9 +323,9 @@ export default function WastageReportPage() {
       {/* Date range */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <label style={{ fontSize: 11, fontWeight: 500, color: "#888", whiteSpace: "nowrap" }}>From</label>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={dateInputStyle} />
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={inputStyle} />
         <label style={{ fontSize: 11, fontWeight: 500, color: "#888", whiteSpace: "nowrap" }}>To</label>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={dateInputStyle} />
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={inputStyle} />
       </div>
 
       <div style={{ flex: 1 }} />
@@ -224,12 +338,11 @@ export default function WastageReportPage() {
             onClick={() => setTypeFilter(t)}
             style={{
               padding: "5px 12px", borderRadius: 7, border: "none", cursor: "pointer",
-              fontSize: 12, fontWeight: 600, fontFamily: "Poppins, sans-serif",
-              transition: "all 0.15s",
+              fontSize: 12, fontWeight: 600, ...POPPINS,
               background: typeFilter === t ? "#fff" : "transparent",
               color: typeFilter === t ? "#F05B4E" : "#666",
               boxShadow: typeFilter === t ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-              whiteSpace: "nowrap",
+              transition: "all 0.15s", whiteSpace: "nowrap",
             }}
           >
             {t === "all" ? "All" : t === "expired" ? "Expired" : "Reduced"}
@@ -240,20 +353,25 @@ export default function WastageReportPage() {
       {/* Download */}
       <button
         onClick={handleDownload}
-        title="Download Excel"
+        title="Download Excel (.xlsx)"
         style={{
-          width: 34, height: 34, borderRadius: 9, border: "1px solid #e5e7eb",
-          background: "#fff", cursor: "pointer", display: "flex", alignItems: "center",
-          justifyContent: "center", color: "#15803d", transition: "all 0.15s", flexShrink: 0,
+          display: "flex", alignItems: "center", gap: 6,
+          height: 34, padding: "0 12px", borderRadius: 9,
+          border: "1px solid #e5e7eb", background: "#fff",
+          cursor: "pointer", color: "#15803d",
+          fontSize: 12, fontWeight: 600, ...POPPINS,
+          transition: "all 0.15s", flexShrink: 0,
         }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f0fdf4"; (e.currentTarget as HTMLElement).style.borderColor = "#86efac"; }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#fff"; (e.currentTarget as HTMLElement).style.borderColor = "#e5e7eb"; }}
       >
-        <Download style={{ width: 15, height: 15 }} />
+        <Download style={{ width: 14, height: 14 }} />
+        Export Excel
       </button>
     </div>
   );
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       {headerSlot && createPortal(headerContent, headerSlot)}
@@ -262,178 +380,228 @@ export default function WastageReportPage() {
 
         {/* Stats strip */}
         {records.length > 0 && (
-          <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
+          <div style={{ display: "flex", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
             {[
               { label: "Total Records", value: String(stats.total), color: "#000" },
               { label: "Expired Items", value: String(stats.expired), color: "#dc2626" },
               { label: "Reduced Items", value: String(stats.reduced), color: "#c2410c" },
-              { label: "Expired Value", value: formatRupees(stats.expiredValue), color: "#dc2626" },
-              { label: "Reduced Value", value: formatRupees(stats.reducedValue), color: "#c2410c" },
-              { label: "Total Wastage Value", value: formatRupees(stats.totalValue), color: "#000" },
+              { label: "Expired Value", value: fmtRupees(stats.expiredValue), color: "#dc2626" },
+              { label: "Reduced Value", value: fmtRupees(stats.reducedValue), color: "#c2410c" },
+              { label: "Total Wastage Value", value: fmtRupees(stats.totalValue), color: "#000" },
             ].map((s, i, arr) => (
-              <div key={s.label} style={{ flex: 1, padding: "16px 18px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
-                <p style={{ fontSize: 10, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
-                <p style={{ fontSize: 18, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>{s.value}</p>
+              <div key={s.label} style={{ flex: 1, padding: "14px 18px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
+                <p style={{ fontSize: 10, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{s.label}</p>
+                <p style={{ fontSize: 17, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>{s.value}</p>
               </div>
             ))}
           </div>
         )}
 
-        {/* Empty / loading / error states */}
-        {!activeSubHubId && (
-          <div style={{ textAlign: "center", padding: "80px 0", color: "#aaa", fontSize: 14 }}>
-            No sub hub linked to your account.
-          </div>
-        )}
-        {activeSubHubId && isLoading && (
-          <div style={{ textAlign: "center", padding: "80px 0", color: "#aaa", fontSize: 14 }}>
-            Loading wastage data…
-          </div>
-        )}
-        {activeSubHubId && isError && (
-          <div style={{ textAlign: "center", padding: "80px 0", color: "#ef4444", fontSize: 14 }}>
-            Failed to load wastage report. Please try again.
-          </div>
-        )}
+        {/* Empty / loading / error */}
+        {!activeSubHubId && <div style={{ textAlign: "center", padding: "80px 0", color: "#aaa", fontSize: 14 }}>No sub hub linked to your account.</div>}
+        {activeSubHubId && isLoading && <div style={{ textAlign: "center", padding: "80px 0", color: "#aaa", fontSize: 14 }}>Loading wastage data…</div>}
+        {activeSubHubId && isError && <div style={{ textAlign: "center", padding: "80px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
 
-        {/* Search bar + table */}
         {activeSubHubId && !isLoading && !isError && (
           <>
-            {/* Search */}
+            {/* ── Toolbar: search + sort ───────────────────────────────── */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+              {/* Search */}
               <div style={{ position: "relative" }}>
                 <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: "#aaa", pointerEvents: "none" }} />
                 <input
                   type="text"
-                  placeholder="Search by item, batch ID, reason…"
+                  placeholder="Search item, batch ID, reason…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  style={{
-                    paddingLeft: 28, paddingRight: 10, height: 32,
-                    border: "1px solid #e5e7eb", borderRadius: 8,
-                    fontSize: 12, fontFamily: "Poppins, sans-serif",
-                    color: "#000", background: "#fff", width: 260, outline: "none",
-                  }}
+                  style={{ ...inputStyle, paddingLeft: 28, paddingRight: 10, width: 260, height: 32 }}
                 />
               </div>
-              {filtered.length !== records.length && (
-                <span style={{ fontSize: 12, color: "#888" }}>
-                  Showing {filtered.length} of {records.length} records
-                </span>
-              )}
+
+              {/* Sort dropdown */}
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#888", marginRight: 6, whiteSpace: "nowrap" }}>Sort by</label>
+                <div style={{ position: "relative" }}>
+                  <select
+                    value={`${sortKey}:${sortDir}`}
+                    onChange={e => {
+                      const [k, d] = e.target.value.split(":") as [SortKey, SortDir];
+                      setSortKey(k); setSortDir(d);
+                    }}
+                    style={{ ...inputStyle, height: 32, paddingRight: 28, appearance: "none", width: 210 }}
+                  >
+                    <option value="operationDate:desc">Operation Date — Newest first</option>
+                    <option value="operationDate:asc">Operation Date — Oldest first</option>
+                    <option value="expiryDate:desc">Expiry Date — Newest first</option>
+                    <option value="expiryDate:asc">Expiry Date — Oldest first</option>
+                    <option value="dateAdded:desc">Date Added — Newest first</option>
+                    <option value="dateAdded:asc">Date Added — Oldest first</option>
+                    <option value="item:asc">Item — A → Z</option>
+                    <option value="item:desc">Item — Z → A</option>
+                    <option value="quantity:desc">Quantity — High to Low</option>
+                    <option value="quantity:asc">Quantity — Low to High</option>
+                    <option value="totalPrice:desc">Total Price — High to Low</option>
+                    <option value="totalPrice:asc">Total Price — Low to High</option>
+                  </select>
+                  <ChevronDown style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", width: 12, height: 12, color: "#888", pointerEvents: "none" }} />
+                </div>
+              </div>
+
+              {/* Record count */}
+              <span style={{ fontSize: 12, color: "#888", marginLeft: "auto" }}>
+                {displayRows.length !== records.length
+                  ? `${displayRows.length} of ${records.length} records`
+                  : `${records.length} record${records.length !== 1 ? "s" : ""}`}
+              </span>
             </div>
 
+            {/* ── Table ───────────────────────────────────────────────── */}
             {records.length === 0 ? (
               <div style={{ textAlign: "center", padding: "80px 0", color: "#aaa", fontSize: 14 }}>
-                No wastage records found for the selected period.
+                No wastage records found for this period.
               </div>
-            ) : filtered.length === 0 ? (
+            ) : displayRows.length === 0 ? (
               <div style={{ textAlign: "center", padding: "80px 0", color: "#aaa", fontSize: 14 }}>
-                No records match your search or filter.
+                No records match your search / filter.
               </div>
             ) : (
               <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid #ebebeb" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: "#162B4D" }}>
-                      {[
-                        "Batch ID", "Date Added", "Expiry Date",
-                        "Item", "Type", "Qty", "Total Price", "Date of Operation",
-                      ].map((h, i) => (
-                        <th
-                          key={h}
-                          style={{
-                            padding: "11px 14px",
-                            textAlign: i >= 5 ? "right" : "left",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#fff",
-                            whiteSpace: "nowrap",
-                            letterSpacing: "0.04em",
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ))}
+                      {/* Batch ID — not sortable */}
+                      <th style={{ padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", letterSpacing: "0.04em" }}>
+                        Batch ID
+                      </th>
+
+                      {/* Date Added */}
+                      <th onClick={() => handleSort("dateAdded")} style={thStyle("dateAdded")}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          Date Added <SortIcon col="dateAdded" sortKey={sortKey} sortDir={sortDir} />
+                        </span>
+                      </th>
+
+                      {/* Expiry Date */}
+                      <th onClick={() => handleSort("expiryDate")} style={thStyle("expiryDate")}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          Expiry Date <SortIcon col="expiryDate" sortKey={sortKey} sortDir={sortDir} />
+                        </span>
+                      </th>
+
+                      {/* Item */}
+                      <th onClick={() => handleSort("item")} style={thStyle("item")}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          Item <SortIcon col="item" sortKey={sortKey} sortDir={sortDir} />
+                        </span>
+                      </th>
+
+                      {/* Type — not sortable (use pills filter instead) */}
+                      <th style={{ padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", letterSpacing: "0.04em" }}>
+                        Type
+                      </th>
+
+                      {/* Quantity */}
+                      <th onClick={() => handleSort("quantity")} style={thStyle("quantity", "right")}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                          <SortIcon col="quantity" sortKey={sortKey} sortDir={sortDir} /> Qty
+                        </span>
+                      </th>
+
+                      {/* Total Price */}
+                      <th onClick={() => handleSort("totalPrice")} style={thStyle("totalPrice", "right")}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                          <SortIcon col="totalPrice" sortKey={sortKey} sortDir={sortDir} /> Total Price
+                        </span>
+                      </th>
+
+                      {/* Date of Operation */}
+                      <th onClick={() => handleSort("operationDate")} style={thStyle("operationDate", "right")}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                          <SortIcon col="operationDate" sortKey={sortKey} sortDir={sortDir} /> Date of Operation
+                        </span>
+                      </th>
                     </tr>
                   </thead>
+
                   <tbody>
-                    {filtered.map((r, idx) => (
+                    {displayRows.map((r, idx) => (
                       <tr
                         key={r.id || idx}
-                        style={{
-                          background: idx % 2 === 0 ? "#fff" : "#fafafa",
-                          borderBottom: "1px solid #f0f0f0",
-                          transition: "background 0.1s",
-                        }}
+                        style={{ background: idx % 2 === 0 ? "#fff" : "#fafafa", borderBottom: "1px solid #f0f0f0", transition: "background 0.1s" }}
                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f5f3ff"}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = idx % 2 === 0 ? "#fff" : "#fafafa"}
                       >
                         {/* Batch ID */}
-                        <td style={{ padding: "10px 14px", color: "#374151", fontWeight: 500, fontFamily: "monospace", fontSize: 12 }}>
+                        <td style={{ padding: "10px 14px", color: "#374151", fontWeight: 500, fontFamily: "monospace", fontSize: 12, whiteSpace: "nowrap" }}>
                           {r.batchId || "—"}
                         </td>
+
                         {/* Date Added */}
-                        <td style={{ padding: "10px 14px", color: "#555", whiteSpace: "nowrap" }}>
-                          {formatDate(r.dateAdded)}
+                        <td style={{ padding: "10px 14px", color: "#555", whiteSpace: "nowrap", fontSize: 12 }}>
+                          {fmtDate(r.dateAdded)}
                         </td>
+
                         {/* Expiry Date */}
                         <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
-                          {r.expiryDate ? (
-                            <span style={{ color: "#dc2626", fontWeight: 600 }}>
-                              {formatDate(r.expiryDate)}
-                            </span>
-                          ) : "—"}
+                          {r.expiryDate
+                            ? <span style={{ color: "#dc2626", fontWeight: 600, fontSize: 12 }}>{fmtDate(r.expiryDate)}</span>
+                            : <span style={{ color: "#bbb" }}>—</span>
+                          }
                         </td>
-                        {/* Item */}
-                        <td style={{ padding: "10px 14px", fontWeight: 600, color: "#111", maxWidth: 200 }}>
-                          {r.item}
-                          {r.unit && (
-                            <span style={{ marginLeft: 5, fontSize: 11, color: "#888", fontWeight: 400 }}>{r.unit}</span>
-                          )}
-                          {r.reason && (
-                            <div style={{ fontSize: 11, color: "#999", fontWeight: 400, marginTop: 2 }}>{r.reason}</div>
+
+                        {/* Item + unit + reason */}
+                        <td style={{ padding: "10px 14px", fontWeight: 600, color: "#111", maxWidth: 220 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
+                            <span>{r.item}</span>
+                            {r.unit && <span style={{ fontSize: 11, color: "#888", fontWeight: 400 }}>{r.unit}</span>}
+                          </div>
+                          {(r.reason || r.notes) && (
+                            <div style={{ fontSize: 11, color: "#999", fontWeight: 400, marginTop: 2 }}>
+                              {[r.reason, r.notes].filter(Boolean).join(" · ")}
+                            </div>
                           )}
                         </td>
-                        {/* Type badge */}
+
+                        {/* Type */}
                         <td style={{ padding: "10px 14px" }}>
                           <TypeBadge type={r.type} />
                         </td>
+
                         {/* Quantity */}
-                        <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: "#dc2626" }}>
+                        <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700, color: "#dc2626", fontSize: 14 }}>
                           {(r.quantity ?? 0).toLocaleString("en-IN")}
                         </td>
+
                         {/* Total Price */}
                         <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700, color: "#111", whiteSpace: "nowrap" }}>
-                          {r.totalPrice > 0 ? formatRupees(r.totalPrice) : "—"}
+                          {r.totalPrice > 0 ? fmtRupees(r.totalPrice) : <span style={{ color: "#bbb" }}>—</span>}
                         </td>
+
                         {/* Date of Operation */}
-                        <td style={{ padding: "10px 14px", textAlign: "right", color: "#555", whiteSpace: "nowrap", fontSize: 12 }}>
-                          {formatDateTime(r.operationDate)}
+                        <td style={{ padding: "10px 14px", textAlign: "right", color: "#555", whiteSpace: "nowrap", fontSize: 11 }}>
+                          {fmtDateTime(r.operationDate)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
 
                   {/* Summary footer */}
-                  {filtered.length > 0 && (
-                    <tfoot>
-                      <tr style={{ background: "#162B4D", borderTop: "2px solid #364F9F" }}>
-                        <td colSpan={5} style={{ padding: "12px 14px", fontWeight: 700, color: "#fff", fontSize: 13 }}>
-                          {filtered.length < records.length
-                            ? `FILTERED TOTAL — ${filtered.length} records`
-                            : `TOTAL — ${filtered.length} records`}
-                        </td>
-                        <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: "#fff", fontSize: 16 }}>
-                          {filtered.reduce((s, r) => s + (r.quantity || 0), 0).toLocaleString("en-IN")}
-                        </td>
-                        <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: "#fff", fontSize: 16, whiteSpace: "nowrap" }}>
-                          {formatRupees(filtered.reduce((s, r) => s + (r.totalPrice || 0), 0))}
-                        </td>
-                        <td style={{ padding: "12px 14px" }} />
-                      </tr>
-                    </tfoot>
-                  )}
+                  <tfoot>
+                    <tr style={{ background: "#162B4D", borderTop: "2px solid #364F9F" }}>
+                      <td colSpan={5} style={{ padding: "12px 14px", fontWeight: 700, color: "#fff", fontSize: 13 }}>
+                        {displayRows.length < records.length
+                          ? `FILTERED TOTAL — ${displayRows.length} of ${records.length} records`
+                          : `TOTAL — ${records.length} record${records.length !== 1 ? "s" : ""}`}
+                      </td>
+                      <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: "#fff", fontSize: 16 }}>
+                        {filteredTotal.qty.toLocaleString("en-IN")}
+                      </td>
+                      <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: "#fff", fontSize: 15, whiteSpace: "nowrap" }}>
+                        {fmtRupees(filteredTotal.value)}
+                      </td>
+                      <td style={{ padding: "12px 14px" }} />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
