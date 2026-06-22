@@ -341,12 +341,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     const itemRows = items.map((it: any) => {
       const qty = Number(it.quantity) || 1;
       const rate = Number(it.price) || 0;
-      return `
-        <tr>
-          <td style="padding:6px 4px;border-bottom:1px solid #eee;font-weight:700;">${it.name}</td>
-          <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${qty}</td>
-          <td style="padding:6px 4px;border-bottom:1px solid #eee;text-align:right;">${(qty * rate).toFixed(2)}</td>
-        </tr>`;
+      return `<tr><td style="padding:5px 4px;border:1px solid #bbb;font-weight:700;font-size:14px;word-break:break-word;">${it.name}</td><td style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-size:14px;">${qty}</td><td style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-size:14px;">${rate.toFixed(2)}</td><td style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-size:14px;">${(qty * rate).toFixed(2)}</td></tr>`;
     }).join("");
 
     const walletRow = walletInvAmt > 0 ? `
@@ -366,22 +361,14 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     const notesRow = order.notes ? `
       <div style="margin:4px 0;font-size:17px;"><b>Notes : ${order.notes}</b></div>` : "";
 
-    const slotRow = slotCharge > 0 ? `
-      <tr>
-        <td style="padding:4px 2px;" colspan="2">Slot Charge :</td>
-        <td style="padding:4px 2px;text-align:right;">+ ${slotCharge.toFixed(2)}</td>
-      </tr>` : "";
+    const slotRow = slotCharge > 0 ? `<tr><td style="padding:4px 2px;border:1px solid #bbb;" colspan="3">Slot Charge :</td><td style="padding:4px 2px;border:1px solid #bbb;text-align:right;">+ ${slotCharge.toFixed(2)}</td></tr>` : "";
 
-    const deliveryRow = deliveryCharge > 0 ? `
-      <tr>
-        <td style="padding:4px 2px;" colspan="2">${order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td>
-        <td style="padding:4px 2px;text-align:right;">+ ${deliveryCharge.toFixed(2)}</td>
-      </tr>` : "";
+    const deliveryRow = deliveryCharge > 0 ? `<tr><td style="padding:4px 2px;border:1px solid #bbb;" colspan="3">${order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td><td style="padding:4px 2px;border:1px solid #bbb;text-align:right;">+ ${deliveryCharge.toFixed(2)}</td></tr>` : "";
 
     const discountRows = [
-      couponAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="2">Coupon${order.couponCode ? ` (${order.couponCode})` : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${couponAmt.toFixed(2)}</td></tr>` : "",
-      extraDiscAmt > 0 ? `<tr><td style="padding:4px 2px;" colspan="2">Extra discount${extraDiscType === "percentage" ? " (%)" : ""} :</td><td style="padding:4px 2px;text-align:right;">- ${extraDiscAmt.toFixed(2)}</td></tr>` : "",
-      couponAmt === 0 && extraDiscAmt === 0 && discount > 0 ? `<tr><td style="padding:4px 2px;" colspan="2">Discount :</td><td style="padding:4px 2px;text-align:right;">- ${discount.toFixed(2)}</td></tr>` : "",
+      couponAmt > 0 ? `<tr><td style="padding:4px 2px;border:1px solid #bbb;" colspan="3">Coupon${order.couponCode ? ` (${order.couponCode})` : ""} :</td><td style="padding:4px 2px;border:1px solid #bbb;text-align:right;">- ${couponAmt.toFixed(2)}</td></tr>` : "",
+      extraDiscAmt > 0 ? `<tr><td style="padding:4px 2px;border:1px solid #bbb;" colspan="3">Extra discount${extraDiscType === "percentage" ? " (%)" : ""} :</td><td style="padding:4px 2px;border:1px solid #bbb;text-align:right;">- ${extraDiscAmt.toFixed(2)}</td></tr>` : "",
+      couponAmt === 0 && extraDiscAmt === 0 && discount > 0 ? `<tr><td style="padding:4px 2px;border:1px solid #bbb;" colspan="3">Discount :</td><td style="padding:4px 2px;border:1px solid #bbb;text-align:right;">- ${discount.toFixed(2)}</td></tr>` : "",
     ].join("");
 
     const payStatusColor = order.paymentStatus === "paid" ? "#15803d" : order.paymentStatus === "partial" ? "#b45309" : "#b91c1c";
@@ -398,9 +385,13 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     </head><body>
       <div style="padding:6px 10px;font-size:18px;color:#111;">
 
-        <h2 style="text-align:center;font-size:22px;font-weight:700;margin-bottom:2px;">
-          Atha Foods (Fishtokri)${order.subHubName ? ` - ${order.subHubName}` : ""}
-        </h2>
+        <div style="text-align:center;margin-bottom:4px;">
+          <h2 style="font-size:22px;font-weight:800;margin:0 0 4px;">FISHTOKRI (ATHA FOODS Pvt Ltd)</h2>
+          <div style="display:flex;justify-content:space-between;font-size:14px;margin-top:4px;">
+            <div style="text-align:left;max-width:55%;"><div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div><div><b>Mob No :</b> 9220200100</div></div>
+            <div style="text-align:right;"><div><b>GST No :</b> 27AAOCA7628P1ZT</div><div><b>FSSAI No :</b> 21521066000481</div></div>
+          </div>
+        </div>
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
         <div style="margin:4px 0;font-size:17px;"><b>Invoice :</b> ${invoiceNo}</div>
@@ -418,20 +409,22 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
         <div style="border-top:1px dashed #999;margin:8px 0;"></div>
 
-        <table style="width:100%;border-collapse:collapse;font-size:17px;margin:4px 0;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;margin:4px 0;">
           <thead>
-            <tr style="border-bottom:1px solid #555;">
-              <th style="padding:6px 4px;text-align:left;font-weight:700;">Item</th>
-              <th style="padding:6px 4px;text-align:right;font-weight:700;">Qty (pack)</th>
-              <th style="padding:6px 4px;text-align:right;font-weight:700;">Amount</th>
+            <tr>
+              <th style="padding:5px 4px;border:1px solid #bbb;text-align:left;font-weight:700;background:#f5f5f5;">Item</th>
+              <th style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Qty</th>
+              <th style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Rate</th>
+              <th style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Amount</th>
             </tr>
           </thead>
           <tbody>
             ${itemRows}
-            <tr style="border-top:1px solid #aaa;">
-              <td style="padding:6px 4px;font-weight:700;">Total Items: ${items.length}</td>
-              <td style="padding:6px 4px;text-align:right;font-weight:700;">${totalQty}</td>
-              <td style="padding:6px 4px;text-align:right;font-weight:700;">${subtotal.toFixed(2)}</td>
+            <tr>
+              <td style="padding:5px 4px;border:1px solid #bbb;font-weight:700;">Total Items: ${items.length}</td>
+              <td style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-weight:700;">${totalQty}</td>
+              <td style="padding:5px 4px;border:1px solid #bbb;"></td>
+              <td style="padding:5px 4px;border:1px solid #bbb;text-align:right;font-weight:700;">${subtotal.toFixed(2)}</td>
             </tr>
             ${discountRows}
             ${slotRow}
@@ -477,9 +470,19 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
         <div className="max-h-[70vh] overflow-y-auto p-5 bg-gray-50">
           <div id="invoice-print-area" className="bg-white max-w-md mx-auto p-5 text-[16px] text-gray-800 shadow-sm border border-gray-200 rounded">
-            <h3 className="text-center font-bold text-[20px] mb-1">
-              Atha Foods (Fishtokri){order.subHubName ? ` - ${order.subHubName}` : ""}
-            </h3>
+            <div style={{ textAlign: "center", marginBottom: 4 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.01em" }}>FISHTOKRI (ATHA FOODS Pvt Ltd)</div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 11, lineHeight: 1.5 }}>
+                <div style={{ textAlign: "left", maxWidth: "55%" }}>
+                  <div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div>
+                  <div><b>Mob No :</b> 9220200100</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div><b>GST No :</b> 27AAOCA7628P1ZT</div>
+                  <div><b>FSSAI No :</b> 21521066000481</div>
+                </div>
+              </div>
+            </div>
             <div className="border-t border-dashed border-gray-400 my-2" />
             <div className="text-[15px]"><b>Invoice :</b> {invoiceNo}</div>
             <div className="text-[15px]"><b>Name :</b> {order.customerName}</div>
@@ -504,12 +507,13 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 
             <div className="border-t border-dashed border-gray-400 my-2" />
 
-            <table className="w-full text-[15px]">
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
-                <tr className="border-b border-gray-700 text-left">
-                  <th className="py-1.5 font-bold">Item</th>
-                  <th className="py-1.5 text-right font-bold">Qty (pack)</th>
-                  <th className="py-1.5 text-right font-bold">Amount</th>
+                <tr>
+                  <th style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "left", fontWeight: 700, background: "#f5f5f5" }}>Item</th>
+                  <th style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right", fontWeight: 700, background: "#f5f5f5", whiteSpace: "nowrap" }}>Qty</th>
+                  <th style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right", fontWeight: 700, background: "#f5f5f5", whiteSpace: "nowrap" }}>Rate</th>
+                  <th style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right", fontWeight: 700, background: "#f5f5f5", whiteSpace: "nowrap" }}>Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -518,45 +522,47 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
                   const rate = Number(it.price) || 0;
                   return (
                     <tr key={i}>
-                      <td className="py-1.5 font-bold">{it.name}</td>
-                      <td className="py-1.5 text-right">{qty}</td>
-                      <td className="py-1.5 text-right">{(qty * rate).toFixed(2)}</td>
+                      <td style={{ padding: "5px 4px", border: "1px solid #bbb", fontWeight: 600, wordBreak: "break-word", maxWidth: 150 }}>{it.name}</td>
+                      <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>{qty}</td>
+                      <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>{rate.toFixed(2)}</td>
+                      <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>{(qty * rate).toFixed(2)}</td>
                     </tr>
                   );
                 })}
-                <tr className="border-t border-gray-400">
-                  <td className="py-1.5"><b>Total Items: {items.length}</b></td>
-                  <td className="py-1.5 text-right"><b>{totalQty}</b></td>
-                  <td className="py-1.5 text-right"><b>{subtotal.toFixed(2)}</b></td>
+                <tr>
+                  <td style={{ padding: "5px 4px", border: "1px solid #bbb", fontWeight: 700 }}>Total Items: {items.length}</td>
+                  <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right", fontWeight: 700 }}>{totalQty}</td>
+                  <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} />
+                  <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right", fontWeight: 700 }}>{subtotal.toFixed(2)}</td>
                 </tr>
                 {couponAmt > 0 && (
                   <tr>
-                    <td className="py-1.5" colSpan={2}>Coupon{order.couponCode ? ` (${order.couponCode})` : ""} :</td>
-                    <td className="py-1.5 text-right">- {couponAmt.toFixed(2)}</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} colSpan={3}>Coupon{order.couponCode ? ` (${order.couponCode})` : ""} :</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>- {couponAmt.toFixed(2)}</td>
                   </tr>
                 )}
                 {extraDiscAmt > 0 && (
                   <tr>
-                    <td className="py-1.5" colSpan={2}>Extra discount{extraDiscType === "percentage" ? " (%)" : ""} :</td>
-                    <td className="py-1.5 text-right">- {extraDiscAmt.toFixed(2)}</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} colSpan={3}>Extra discount{extraDiscType === "percentage" ? " (%)" : ""} :</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>- {extraDiscAmt.toFixed(2)}</td>
                   </tr>
                 )}
                 {couponAmt === 0 && extraDiscAmt === 0 && discount > 0 && (
                   <tr>
-                    <td className="py-1.5" colSpan={2}>Discount :</td>
-                    <td className="py-1.5 text-right">- {discount.toFixed(2)}</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} colSpan={3}>Discount :</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>- {discount.toFixed(2)}</td>
                   </tr>
                 )}
                 {slotCharge > 0 && (
                   <tr>
-                    <td className="py-1.5" colSpan={2}>Slot Charge :</td>
-                    <td className="py-1.5 text-right">+ {slotCharge.toFixed(2)}</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} colSpan={3}>Slot Charge :</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>+ {slotCharge.toFixed(2)}</td>
                   </tr>
                 )}
                 {deliveryCharge > 0 && (
                   <tr>
-                    <td className="py-1.5" colSpan={2}>{order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td>
-                    <td className="py-1.5 text-right">+ {deliveryCharge.toFixed(2)}</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} colSpan={3}>{order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>+ {deliveryCharge.toFixed(2)}</td>
                   </tr>
                 )}
               </tbody>
