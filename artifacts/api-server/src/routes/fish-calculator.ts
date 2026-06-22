@@ -164,6 +164,38 @@ router.post("/products", requireAuth, async (req, res) => {
   }
 });
 
+router.put("/products/:id", requireAuth, async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(422).json({ message: "name is required" });
+    }
+    const existing = await FishRawProduct.findOne({ name: name.trim(), _id: { $ne: req.params.id } });
+    if (existing) {
+      return res.status(422).json({ message: "Another product with this name already exists" });
+    }
+    const product = await FishRawProduct.findByIdAndUpdate(
+      req.params.id,
+      { name: name.trim() },
+      { new: true }
+    );
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    res.json({ id: product._id.toString(), name: product.name, created_at: product.created_at });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to update product" });
+  }
+});
+
+router.delete("/products/:id", requireAuth, async (req, res) => {
+  try {
+    const product = await FishRawProduct.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message || "Failed to delete product" });
+  }
+});
+
 router.post("/records", requireAuth, async (req, res) => {
   try {
     const {

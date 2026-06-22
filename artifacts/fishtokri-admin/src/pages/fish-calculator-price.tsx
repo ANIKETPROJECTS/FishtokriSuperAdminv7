@@ -62,6 +62,13 @@ export default function FishCalculatorPricePage() {
   const [newProductName, setNewProductName] = useState("");
   const [adding, setAdding] = useState(false);
 
+  const [manageOpen, setManageOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   async function loadProducts() {
     try {
       const data = await apiFetch("/api/fish-calculator/products?limit=1000");
@@ -89,6 +96,44 @@ export default function FishCalculatorPricePage() {
     if (margin < 0) return "Margin must be ≥ 0.";
     return null;
   }, [form]);
+
+  async function onEditProduct() {
+    if (!editingId) return;
+    const name = editingName.trim();
+    if (!name) { toast({ title: "Enter product name", variant: "destructive" }); return; }
+    setEditSaving(true);
+    try {
+      await apiFetch(`/api/fish-calculator/products/${editingId}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+      await loadProducts();
+      setEditingId(null);
+      setEditingName("");
+      toast({ title: "Product updated" });
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to update product", variant: "destructive" });
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function onDeleteProduct(id: string) {
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/fish-calculator/products/${id}`, { method: "DELETE" });
+      await loadProducts();
+      if (form.raw_fish_product_id === id) {
+        setForm((f) => ({ ...f, raw_fish_product_id: "" }));
+      }
+      setDeleteConfirmId(null);
+      toast({ title: "Product deleted" });
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to delete product", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function onAddProduct() {
     const name = newProductName.trim();
@@ -218,6 +263,14 @@ export default function FishCalculatorPricePage() {
                 className="px-3 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50 text-[#364F9F] font-medium"
               >
                 + Add
+              </button>
+              <button
+                type="button"
+                onClick={() => { setManageOpen(true); setEditingId(null); setDeleteConfirmId(null); }}
+                title="Edit / delete products"
+                className="px-3 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 font-medium"
+              >
+                ✎
               </button>
             </div>
           </div>
@@ -389,6 +442,96 @@ export default function FishCalculatorPricePage() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {manageOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Manage Raw Fish Products</h3>
+              <button
+                onClick={() => { setManageOpen(false); setEditingId(null); setDeleteConfirmId(null); }}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >×</button>
+            </div>
+
+            {products.length === 0 && (
+              <p className="text-sm text-gray-400 py-4 text-center">No products added yet.</p>
+            )}
+
+            <ul className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+              {products.map((p) => (
+                <li key={p.id} className="py-2.5">
+                  {editingId === p.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F05B4E]/40"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") onEditProduct(); if (e.key === "Escape") setEditingId(null); }}
+                      />
+                      <button
+                        onClick={onEditProduct}
+                        disabled={editSaving}
+                        className="px-3 py-1.5 bg-[#F05B4E] hover:bg-[#d94a3d] text-white text-xs font-semibold rounded-lg transition disabled:opacity-50"
+                      >
+                        {editSaving ? "…" : "Save"}
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : deleteConfirmId === p.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-sm text-red-600">Delete <strong>{p.name}</strong>?</span>
+                      <button
+                        onClick={() => onDeleteProduct(p.id)}
+                        disabled={deleting}
+                        className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition disabled:opacity-50"
+                      >
+                        {deleting ? "…" : "Yes, delete"}
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-sm text-gray-800">{p.name}</span>
+                      <button
+                        onClick={() => { setEditingId(p.id); setEditingName(p.name); setDeleteConfirmId(null); }}
+                        className="px-2.5 py-1 text-xs text-[#364F9F] border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => { setDeleteConfirmId(p.id); setEditingId(null); }}
+                        className="px-2.5 py-1 text-xs text-red-500 border border-gray-200 rounded-lg hover:bg-red-50 transition"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            <button
+              type="button"
+              onClick={() => { setManageOpen(false); setAddOpen(true); }}
+              className="w-full py-2 border border-dashed border-gray-300 rounded-lg text-sm text-[#364F9F] hover:bg-gray-50 transition"
+            >
+              + Add new product
+            </button>
           </div>
         </div>
       )}
