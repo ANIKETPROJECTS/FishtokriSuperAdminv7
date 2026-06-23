@@ -364,12 +364,12 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     const payStatusColor = order.paymentStatus === "paid" ? "#15803d" : order.paymentStatus === "partial" ? "#b45309" : "#b91c1c";
     const payStatusBg = order.paymentStatus === "paid" ? "#f0fdf4" : order.paymentStatus === "partial" ? "#fffbeb" : "#fef2f2";
 
-    const headerHtml = `<div style="text-align:center;margin-bottom:4px;"><h2 style="font-size:22px;font-weight:800;margin:0 0 4px;">FISHTOKRI (ATHA FOODS Pvt Ltd)</h2><div style="font-size:14px;margin-top:4px;text-align:left;"><div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div><div><b>Mob No :</b> 9220200100</div><div><b>GST No :</b> 27AAOCA7628P1ZT</div><div><b>FSSAI No :</b> 21521066000481</div></div></div>`;
-    const commonInfoHtml = `<div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="margin:4px 0;font-size:17px;"><b>Invoice :</b> ${invoiceNo}</div><div style="margin:4px 0;font-size:17px;"><b>Name :</b> ${order.customerName}</div><div style="margin:4px 0;font-size:17px;"><b>Mobile :</b> ${order.phone || "—"}</div>${order.address ? `<div style="margin:4px 0;font-size:17px;"><b>Address :</b> ${order.address}</div>` : ""}<div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="margin:4px 0;font-size:17px;"><b>Order Date :</b> ${orderDateStr} , ${timeStr}</div><div style="margin:4px 0;font-size:17px;"><b>Delivery Date :</b> ${deliveryDateStr}</div>${(order.isExpress || formatTimeSlot(order)) ? `<div style="margin:4px 0;font-size:17px;"><b>Delivery Slot :</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}${notesRow}`;
+    const headerHtml = `<div style="text-align:center;margin-bottom:4px;"><h2 style="font-size:22px;font-weight:800;margin:0 0 4px;">FISHTOKRI (ATHA FOODS Pvt Ltd)</h2><div style="font-size:14px;margin-top:4px;text-align:left;"><div><b>ADD :</b> Thane</div><div><b>Mob No :</b> 9220200100</div><div><b>GST No :</b> 27AAOCA7628P1ZT</div><div><b>FSSAI No :</b> 21521066000481</div></div></div>`;
+    const commonInfoHtml = `<div style="border-top:2px solid #444;margin:8px 0;"></div><div style="margin:4px 0;font-size:17px;"><b>Invoice :</b> ${invoiceNo}</div><div style="margin:4px 0;font-size:17px;"><b>Name :</b> ${order.customerName}</div><div style="margin:4px 0;font-size:17px;"><b>Mobile :</b> ${order.phone || "—"}</div>${order.address ? `<div style="margin:4px 0;font-size:17px;"><b>Address :</b> ${order.address}</div>` : ""}<div style="border-top:2px solid #444;margin:8px 0;"></div><div style="margin:4px 0;font-size:17px;"><b>Order Date :</b> ${orderDateStr} , ${timeStr}</div><div style="margin:4px 0;font-size:17px;"><b>Delivery Date :</b> ${deliveryDateStr}</div>${(order.isExpress || formatTimeSlot(order)) ? `<div style="margin:4px 0;font-size:17px;"><b>Delivery Slot :</b> ${order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>` : ""}${notesRow}`;
 
-    const customerBody = `<div style="padding:6px 10px;font-size:18px;color:#111;">${headerHtml}${commonInfoHtml}<div style="margin:4px 0;font-size:17px;"><b>Payment :</b> ${payMode} <span style="margin-left:5px;font-size:14px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span></div><div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:14px;margin:4px 0;"><thead><tr><th style="padding:5px 4px;border:2px solid #444;text-align:left;font-weight:700;background:#f5f5f5;">Item</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Qty</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Rate</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Amount</th></tr></thead><tbody>${itemRows}<tr><td style="padding:5px 4px;border:2px solid #444;font-weight:700;">Total Items: ${items.length}</td><td style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;">${totalQty}</td><td style="padding:5px 4px;border:2px solid #444;"></td><td style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;">${subtotal.toFixed(2)}</td></tr>${discountRows}${slotRow}${deliveryRow}</tbody></table><div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>${walletRow}${paidDueRow}<div style="text-align:center;font-size:15px;color:#555;line-height:1.8;margin-top:14px;">Thank you for your business!<br/>For any query - 9220200100</div></div>`;
+    const customerBody = `<div style="padding:6px 10px;font-size:18px;color:#111;">${headerHtml}${commonInfoHtml}<div style="margin:4px 0;font-size:17px;"><b>Payment :</b> ${payMode} <span style="margin-left:5px;font-size:14px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:20px;border:1px solid ${payStatusColor};color:${payStatusColor};background:${payStatusBg};">${payLabel}</span></div><div style="border-top:2px solid #444;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:14px;margin:4px 0;"><thead><tr><th style="padding:5px 4px;border:2px solid #444;text-align:left;font-weight:700;background:#f5f5f5;">Item</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Qty</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Rate</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;white-space:nowrap;">Amount</th></tr></thead><tbody>${itemRows}<tr><td style="padding:5px 4px;border:2px solid #444;font-weight:700;">Total Items: ${items.length}</td><td style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;">${totalQty}</td><td style="padding:5px 4px;border:2px solid #444;"></td><td style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;">${subtotal.toFixed(2)}</td></tr>${discountRows}${slotRow}${deliveryRow}</tbody></table><div style="border-top:2px solid #444;margin:8px 0;"></div><div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>${walletRow}${paidDueRow}<div style="text-align:center;font-size:15px;color:#555;line-height:1.8;margin-top:14px;">Thank you for your business!<br/>For any query - 9220200100</div></div>`;
 
-    const kotBody = `<div style="padding:6px 10px;font-size:18px;color:#111;">${headerHtml}<div style="border-top:1px dashed #999;margin:8px 0;"></div><div style="text-align:center;font-weight:800;font-size:18px;letter-spacing:1px;margin:4px 0;">— KOT —</div>${commonInfoHtml}<div style="border-top:1px dashed #999;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:15px;margin:4px 0;"><thead><tr><th style="padding:5px 4px;border:2px solid #444;text-align:left;font-weight:700;background:#f5f5f5;">Item</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;">Qty</th></tr></thead><tbody>${kotItemRows}<tr><td style="padding:5px 4px;border:2px solid #444;font-weight:700;">Total Items: ${items.length}</td><td style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;">${totalQty}</td></tr></tbody></table></div>`;
+    const kotBody = `<div style="padding:6px 10px;font-size:18px;color:#111;">${headerHtml}<div style="border-top:2px solid #444;margin:8px 0;"></div><div style="text-align:center;font-weight:800;font-size:18px;letter-spacing:1px;margin:4px 0;">— KOT —</div>${commonInfoHtml}<div style="border-top:2px solid #444;margin:8px 0;"></div><table style="width:100%;border-collapse:collapse;font-size:15px;margin:4px 0;"><thead><tr><th style="padding:5px 4px;border:2px solid #444;text-align:left;font-weight:700;background:#f5f5f5;">Item</th><th style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;background:#f5f5f5;">Qty</th></tr></thead><tbody>${kotItemRows}<tr><td style="padding:5px 4px;border:2px solid #444;font-weight:700;">Total Items: ${items.length}</td><td style="padding:5px 4px;border:2px solid #444;text-align:right;font-weight:700;">${totalQty}</td></tr></tbody></table></div>`;
 
     const PAGE_STYLE = `* { margin:0;padding:0;box-sizing:border-box; } body { font-family:Arial,sans-serif;color:#111;background:#fff; } @page { size:80mm auto;margin:0; }`;
     const customerHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${invoiceNo} - Customer</title><style>${PAGE_STYLE}</style></head><body>${customerBody}</body></html>`;
@@ -418,18 +418,18 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
             <div style={{ textAlign: "center", marginBottom: 4 }}>
               <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.01em" }}>FISHTOKRI (ATHA FOODS Pvt Ltd)</div>
               <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.6, textAlign: "left" }}>
-                <div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div>
+                <div><b>ADD :</b> Thane</div>
                 <div><b>Mob No :</b> 9220200100</div>
                 <div><b>GST No :</b> 27AAOCA7628P1ZT</div>
                 <div><b>FSSAI No :</b> 21521066000481</div>
               </div>
             </div>
-            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="border-t-2 border-gray-500 my-2" />
             <div className="text-[15px]"><b>Invoice :</b> {invoiceNo}</div>
             <div className="text-[15px]"><b>Name :</b> {order.customerName}</div>
             <div className="text-[15px]"><b>Mobile :</b> {order.phone || "—"}</div>
             {order.address && <div className="text-[15px]"><b>Address :</b> {order.address}</div>}
-            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="border-t-2 border-gray-500 my-2" />
             <div className="text-[15px]"><b>Order Date :</b> {orderDateStr} , {timeStr}</div>
             <div className="text-[15px]"><b>Delivery Date :</b> {deliveryDateStr}</div>
             {(order.isExpress || formatTimeSlot(order)) && <div className="text-[15px]"><b>Delivery Slot :</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
@@ -446,7 +446,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
               </span>
             </div>
 
-            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="border-t-2 border-gray-500 my-2" />
 
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
@@ -509,7 +509,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
               </tbody>
             </table>
 
-            <div className="border-t border-dashed border-gray-400 my-2" />
+            <div className="border-t-2 border-gray-500 my-2" />
 
             <div className="flex justify-between text-[14px] font-bold">
               <span>Grand Total:</span>
@@ -545,24 +545,24 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
               <div style={{ textAlign: "center", marginBottom: 4 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.01em" }}>FISHTOKRI (ATHA FOODS Pvt Ltd)</div>
                 <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.6, textAlign: "left" }}>
-                  <div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div>
+                  <div><b>ADD :</b> Thane</div>
                   <div><b>Mob No :</b> 9220200100</div>
                   <div><b>GST No :</b> 27AAOCA7628P1ZT</div>
                   <div><b>FSSAI No :</b> 21521066000481</div>
                 </div>
               </div>
-              <div className="border-t border-dashed border-gray-400 my-2" />
+              <div className="border-t-2 border-gray-500 my-2" />
               <div className="text-center font-bold text-[16px] tracking-widest mb-1">— KOT —</div>
               <div className="text-[15px]"><b>Invoice :</b> {invoiceNo}</div>
               <div className="text-[15px]"><b>Name :</b> {order.customerName}</div>
               <div className="text-[15px]"><b>Mobile :</b> {order.phone || "—"}</div>
               {order.address && <div className="text-[15px]"><b>Address :</b> {order.address}</div>}
-              <div className="border-t border-dashed border-gray-400 my-2" />
+              <div className="border-t-2 border-gray-500 my-2" />
               <div className="text-[15px]"><b>Order Date :</b> {orderDateStr} , {timeStr}</div>
               <div className="text-[15px]"><b>Delivery Date :</b> {deliveryDateStr}</div>
               {(order.isExpress || formatTimeSlot(order)) && <div className="text-[15px]"><b>Delivery Slot :</b> {order.isExpress ? "Express order by Porter" : formatTimeSlot(order)}</div>}
               {order.notes && <div className="text-[15px]"><b>Notes : {order.notes}</b></div>}
-              <div className="border-t border-dashed border-gray-400 my-2" />
+              <div className="border-t-2 border-gray-500 my-2" />
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr>
