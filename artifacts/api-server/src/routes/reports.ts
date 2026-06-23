@@ -306,38 +306,29 @@ router.get("/wastage", async (req: ScopedRequest, res) => {
       const qty = Math.abs(Number(m.change) || 0);
       const pid = String(m.productId);
       const price = priceMap.get(pid) || 0;
-      // Look up the batch: first try by batchNumber, then fall back to FIFO (oldest batch)
+      // Look up batch only if we have a batchNumber stored in the movement
       const productBatches = batchMap.get(pid);
-      const matchedBatch = m.batchNumber
+      const matchedBatch = (m.batchNumber && m.batchNumber !== "")
         ? productBatches?.get(String(m.batchNumber))
-        : productBatches && productBatches.size > 0
-          ? [...productBatches.values()].sort((a, b) =>
-              new Date(a.receivedDate || 0).getTime() - new Date(b.receivedDate || 0).getTime()
-            )[0]
-          : undefined;
-      // dateAdded: prefer movement's own receivedDate (stored for new records), then batch lookup
+        : undefined;
+      // dateAdded: use movement's stored receivedDate, then matched batch lookup
       const dateAdded = m.receivedDate
         ? new Date(m.receivedDate).toISOString().slice(0, 10)
         : matchedBatch?.receivedDate
           ? new Date(matchedBatch.receivedDate).toISOString().slice(0, 10)
           : null;
+      // expiryDate: use movement's stored expiryDate, then matched batch lookup
       const expiryDate = m.expiryDate
         ? new Date(m.expiryDate).toISOString().slice(0, 10)
         : matchedBatch?.expiryDate
           ? new Date(matchedBatch.expiryDate).toISOString().slice(0, 10)
           : null;
-      // Build batchId: named batch number > matched batch number > short _id fallback
-      const namedBatch = (m.batchNumber && m.batchNumber !== "")
+      // batchId: use stored batchNumber, then matched batch name, then short _id fallback
+      const batchId = (m.batchNumber && m.batchNumber !== "")
         ? m.batchNumber
-        : (matchedBatch?.batchNumber && matchedBatch.batchNumber !== "")
-          ? matchedBatch.batchNumber
+        : m.batchObjectId
+          ? `#${String(m.batchObjectId).slice(-8)}`
           : null;
-      const fallbackId = m.batchObjectId
-        ? `#${String(m.batchObjectId).slice(-8)}`
-        : matchedBatch?._id
-          ? `#${String(matchedBatch._id).slice(-8)}`
-          : null;
-      const batchId = namedBatch || fallbackId || null;
       return {
         id: String(m._id),
         batchId,

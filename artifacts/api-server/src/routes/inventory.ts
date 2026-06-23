@@ -602,6 +602,7 @@ router.post("/adjustments", async (req, res) => {
         if (it.batchId) {
           const targetIdx = currentBatches.findIndex((b) => String(b._id) === String(it.batchId));
           if (targetIdx >= 0) {
+            appliedBatch = currentBatches[targetIdx]; // capture before modification
             const working = currentBatches.map((b) => ({ ...b }));
             const target = working[targetIdx];
             const take = Math.min(target.quantity, rmQty);
