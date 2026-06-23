@@ -417,15 +417,11 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
           <div id="invoice-print-area" className="bg-white max-w-md mx-auto p-5 text-[16px] text-gray-800 shadow-sm border border-gray-200 rounded">
             <div style={{ textAlign: "center", marginBottom: 4 }}>
               <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.01em" }}>FISHTOKRI (ATHA FOODS Pvt Ltd)</div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 11, lineHeight: 1.5 }}>
-                <div style={{ textAlign: "left", maxWidth: "55%" }}>
-                  <div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div>
-                  <div><b>Mob No :</b> 9220200100</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div><b>GST No :</b> 27AAOCA7628P1ZT</div>
-                  <div><b>FSSAI No :</b> 21521066000481</div>
-                </div>
+              <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.6, textAlign: "left" }}>
+                <div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div>
+                <div><b>Mob No :</b> 9220200100</div>
+                <div><b>GST No :</b> 27AAOCA7628P1ZT</div>
+                <div><b>FSSAI No :</b> 21521066000481</div>
               </div>
             </div>
             <div className="border-t border-dashed border-gray-400 my-2" />
@@ -548,15 +544,11 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
             <div className="bg-white max-w-md mx-auto p-5 text-[16px] text-gray-800 shadow-sm border border-gray-200 rounded">
               <div style={{ textAlign: "center", marginBottom: 4 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.01em" }}>FISHTOKRI (ATHA FOODS Pvt Ltd)</div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 11, lineHeight: 1.5 }}>
-                  <div style={{ textAlign: "left", maxWidth: "55%" }}>
-                    <div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div>
-                    <div><b>Mob No :</b> 9220200100</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div><b>GST No :</b> 27AAOCA7628P1ZT</div>
-                    <div><b>FSSAI No :</b> 21521066000481</div>
-                  </div>
+                <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.6, textAlign: "left" }}>
+                  <div><b>ADD :</b> Shop no.2, wing R7/214, khartan road, Thane west - 400601</div>
+                  <div><b>Mob No :</b> 9220200100</div>
+                  <div><b>GST No :</b> 27AAOCA7628P1ZT</div>
+                  <div><b>FSSAI No :</b> 21521066000481</div>
                 </div>
               </div>
               <div className="border-t border-dashed border-gray-400 my-2" />
