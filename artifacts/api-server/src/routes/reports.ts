@@ -278,6 +278,8 @@ router.get("/wastage", async (req: ScopedRequest, res) => {
     const priceMap = new Map<string, number>();
     // batchMap: productId -> Map<batchNumber, batch>
     const batchMap = new Map<string, Map<string, any>>();
+    // batchIdMap: productId -> Map<_id string, batch>  (used to resolve batchObjectId → batchNumber)
+    const batchIdMap = new Map<string, Map<string, any>>();
     if (movProductIdStrs.length > 0) {
       const prods = await conn.db.collection("products")
         .find({
@@ -293,24 +295,50 @@ router.get("/wastage", async (req: ScopedRequest, res) => {
         const pid = String(p._id);
         priceMap.set(pid, Number(p.price) || 0);
         const bMap = new Map<string, any>();
+        const bIdMap = new Map<string, any>();
         if (Array.isArray(p.batches)) {
           for (const b of p.batches) {
             if (b.batchNumber) bMap.set(String(b.batchNumber), b);
+            if (b._id) bIdMap.set(String(b._id), b);
           }
         }
         batchMap.set(pid, bMap);
+        batchIdMap.set(pid, bIdMap);
       }
+    }
+
+    // Helper: a valid batch name is a non-empty alphanumeric string (no scientific notation / raw ObjectIds)
+    function isValidBatchName(v: any): boolean {
+      if (!v || typeof v !== "string") return false;
+      const s = v.trim();
+      if (s.length === 0 || s.length > 60) return false;
+      // Reject values that contain scientific notation (e.g. "5005.005e+22")
+      if (/\d[eE][+\-]\d/.test(s) || (s.includes(".") && /e[+\-]/i.test(s))) return false;
+      return true;
     }
 
     const reducedItems = movements.map((m: any) => {
       const qty = Math.abs(Number(m.change) || 0);
       const pid = String(m.productId);
       const price = priceMap.get(pid) || 0;
-      // Look up batch only if we have a batchNumber stored in the movement
       const productBatches = batchMap.get(pid);
-      const matchedBatch = (m.batchNumber && m.batchNumber !== "")
-        ? productBatches?.get(String(m.batchNumber))
-        : undefined;
+      const productBatchesById = batchIdMap.get(pid);
+
+      // Resolve the best batch name:
+      // 1. movement's own batchNumber (if valid)
+      // 2. look up batch by batchObjectId in the product's current batches → get its batchNumber
+      let batchId: string | null = null;
+      if (m.batchNumber && isValidBatchName(m.batchNumber)) {
+        batchId = String(m.batchNumber).trim();
+      } else if (m.batchObjectId) {
+        const batchDoc = productBatchesById?.get(String(m.batchObjectId));
+        if (batchDoc?.batchNumber && isValidBatchName(batchDoc.batchNumber)) {
+          batchId = String(batchDoc.batchNumber).trim();
+        }
+      }
+
+      // Look up matched batch for date fields (by batchNumber key)
+      const matchedBatch = batchId ? productBatches?.get(batchId) : undefined;
       // dateAdded: use movement's stored receivedDate, then matched batch lookup
       const dateAdded = m.receivedDate
         ? new Date(m.receivedDate).toISOString().slice(0, 10)
@@ -322,12 +350,6 @@ router.get("/wastage", async (req: ScopedRequest, res) => {
         ? new Date(m.expiryDate).toISOString().slice(0, 10)
         : matchedBatch?.expiryDate
           ? new Date(matchedBatch.expiryDate).toISOString().slice(0, 10)
-          : null;
-      // batchId: use stored batchNumber, then matched batch name, then short _id fallback
-      const batchId = (m.batchNumber && m.batchNumber !== "")
-        ? m.batchNumber
-        : m.batchObjectId
-          ? `#${String(m.batchObjectId).slice(-8)}`
           : null;
       return {
         id: String(m._id),
@@ -375,7 +397,7 @@ router.get("/wastage", async (req: ScopedRequest, res) => {
         const price = Number(p.price) || 0;
         expiredItems.push({
           id: String(b._id || b.batchNumber || ""),
-          batchId: b.batchNumber || String(b._id || ""),
+          batchId: (b.batchNumber && isValidBatchName(b.batchNumber)) ? String(b.batchNumber).trim() : null,
           dateAdded: b.receivedDate ? new Date(b.receivedDate).toISOString().slice(0, 10) : null,
           expiryDate: expiry.toISOString().slice(0, 10),
           item: p.name || "—",

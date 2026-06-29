@@ -328,7 +328,7 @@ export default function WastageReportPage() {
     dataRows.push([`Type filter: ${typeFilter === "all" ? "All" : typeFilter === "expired" ? "Expired only" : "Reduced only"}`]);
     dataRows.push([]);
     dataRows.push([
-      "Batch ID", "Date Added", "Expiry Date", "Item", "Unit",
+      "Batch Name", "Date Added", "Expiry Date", "Item", "Unit",
       "Type", "Quantity", "Total Price (₹)", "Reason / Notes", "Date of Operation",
     ]);
     for (const r of displayRows) {
@@ -511,7 +511,7 @@ export default function WastageReportPage() {
                 <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: "#aaa", pointerEvents: "none" }} />
                 <input
                   type="text"
-                  placeholder="Search item, batch ID, reason…"
+                  placeholder="Search item, batch name, reason…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   style={{ ...inputStyle, paddingLeft: 28, paddingRight: 10, width: 260, height: 32 }}
@@ -566,9 +566,9 @@ export default function WastageReportPage() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: "#162B4D" }}>
-                        {/* Batch ID */}
+                        {/* Batch Name */}
                         <th style={{ padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", letterSpacing: "0.04em" }}>
-                          Batch ID
+                          Batch Name
                         </th>
                         {/* Date Added */}
                         <th onClick={() => handleSort("dateAdded")} style={thStyle("dateAdded")}>
