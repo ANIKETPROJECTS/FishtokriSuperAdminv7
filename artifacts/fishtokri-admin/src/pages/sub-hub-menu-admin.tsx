@@ -4173,7 +4173,7 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-[#162B4D] text-sm">{displayTime(s.startTime)} – {displayTime(s.endTime)}</p>
                           {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
-                          <StatusBadge active={s.effectiveIsActive !== false && s.effectiveIsActive !== undefined ? s.effectiveIsActive : s.isActive !== false} />
+                          <StatusBadge active={s.effectiveIsActive ?? (s.isActive !== false)} />
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <div className="flex gap-0.5">
@@ -4212,7 +4212,7 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-[#162B4D] text-sm">{displayTime(s.startTime)} – {displayTime(s.endTime)}</p>
                   {s.isInstant && <span className="text-[10px] bg-orange-50 text-orange-600 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">Instant</span>}
-                  <StatusBadge active={s.effectiveIsActive !== false && s.effectiveIsActive !== undefined ? s.effectiveIsActive : s.isActive !== false} />
+                  <StatusBadge active={s.effectiveIsActive ?? (s.isActive !== false)} />
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <div className="flex gap-0.5">
