@@ -46,6 +46,7 @@ type Batch = {
   shelfLifeDays: number | null;
   receivedDate: string | null;
   expiryDate: string | null;
+  expiryTime?: string;
   notes: string;
 };
 type Product = { id: string; name: string; shortCode?: string; category: string; unit: string; quantity: number; batches?: Batch[] };
@@ -190,6 +191,24 @@ function getCurrentTime12h(): string {
   const now = new Date();
   const h24 = now.getHours();
   const m = now.getMinutes();
+  const ampm: "AM" | "PM" = h24 >= 12 ? "PM" : "AM";
+  let h = h24 % 12;
+  if (h === 0) h = 12;
+  return format12h(h, m, ampm);
+}
+
+/**
+ * Extracts the time (12-h format) from a stored ISO string like "2026-06-13T18:00:00+05:30".
+ * Falls back to "06:00 PM" (18:00 IST) for date-only strings or missing values.
+ */
+function extractTime12hFromISO(iso: string | null): string {
+  if (!iso) return "06:00 PM";
+  const match = iso.match(/T(\d{2}):(\d{2})/);
+  if (!match) return "06:00 PM";
+  const h24 = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  // Treat midnight as a sign that no real time was recorded — default to 6 PM
+  if (h24 === 0 && m === 0) return "06:00 PM";
   const ampm: "AM" | "PM" = h24 >= 12 ? "PM" : "AM";
   let h = h24 % 12;
   if (h === 0) h = 12;
@@ -698,7 +717,7 @@ function ExistingBatchesCard({
 
   // Sync local edit state when batches prop changes or panel opens
   useEffect(() => {
-    setEdited(batches.map((b) => ({ ...b })));
+    setEdited(batches.map((b) => ({ ...b, expiryTime: extractTime12hFromISO(b.expiryDate) })));
     setDirty(false);
   }, [batches, open]);
 
@@ -712,9 +731,16 @@ function ExistingBatchesCard({
   async function handleSave() {
     setSaving(true);
     try {
+      // Strip UI-only expiryTime and reconstruct expiryDate as a full IST ISO string
+      const batchesToSend = edited.map(({ expiryTime, ...rest }) => ({
+        ...rest,
+        expiryDate: rest.expiryDate
+          ? `${rest.expiryDate.slice(0, 10)}T${to24hTime(expiryTime || "06:00 PM")}:00+05:30`
+          : rest.expiryDate,
+      }));
       await apiFetch(`/api/inventory/products/${productId}/batches?subHubId=${subHubId}`, {
         method: "PUT",
-        body: JSON.stringify({ batches: edited }),
+        body: JSON.stringify({ batches: batchesToSend }),
       });
       toast({ title: "Batches updated successfully" });
       setDirty(false);
@@ -727,7 +753,7 @@ function ExistingBatchesCard({
   }
 
   function handleCancel() {
-    setEdited(batches.map((b) => ({ ...b })));
+    setEdited(batches.map((b) => ({ ...b, expiryTime: extractTime12hFromISO(b.expiryDate) })));
     setDirty(false);
   }
 
@@ -754,7 +780,7 @@ function ExistingBatchesCard({
               <span className="text-[10px] font-bold text-[#364F9F] uppercase tracking-wider">Qty ({unit})</span>
               <span className="text-[10px] font-bold text-[#364F9F] uppercase tracking-wider">Shelf Life (d)</span>
               <span className="text-[10px] font-bold text-[#364F9F] uppercase tracking-wider">Received</span>
-              <span className="text-[10px] font-bold text-[#364F9F] uppercase tracking-wider">Expiry</span>
+              <span className="text-[10px] font-bold text-[#364F9F] uppercase tracking-wider">Expiry Date &amp; Time</span>
               <span className="text-[10px] font-bold text-[#364F9F] uppercase tracking-wider">Notes</span>
             </div>
           </div>
@@ -768,19 +794,19 @@ function ExistingBatchesCard({
                 : dl <= 7 ? "border-amber-300 bg-amber-50"
                 : "border-emerald-200 bg-emerald-50";
               return (
-                <div key={b.id} className="px-3 py-2 grid grid-cols-6 gap-2 items-center bg-white/50 hover:bg-white/80 transition-colors">
+                <div key={b.id} className="px-3 py-2 grid grid-cols-6 gap-2 items-start bg-white/50 hover:bg-white/80 transition-colors">
                   <input
                     type="text"
                     value={b.batchNumber}
                     onChange={(e) => patchBatch(i, { batchNumber: e.target.value.toUpperCase() })}
-                    className="h-7 px-2 text-[11px] font-bold font-mono text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 uppercase"
+                    className="h-7 px-2 text-[11px] font-bold font-mono text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 uppercase mt-0.5"
                   />
                   <input
                     type="number"
                     min="0"
                     value={b.quantity}
                     onChange={(e) => patchBatch(i, { quantity: Number(e.target.value) })}
-                    className="h-7 px-2 text-[11px] font-bold text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30"
+                    className="h-7 px-2 text-[11px] font-bold text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 mt-0.5"
                   />
                   <input
                     type="number"
@@ -788,16 +814,17 @@ function ExistingBatchesCard({
                     value={b.shelfLifeDays ?? ""}
                     onChange={(e) => {
                       const days = e.target.value === "" ? null : Number(e.target.value);
-                      let expiry = b.expiryDate;
+                      let expiryDate = b.expiryDate;
                       if (days !== null && b.receivedDate) {
                         const d = new Date(b.receivedDate);
                         d.setDate(d.getDate() + days);
-                        expiry = d.toISOString().slice(0, 10);
+                        const dateISO = d.toISOString().slice(0, 10);
+                        expiryDate = `${dateISO}T${to24hTime(b.expiryTime || "06:00 PM")}:00+05:30`;
                       }
-                      patchBatch(i, { shelfLifeDays: days, expiryDate: expiry });
+                      patchBatch(i, { shelfLifeDays: days, expiryDate });
                     }}
                     placeholder="—"
-                    className="h-7 px-2 text-[11px] text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30"
+                    className="h-7 px-2 text-[11px] text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 mt-0.5"
                   />
                   <input
                     type="date"
@@ -811,28 +838,47 @@ function ExistingBatchesCard({
                       }
                       patchBatch(i, patch);
                     }}
-                    className="h-7 px-2 text-[11px] text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30"
+                    className="h-7 px-2 text-[11px] text-[#162B4D] border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 mt-0.5"
                   />
-                  <input
-                    type="date"
-                    value={b.expiryDate?.slice(0, 10) ?? ""}
-                    onChange={(e) => {
-                      const expiry = e.target.value || null;
-                      const patch: Partial<Batch> = { expiryDate: expiry };
-                      if (expiry && b.receivedDate) {
-                        const days = Math.round((new Date(expiry).getTime() - new Date(b.receivedDate).getTime()) / 86400000);
-                        patch.shelfLifeDays = days >= 0 ? days : null;
-                      }
-                      patchBatch(i, patch);
-                    }}
-                    className={`h-7 px-2 text-[11px] text-[#162B4D] border rounded focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 ${expColor}`}
-                  />
+                  {/* Expiry date + time stacked */}
+                  <div className="space-y-1">
+                    <input
+                      type="date"
+                      value={b.expiryDate?.slice(0, 10) ?? ""}
+                      onChange={(e) => {
+                        const dateVal = e.target.value || null;
+                        const patch: Partial<Batch> = {};
+                        if (dateVal) {
+                          patch.expiryDate = `${dateVal}T${to24hTime(b.expiryTime || "06:00 PM")}:00+05:30`;
+                          if (b.receivedDate) {
+                            const days = Math.round((new Date(patch.expiryDate).getTime() - new Date(b.receivedDate).getTime()) / 86400000);
+                            patch.shelfLifeDays = days >= 0 ? days : null;
+                          }
+                        } else {
+                          patch.expiryDate = null;
+                          patch.shelfLifeDays = null;
+                        }
+                        patchBatch(i, patch);
+                      }}
+                      className={`w-full h-7 px-2 text-[11px] text-[#162B4D] border rounded focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 ${expColor}`}
+                    />
+                    <ClockPickerField
+                      value={b.expiryTime || "06:00 PM"}
+                      onChange={(v) => {
+                        const patch: Partial<Batch> = { expiryTime: v };
+                        if (b.expiryDate) {
+                          patch.expiryDate = `${b.expiryDate.slice(0, 10)}T${to24hTime(v)}:00+05:30`;
+                        }
+                        patchBatch(i, patch);
+                      }}
+                    />
+                  </div>
                   <input
                     type="text"
                     value={b.notes}
                     onChange={(e) => patchBatch(i, { notes: e.target.value })}
                     placeholder="Notes..."
-                    className="h-7 px-2 text-[11px] text-gray-600 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30"
+                    className="h-7 px-2 text-[11px] text-gray-600 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 mt-0.5"
                   />
                 </div>
               );
