@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History, Menu, X, FileBarChart, FileSpreadsheet, Trash2, Calculator, RefreshCw, Settings, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
+import { useGlobalOrderAlert } from "@/hooks/use-global-order-alert";
 import { createPortal } from "react-dom";
 
 const masterAdminNavItems = [
@@ -151,6 +152,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const admin = getAdminData();
   const role = admin?.role || "master_admin";
+
+  // Global order alert — runs on every page, not just the orders page
+  useGlobalOrderAlert();
   const adminName = admin?.name || (role === "master_admin" ? "Master Admin" : "Super Hub");
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
