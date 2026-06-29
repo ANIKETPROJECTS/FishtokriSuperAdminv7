@@ -198,16 +198,21 @@ function getCurrentTime12h(): string {
 }
 
 /**
- * Extracts the time (12-h format) from a stored ISO string like "2026-06-13T18:00:00+05:30".
+ * Extracts the time (12-h format) from a stored ISO string, correctly converted to IST.
+ * MongoDB stores everything as UTC (e.g. "2026-07-07T08:45:00.000Z") so we must
+ * shift by +05:30 before reading hours/minutes — never read raw T-digits from the string.
  * Falls back to "06:00 PM" (18:00 IST) for date-only strings or missing values.
  */
 function extractTime12hFromISO(iso: string | null): string {
   if (!iso) return "06:00 PM";
-  const match = iso.match(/T(\d{2}):(\d{2})/);
-  if (!match) return "06:00 PM";
-  const h24 = parseInt(match[1], 10);
-  const m = parseInt(match[2], 10);
-  // Treat midnight as a sign that no real time was recorded — default to 6 PM
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "06:00 PM";
+  // Convert UTC → IST by adding 5h30m
+  const istMs = d.getTime() + (5 * 60 + 30) * 60 * 1000;
+  const ist = new Date(istMs);
+  const h24 = ist.getUTCHours();
+  const m = ist.getUTCMinutes();
+  // Treat midnight IST as a sign that no real time was recorded — default to 6 PM
   if (h24 === 0 && m === 0) return "06:00 PM";
   const ampm: "AM" | "PM" = h24 >= 12 ? "PM" : "AM";
   let h = h24 % 12;
