@@ -51,10 +51,9 @@ All values are sourced from `ecosystem.config.cjs` (PM2 production config).
 
 ## Default Login
 
-| Field | Value |
-|-------|-------|
-| Email | `admin@fishtokri.com` |
-| Password | `FishTokri@Admin2024` |
-| Role | Master Admin |
+Use the Master Admin credentials stored in your password manager or internal documentation.
+Select **Master Admin** on the role screen, then enter the admin email and password.
+
+> ⚠️ Default credentials are not stored in this file. See Task #3 in the project tasks for credential hygiene follow-up.
 
 ## User Preferences
