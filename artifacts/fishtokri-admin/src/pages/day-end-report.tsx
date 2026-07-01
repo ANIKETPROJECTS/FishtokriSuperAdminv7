@@ -546,8 +546,12 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
           const totalWalletUsed = walletFromPays > 0 ? walletFromPays : orderWalletUsed;
           const collectedForOrder = Math.max(0, total - totalWalletUsed);
           const primaryMode = String(nonWalletPays[0]?.mode || "").toLowerCase();
+          // Match UPI variants the same way the fallback path does — gpay/paytm/phonepe
+          // stored in payments[].mode must not fall through to the "unrecognised" bucket.
+          const isUpiLike = (m: string) =>
+            m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe") || m.includes("upi");
           if (primaryMode === "cash" || primaryMode === "cod") cash += collectedForOrder;
-          else if (primaryMode === "upi") upi += collectedForOrder;
+          else if (isUpiLike(primaryMode)) upi += collectedForOrder;
           else if (primaryMode === "card") card += collectedForOrder;
           // unrecognised mode: not counted in any displayed bucket
         }

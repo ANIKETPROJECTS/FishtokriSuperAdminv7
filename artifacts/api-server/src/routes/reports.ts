@@ -165,11 +165,13 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
         .reduce((s, p) => s + p.amount, 0);
       const collectedForOrder = Math.max(0, total - walletFromPays);
       const primaryMode = nonWalletPays[0]?.mode || "";
+      const isUpiLike = (m: string) =>
+        m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe") || m.includes("upi");
 
       if (primaryMode === "cash" || primaryMode === "cod") {
         logCash += collectedForOrder;
         cashBreakdown.push({ invoiceNo: o.invoiceNo, total, walletUsed: walletFromPays, cashCollected: collectedForOrder });
-      } else if (primaryMode === "upi") {
+      } else if (isUpiLike(primaryMode)) {
         logUpi += collectedForOrder;
       } else if (primaryMode === "card") {
         logCard += collectedForOrder;
