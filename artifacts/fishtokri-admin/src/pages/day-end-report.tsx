@@ -537,23 +537,29 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         wallet += excessToWallet;
 
         if (nonWalletPays.length > 0) {
-          // Correct formula: cash/upi/card collected = total - walletUsed.
-          // Always deduct the wallet payment amount (from payments[] or o.walletUsed fallback)
-          // regardless of whether cash is stored as full total or already reduced in DB.
+          // Wallet deduction: use wallet entries from payments[], fall back to o.walletUsed.
           const walletFromPays = pays
             .filter((p: any) => String(p?.mode || "").toLowerCase() === "wallet")
             .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
           const totalWalletUsed = walletFromPays > 0 ? walletFromPays : orderWalletUsed;
-          const collectedForOrder = Math.max(0, total - totalWalletUsed);
-          const primaryMode = String(nonWalletPays[0]?.mode || "").toLowerCase();
-          // Match UPI variants the same way the fallback path does — gpay/paytm/phonepe
-          // stored in payments[].mode must not fall through to the "unrecognised" bucket.
+          // Scale factor: normalises raw payment amounts down to (total - wallet).
+          // Handles both single-mode orders (where DB may store the full total in one entry)
+          // and mixed-mode orders (Cash + UPI, etc.) so each mode gets its correct share.
+          const scaleFactor = nonWalletPaid > 0
+            ? Math.min(1, Math.max(0, total - totalWalletUsed) / nonWalletPaid)
+            : 0;
+          // UPI variant helper — gpay/paytm/phonepe stored in payments[].mode must not
+          // fall through to the "unrecognised" bucket.
           const isUpiLike = (m: string) =>
-            m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe") || m.includes("upi");
-          if (primaryMode === "cash" || primaryMode === "cod") cash += collectedForOrder;
-          else if (isUpiLike(primaryMode)) upi += collectedForOrder;
-          else if (primaryMode === "card") card += collectedForOrder;
-          // unrecognised mode: not counted in any displayed bucket
+            m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe");
+          // Distribute each non-wallet payment into its bucket (supports mixed-mode orders).
+          for (const p of nonWalletPays) {
+            const m = String(p?.mode || "").toLowerCase();
+            const amt = (Number(p.amount) || 0) * scaleFactor;
+            if (m === "cash" || m === "cod") cash += amt;
+            else if (isUpiLike(m)) upi += amt;
+            else if (m === "card") card += amt;
+          }
         }
         // wallet-only: no physical collection — not counted in cash/upi/card
       } else {

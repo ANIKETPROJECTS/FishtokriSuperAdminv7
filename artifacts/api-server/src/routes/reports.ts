@@ -163,18 +163,24 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
       const walletFromPays = pays
         .filter(p => p.mode === "wallet")
         .reduce((s, p) => s + p.amount, 0);
-      const collectedForOrder = Math.max(0, total - walletFromPays);
-      const primaryMode = nonWalletPays[0]?.mode || "";
+      const nonWalletPaid = nonWalletPays.reduce((s, p) => s + p.amount, 0);
+      const scaleFactor = nonWalletPaid > 0
+        ? Math.min(1, Math.max(0, total - walletFromPays) / nonWalletPaid)
+        : 0;
       const isUpiLike = (m: string) =>
-        m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe") || m.includes("upi");
+        m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe");
 
-      if (primaryMode === "cash" || primaryMode === "cod") {
-        logCash += collectedForOrder;
-        cashBreakdown.push({ invoiceNo: o.invoiceNo, total, walletUsed: walletFromPays, cashCollected: collectedForOrder });
-      } else if (isUpiLike(primaryMode)) {
-        logUpi += collectedForOrder;
-      } else if (primaryMode === "card") {
-        logCard += collectedForOrder;
+      for (const p of nonWalletPays) {
+        const m = p.mode;
+        const amt = p.amount * scaleFactor;
+        if (m === "cash" || m === "cod") {
+          logCash += amt;
+          cashBreakdown.push({ invoiceNo: o.invoiceNo, total, walletUsed: walletFromPays, cashCollected: amt });
+        } else if (isUpiLike(m)) {
+          logUpi += amt;
+        } else if (m === "card") {
+          logCard += amt;
+        }
       }
     }
     const r2 = (n: number) => Math.round(n * 100) / 100;
