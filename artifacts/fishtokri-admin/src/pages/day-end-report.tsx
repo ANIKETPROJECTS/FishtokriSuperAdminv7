@@ -384,17 +384,17 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   const stats = useMemo(() => {
     let cash = 0, upi = 0, card = 0, wallet = 0, unpaid = 0;
     for (const o of orders) {
-      if (String(o.orderStatus || o.status || "").toLowerCase() === "cancelled") continue;
+      const isCancelled = String(o.orderStatus || o.status || "").toLowerCase() === "cancelled";
       const total = Number(o.total) || 0;
 
       const statusLower = String(o.paymentStatus || "").toLowerCase();
       const isUnpaid = statusLower === "unpaid";
       const isPartial = statusLower === "partial";
 
-      // Accumulate unpaid dues.
-      // For Unpaid orders always use the full order total — never trust dueAmount from the DB
-      // because older records may have dueAmount=0 while still being marked Unpaid.
-      // For Partial orders, dueAmount/paidAmount from the DB is reliable.
+      // Accumulate unpaid dues for ALL orders (including cancelled) —
+      // a cancelled order that was never paid still has an outstanding due.
+      // For Unpaid: always use the full order total (don't trust dueAmount — older records may have dueAmount=0).
+      // For Partial: use dueAmount if positive, else derive from paidAmount.
       if (isUnpaid) {
         unpaid += total;
       } else if (isPartial) {
@@ -403,12 +403,12 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         } else if (o.paidAmount != null) {
           unpaid += Math.max(0, total - Number(o.paidAmount));
         } else {
-          unpaid += total; // fallback: whole amount still owed
+          unpaid += total;
         }
       }
 
-      // For fully unpaid orders there's nothing actually collected — skip revenue split
-      if (isUnpaid) continue;
+      // Cancelled or fully unpaid orders contribute nothing to revenue — skip the payment split
+      if (isCancelled || isUnpaid) continue;
 
       const pays: any[] = Array.isArray(o.payments) ? o.payments : [];
       if (pays.length > 0) {
