@@ -327,6 +327,13 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     return false;
   }
 
+  function orderWalletUsed(o: any): number {
+    const pays: any[] = Array.isArray(o.payments) ? o.payments : [];
+    return pays
+      .filter((p: any) => String(p?.mode || "").toLowerCase() === "wallet")
+      .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+  }
+
   function orderDueAmount(o: any): number {
     const status = String(o.paymentStatus || "").toLowerCase();
     const total = Number(o.total) || 0;
@@ -420,10 +427,12 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         wallet += excessToWallet;
 
         if (nonWalletPays.length > 0) {
+          // Use nonWalletPaid (actual physical collection), NOT total.
+          // total includes wallet credits applied; nonWalletPaid is real cash/upi/card received.
           const primaryMode = String(nonWalletPays[0]?.mode || "").toLowerCase();
-          if (primaryMode === "cash" || primaryMode === "cod") cash += total;
-          else if (primaryMode === "upi") upi += total;
-          else if (primaryMode === "card") card += total;
+          if (primaryMode === "cash" || primaryMode === "cod") cash += nonWalletPaid;
+          else if (primaryMode === "upi") upi += nonWalletPaid;
+          else if (primaryMode === "card") card += nonWalletPaid;
           // unrecognised mode: not counted in any displayed bucket
         }
         // wallet-only: no physical collection — not counted in cash/upi/card
@@ -442,33 +451,36 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         // wallet-only or empty: no physical collection
       }
     }
-    // Grand Total = Cash + UPI + Card + Wallet Collected
-    // Wallet Collected is real money physically received (excess over order totals credited to customer wallets)
-    const totalRev = cash + upi + card + wallet;
+    // Grand Total = Cash + UPI + Card (physical non-wallet payments only).
+    // wallet excess (nonWalletPaid > total) is already captured in cash/upi/card via nonWalletPaid;
+    // adding wallet again would double-count it.  Wallet Collected is displayed separately.
+    const totalRev = cash + upi + card;
     return { cash, upi, card, wallet, totalRev, unpaid };
   }, [orders]);
 
   const handleDownload = useCallback(() => {
     if (!filteredOrders.length) return;
-    const rows: any[] = [["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total (₹)","Due Amount (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status"]];
+    const rows: any[] = [["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total (₹)","Wallet Used (₹)","Bal. Due Cash/UPI (₹)","Due Amount (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status"]];
     for (const o of filteredOrders) {
       const itemsQty = (o.items || []).map((it: any) => `${it.name} × ${it.quantity}`).join(", ");
       const placedDate = o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
       const delivDate = o.deliveryDate ? formatDate(o.deliveryDate) : "—";
       const due = orderDueAmount(o);
-      rows.push([o.invoiceNo, placedDate, delivDate, o.customerName, o.phone, itemsQty, o.total, due > 0 ? due : "—", o.deliveryPerson || "—", o.paymentMode, o.paymentStatus, String(o.status || "").replace(/_/g, " ")]);
+      const walletUsed = orderWalletUsed(o);
+      const balDueCashUpi = (Number(o.total) || 0) - walletUsed;
+      rows.push([o.invoiceNo, placedDate, delivDate, o.customerName, o.phone, itemsQty, o.total, walletUsed > 0 ? walletUsed : "—", walletUsed > 0 ? balDueCashUpi : "—", due > 0 ? due : "—", o.deliveryPerson || "—", o.paymentMode, o.paymentStatus, String(o.status || "").replace(/_/g, " ")]);
     }
     rows.push([]);
-    rows.push(["SUMMARY", "", "", "", "", "", "", "", "", "", "", ""]);
+    rows.push(["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
     rows.push(["Showing (filtered)", filteredOrders.length, "of", orders.length, "total orders"]);
     rows.push(["Cash Revenue", stats.cash]);
     rows.push(["UPI Revenue", stats.upi]);
     rows.push(["Card Revenue", stats.card]);
-    rows.push(["Total Revenue", stats.totalRev]);
+    rows.push(["Grand Total (Cash+UPI+Card)", stats.totalRev]);
     rows.push(["Wallet Collected (Extra)", stats.wallet]);
     rows.push(["Unpaid Dues", stats.unpaid]);
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"] = [{wch:20},{wch:22},{wch:14},{wch:48},{wch:14},{wch:22},{wch:14},{wch:14},{wch:16},{wch:16},{wch:16},{wch:18}];
+    ws["!cols"] = [{wch:20},{wch:22},{wch:14},{wch:48},{wch:14},{wch:22},{wch:14},{wch:14},{wch:20},{wch:14},{wch:16},{wch:16},{wch:16},{wch:18}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Orders Report");
     XLSX.writeFile(wb, `orders-report-${from}-to-${to}.xlsx`);
@@ -640,6 +652,20 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
                     ))}
                   </td>
                   <td style={{ padding: "10px 14px", fontWeight: 700, color: "#000", whiteSpace: "nowrap", textAlign: "right" }}>{formatRupees(o.total)}</td>
+                  {(() => {
+                    const walletUsed = orderWalletUsed(o);
+                    const balDue = (Number(o.total) || 0) - walletUsed;
+                    return (
+                      <>
+                        <td style={{ padding: "10px 14px", fontWeight: 600, whiteSpace: "nowrap", textAlign: "right", color: walletUsed > 0 ? "#7c3aed" : "#bbb" }}>
+                          {walletUsed > 0 ? formatRupees(walletUsed) : "—"}
+                        </td>
+                        <td style={{ padding: "10px 14px", fontWeight: 700, whiteSpace: "nowrap", textAlign: "right", color: walletUsed > 0 ? "#0369a1" : "#bbb" }}>
+                          {walletUsed > 0 ? formatRupees(balDue) : "—"}
+                        </td>
+                      </>
+                    );
+                  })()}
                   <td style={{ padding: "10px 14px", fontWeight: 700, whiteSpace: "nowrap", textAlign: "right", color: orderDueAmount(o) > 0 ? "#dc2626" : "#16a34a" }}>
                     {orderDueAmount(o) > 0 ? formatRupees(orderDueAmount(o)) : "—"}
                   </td>
