@@ -33,8 +33,6 @@ Two workflows must be running simultaneously:
 
 Or use the unified **`artifacts/fishtokri-admin: web`** workflow (runs `scripts/dev.sh`) which waits for the API then starts Vite.
 
-**First run after import:** the API server dist doesn't exist yet — run `cd artifacts/api-server && pnpm run build` in the shell before starting the API workflow.
-
 ## Environment Variables (set in Replit Secrets / Env Vars)
 
 | Key | Purpose |
