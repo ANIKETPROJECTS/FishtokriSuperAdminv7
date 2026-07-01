@@ -524,6 +524,10 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       if (isCancelled || isUnpaid) continue;
 
       const pays: any[] = Array.isArray(o.payments) ? o.payments : [];
+      // walletUsed on the order document = credit drawn from customer's stored wallet balance.
+      // Some records store this in payments[], others only in o.walletUsed.
+      const orderWalletUsed = Number(o.walletUsed) || 0;
+
       if (pays.length > 0) {
         const nonWalletPays = pays.filter((p: any) => String(p?.mode || "").toLowerCase() !== "wallet");
         const nonWalletPaid = nonWalletPays.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
@@ -533,11 +537,12 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         wallet += excessToWallet;
 
         if (nonWalletPays.length > 0) {
-          // Use min(nonWalletPaid, total): the order-total portion only.
-          // - Wallet-credit applied: nonWalletPaid < total → counts actual cash paid (Bal. Due).
-          // - Customer over-paid (excess → wallet): nonWalletPaid > total → capped at total;
-          //   excess already captured in excessToWallet / wallet tile.
-          const collectedForOrder = Math.min(nonWalletPaid, total);
+          // If the payments[] already contains a wallet entry, wallet credit is already excluded
+          // via the nonWalletPays filter. If wallet is NOT in payments[] but walletUsed > 0,
+          // we must deduct it now so we count only the physically collected non-wallet amount.
+          const walletInPays = pays.some((p: any) => String(p?.mode || "").toLowerCase() === "wallet");
+          const walletDeduct = walletInPays ? 0 : orderWalletUsed;
+          const collectedForOrder = Math.max(0, Math.min(nonWalletPaid, total) - walletDeduct);
           const primaryMode = String(nonWalletPays[0]?.mode || "").toLowerCase();
           if (primaryMode === "cash" || primaryMode === "cod") cash += collectedForOrder;
           else if (primaryMode === "upi") upi += collectedForOrder;
@@ -547,12 +552,12 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         // wallet-only: no physical collection — not counted in cash/upi/card
       } else {
         // Fallback for old records with no payments array.
-        // Always use paidAmount (capped at total) when available — for Wallet+Cash orders,
-        // paidAmount stores only the physically-collected portion (not the wallet credit).
-        // For pure-cash/upi orders paidAmount == total so there is no change.
-        const paidAmt = (o.paidAmount != null && Number(o.paidAmount) > 0)
+        // Deduct walletUsed from paidAmount to get the physically-collected portion.
+        const rawPaid = (o.paidAmount != null && Number(o.paidAmount) > 0)
           ? Math.min(Number(o.paidAmount), total)
           : total;
+        // Deduct wallet credit so we count only physically collected cash/UPI/card.
+        const paidAmt = Math.max(0, rawPaid - orderWalletUsed);
         const modeStr = String(o.paymentMode || "").toLowerCase()
           .replace(/wallet\s*,\s*/gi, "")
           .replace(/,\s*wallet/gi, "")
