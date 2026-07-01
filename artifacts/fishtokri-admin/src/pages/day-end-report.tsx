@@ -537,12 +537,14 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         wallet += excessToWallet;
 
         if (nonWalletPays.length > 0) {
-          // If the payments[] already contains a wallet entry, wallet credit is already excluded
-          // via the nonWalletPays filter. If wallet is NOT in payments[] but walletUsed > 0,
-          // we must deduct it now so we count only the physically collected non-wallet amount.
-          const walletInPays = pays.some((p: any) => String(p?.mode || "").toLowerCase() === "wallet");
-          const walletDeduct = walletInPays ? 0 : orderWalletUsed;
-          const collectedForOrder = Math.max(0, Math.min(nonWalletPaid, total) - walletDeduct);
+          // Correct formula: cash/upi/card collected = total - walletUsed.
+          // Always deduct the wallet payment amount (from payments[] or o.walletUsed fallback)
+          // regardless of whether cash is stored as full total or already reduced in DB.
+          const walletFromPays = pays
+            .filter((p: any) => String(p?.mode || "").toLowerCase() === "wallet")
+            .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+          const totalWalletUsed = walletFromPays > 0 ? walletFromPays : orderWalletUsed;
+          const collectedForOrder = Math.max(0, total - totalWalletUsed);
           const primaryMode = String(nonWalletPays[0]?.mode || "").toLowerCase();
           if (primaryMode === "cash" || primaryMode === "cod") cash += collectedForOrder;
           else if (primaryMode === "upi") upi += collectedForOrder;

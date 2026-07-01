@@ -145,6 +145,51 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
       };
     });
 
+    // ── Server-side cash collection calculation log ──────────────────────────
+    // Mirrors the frontend stats logic: cash = total - walletUsed (from payments[])
+    let logCash = 0, logUpi = 0, logCard = 0;
+    const cashBreakdown: Array<{ invoiceNo: string; total: number; walletUsed: number; cashCollected: number }> = [];
+    for (const o of formatted) {
+      const isCancelled = String(o.status || "").toLowerCase() === "cancelled";
+      const isUnpaid = String(o.paymentStatus || "").toLowerCase() === "unpaid";
+      if (isCancelled || isUnpaid) continue;
+
+      const pays: Array<{ mode: string; amount: number }> = Array.isArray(o.payments) ? o.payments : [];
+      const total = Number(o.total) || 0;
+
+      const nonWalletPays = pays.filter(p => p.mode !== "wallet");
+      if (nonWalletPays.length === 0) continue;
+
+      const walletFromPays = pays
+        .filter(p => p.mode === "wallet")
+        .reduce((s, p) => s + p.amount, 0);
+      const collectedForOrder = Math.max(0, total - walletFromPays);
+      const primaryMode = nonWalletPays[0]?.mode || "";
+
+      if (primaryMode === "cash" || primaryMode === "cod") {
+        logCash += collectedForOrder;
+        cashBreakdown.push({ invoiceNo: o.invoiceNo, total, walletUsed: walletFromPays, cashCollected: collectedForOrder });
+      } else if (primaryMode === "upi") {
+        logUpi += collectedForOrder;
+      } else if (primaryMode === "card") {
+        logCard += collectedForOrder;
+      }
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    req.log.info(
+      {
+        from,
+        to,
+        totalOrders: formatted.length,
+        cashTotal: r2(logCash),
+        upiTotal: r2(logUpi),
+        cardTotal: r2(logCard),
+        cashBreakdown,
+      },
+      "Day-end cash collection calculation"
+    );
+    // ────────────────────────────────────────────────────────────────────────
+
     res.json({ orders: formatted, total: formatted.length });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch day-end orders report");
