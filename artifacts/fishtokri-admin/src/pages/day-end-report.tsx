@@ -332,49 +332,52 @@ function DragScrollbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElemen
     return () => { el.removeEventListener("scroll", updateThumb); ro.disconnect(); };
   }, [scrollRef, updateThumb]);
 
-  const onThumbMouseDown = useCallback((e: React.MouseEvent) => {
+  const onThumbPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
+    // Pointer capture: browser tracks pointer even outside the window/tab until pointerup.
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragging.current = true;
     dragStartX.current = e.clientX;
     dragStartScroll.current = scrollRef.current?.scrollLeft ?? 0;
-
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current) return;
-      const el = scrollRef.current; const track = trackRef.current; const thumb = thumbRef.current;
-      if (!el || !track || !thumb) return;
-      const dx = ev.clientX - dragStartX.current;
-      const trackW = track.clientWidth;
-      const thumbW = thumb.clientWidth;
-      const ratio = dx / (trackW - thumbW);
-      el.scrollLeft = dragStartScroll.current + ratio * (el.scrollWidth - el.clientWidth);
-    };
-    const onUp = () => {
-      dragging.current = false;
-      if (thumbRef.current) thumbRef.current.style.cursor = "grab";
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
     if (thumbRef.current) thumbRef.current.style.cursor = "grabbing";
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
   }, [scrollRef]);
 
-  const onTrackClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const onThumbPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    const el = scrollRef.current; const track = trackRef.current; const thumb = thumbRef.current;
+    if (!el || !track || !thumb) return;
+    const dx = e.clientX - dragStartX.current;
+    const trackW = track.clientWidth;
+    const thumbW = thumb.clientWidth;
+    const available = trackW - thumbW;
+    if (available <= 0) return; // guard: thumb fills entire track, nothing to drag
+    const ratio = dx / available;
+    el.scrollLeft = dragStartScroll.current + ratio * (el.scrollWidth - el.clientWidth);
+  }, [scrollRef]);
+
+  const onThumbPointerUp = useCallback((e: React.PointerEvent) => {
+    dragging.current = false;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    if (thumbRef.current) thumbRef.current.style.cursor = "grab";
+  }, []);
+
+  const onTrackPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as Node) === thumbRef.current) return; // let thumb handler take it
     const thumb = thumbRef.current; const track = trackRef.current; const el = scrollRef.current;
     if (!thumb || !track || !el) return;
-    if ((e.target as Node) === thumb) return; // handled by thumb
     const rect = track.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const thumbW = thumb.clientWidth;
-    const trackW = rect.width;
-    const ratio = Math.max(0, Math.min(1, (clickX - thumbW / 2) / (trackW - thumbW)));
+    const available = rect.width - thumbW;
+    if (available <= 0) return; // guard: no room to move
+    const ratio = Math.max(0, Math.min(1, (clickX - thumbW / 2) / available));
     el.scrollLeft = ratio * (el.scrollWidth - el.clientWidth);
   }, [scrollRef]);
 
   return (
     <div
       ref={trackRef}
-      onMouseDown={onTrackClick}
+      onPointerDown={onTrackPointerDown}
       style={{
         position: "relative", height: 12, background: "#e2e8f0", borderRadius: 8,
         marginBottom: 8, cursor: "pointer", userSelect: "none", flexShrink: 0,
@@ -382,11 +385,15 @@ function DragScrollbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElemen
     >
       <div
         ref={thumbRef}
-        onMouseDown={onThumbMouseDown}
+        onPointerDown={onThumbPointerDown}
+        onPointerMove={onThumbPointerMove}
+        onPointerUp={onThumbPointerUp}
+        onPointerCancel={onThumbPointerUp}
         style={{
           position: "absolute", top: 2, height: 8,
           background: "#94a3b8", borderRadius: 6, cursor: "grab",
           transition: "background 0.15s",
+          touchAction: "none",
         }}
         onMouseEnter={e => (e.currentTarget.style.background = "#64748b")}
         onMouseLeave={e => { if (!dragging.current) e.currentTarget.style.background = "#94a3b8"; }}
@@ -559,6 +566,14 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     // Grand Total = Cash + UPI + Card + Wallet Collected.
     // Cash/UPI/Card tiles = sum of order-total portions (capped, wallet credits deducted).
     // Wallet Collected = physical excess cash received beyond order totals → real money, must be included.
+    // Round to 2 decimal places to eliminate floating-point accumulation drift
+    // (e.g. 3855.9999… → 3856.00) without discarding valid paise precision.
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    cash   = r2(cash);
+    upi    = r2(upi);
+    card   = r2(card);
+    wallet = r2(wallet);
+    unpaid = r2(unpaid);
     const totalRev = cash + upi + card + wallet;
     return { cash, upi, card, wallet, totalRev, unpaid };
   }, [orders]);
