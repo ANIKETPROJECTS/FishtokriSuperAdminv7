@@ -373,7 +373,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     else if (ordSort === "customer_az") list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
     else if (ordSort === "invoice_az") list.sort((a, b) => (a.invoiceNo || "").localeCompare(b.invoiceNo || ""));
     return list;
-  }, [orders, ordSearch, ordPayFilter, ordStatusFilter, ordSort]);
+  }, [orders, ordSearch, ordPayFilter, ordPayModeFilter, ordStatusFilter, ordSort]);
 
   const stats = useMemo(() => {
     let cash = 0, upi = 0, card = 0, wallet = 0, other = 0, unpaid = 0, totalRev = 0;
