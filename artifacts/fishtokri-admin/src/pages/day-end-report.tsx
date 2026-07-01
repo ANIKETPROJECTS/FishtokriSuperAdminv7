@@ -442,8 +442,9 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         // wallet-only or empty: no physical collection
       }
     }
-    // Grand Total = Cash + UPI + Card (what was actually collected via payment channels)
-    const totalRev = cash + upi + card;
+    // Grand Total = Cash + UPI + Card + Wallet Collected
+    // Wallet Collected is real money physically received (excess over order totals credited to customer wallets)
+    const totalRev = cash + upi + card + wallet;
     return { cash, upi, card, wallet, totalRev, unpaid };
   }, [orders]);
 
