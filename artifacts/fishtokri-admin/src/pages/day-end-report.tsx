@@ -622,10 +622,10 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         </div>
       )}
 
-      {/* Table — no wrapper card, full width */}
+      {/* Table — horizontally scrollable; pull out of page padding so the scrollbar spans full width */}
       {!isLoading && !isError && filteredOrders.length > 0 && (
-        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any }}>
-          <table style={{ minWidth: "max-content", borderCollapse: "collapse", fontSize: 13 }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any, marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28 }}>
+          <table style={{ width: "max-content", minWidth: 1600, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
                 {["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total","Due Amount","Delivery Partner","Payment Mode","Payment Status","Order Status","Receipt"].map(h => (
