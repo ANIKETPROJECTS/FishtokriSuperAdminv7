@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -306,6 +306,20 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   const [ordPayModeFilter, setOrdPayModeFilter] = useState<"all" | "cash" | "upi" | "card" | "wallet">("all");
   const [ordStatusFilter, setOrdStatusFilter] = useState<"all" | "confirmed" | "out_for_delivery" | "delivered" | "cancelled">("all");
   const [ordSort, setOrdSort] = useState<"default" | "total_desc" | "total_asc" | "customer_az" | "invoice_az">("default");
+
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const top = topScrollRef.current;
+    const tbl = tableScrollRef.current;
+    if (!top || !tbl) return;
+    const onTop = () => { tbl.scrollLeft = top.scrollLeft; };
+    const onTbl = () => { top.scrollLeft = tbl.scrollLeft; };
+    top.addEventListener("scroll", onTop);
+    tbl.addEventListener("scroll", onTbl);
+    return () => { top.removeEventListener("scroll", onTop); tbl.removeEventListener("scroll", onTbl); };
+  }, []);
 
   function orderMatchesPayMode(o: any, mode: string): boolean {
     const pays: any[] = Array.isArray(o.payments) ? o.payments : [];
@@ -622,13 +636,25 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         </div>
       )}
 
-      {/* Table — horizontally scrollable; pull out of page padding so the scrollbar spans full width */}
+      {/* Table — horizontally scrollable with top + bottom scrollbars */}
       {!isLoading && !isError && filteredOrders.length > 0 && (
-        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any, marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28 }}>
+        <>
+          {/* Top scrollbar mirror */}
+          <div
+            ref={topScrollRef}
+            style={{ overflowX: "auto", overflowY: "hidden", marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28, marginBottom: 4 }}
+          >
+            <div style={{ height: 1, minWidth: 1600, width: "max-content" }} />
+          </div>
+          {/* Actual table */}
+          <div
+            ref={tableScrollRef}
+            style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any, marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28 }}
+          >
           <table style={{ width: "max-content", minWidth: 1600, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                {["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total","Due Amount","Delivery Partner","Payment Mode","Payment Status","Order Status","Receipt"].map(h => (
+                {["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total","Wallet Used","Bal. Due (Cash/UPI)","Due Amount","Delivery Partner","Payment Mode","Payment Status","Order Status","Receipt"].map(h => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#555", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                 ))}
               </tr>
@@ -700,7 +726,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       {invoiceOrder && <InvoiceModal order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
