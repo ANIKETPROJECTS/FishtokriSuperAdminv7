@@ -636,20 +636,50 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         </div>
       )}
 
-      {/* Table — horizontally scrollable with top + bottom scrollbars */}
+      {/* Table — horizontally scrollable with always-visible top + bottom scrollbars */}
       {!isLoading && !isError && filteredOrders.length > 0 && (
         <>
-          {/* Top scrollbar mirror */}
+          <style>{`
+            .der-top-scroll,
+            .der-table-scroll {
+              scrollbar-width: thin;
+              scrollbar-color: #c1c8d4 #f1f3f6;
+            }
+            .der-top-scroll::-webkit-scrollbar,
+            .der-table-scroll::-webkit-scrollbar {
+              height: 10px;
+              display: block;
+            }
+            .der-top-scroll::-webkit-scrollbar-track,
+            .der-table-scroll::-webkit-scrollbar-track {
+              background: #f1f3f6;
+              border-radius: 8px;
+            }
+            .der-top-scroll::-webkit-scrollbar-thumb,
+            .der-table-scroll::-webkit-scrollbar-thumb {
+              background: #c1c8d4;
+              border-radius: 8px;
+              border: 2px solid #f1f3f6;
+            }
+            .der-top-scroll::-webkit-scrollbar-thumb:hover,
+            .der-table-scroll::-webkit-scrollbar-thumb:hover {
+              background: #9ba6b5;
+            }
+          `}</style>
+
+          {/* Top scrollbar mirror — always visible */}
           <div
             ref={topScrollRef}
-            style={{ overflowX: "auto", overflowY: "hidden", marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28, marginBottom: 6, paddingBottom: 1 }}
+            className="der-top-scroll"
+            style={{ overflowX: "scroll", overflowY: "hidden", marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28, marginBottom: 4 }}
           >
-            <div style={{ height: 12, minWidth: 1600 }} />
+            <div style={{ height: 1, minWidth: 1600 }} />
           </div>
-          {/* Actual table */}
+          {/* Actual table — scrollbar hidden here (top bar is the UI handle) */}
           <div
             ref={tableScrollRef}
-            style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any, marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28 }}
+            className="der-table-scroll"
+            style={{ overflowX: "scroll", overflowY: "visible", marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28, paddingBottom: 8 }}
           >
           <table style={{ width: "max-content", minWidth: 1600, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
