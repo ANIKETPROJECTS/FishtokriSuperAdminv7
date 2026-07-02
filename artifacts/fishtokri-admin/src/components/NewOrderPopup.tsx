@@ -102,7 +102,7 @@ function OrderCard({
     }}>
       <div style={{
         background: "#fff", borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
-        width: "min(96vw, 580px)", maxHeight: "92vh",
+        width: "min(96vw, 780px)", maxHeight: "92vh",
         display: "flex", flexDirection: "column", overflow: "hidden",
         animation: "ftCardIn 0.22s cubic-bezier(0.34,1.56,0.64,1)",
       }}>
