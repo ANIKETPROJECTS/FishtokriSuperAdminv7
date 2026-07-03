@@ -32,8 +32,10 @@ function processOrders(orders: any[]) {
   const personMap = new Map<string, any>();
 
   for (const order of orders) {
-    // Porter/express orders always group under the virtual "Porter Delivery" person
-    const isPorter = !!order.isExpress || String(order.assignedDeliveryPersonId || "") === "porter_delivery";
+    // Group under "Porter Delivery" only when explicitly assigned to porter_delivery.
+    // Express orders that have been re-assigned to a real in-house delivery person
+    // should appear under that person instead.
+    const isPorter = String(order.assignedDeliveryPersonId || "") === "porter_delivery";
     const personId = isPorter
       ? "porter_delivery"
       : String(order.assignedDeliveryPersonId || "unassigned");

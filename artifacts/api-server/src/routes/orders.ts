@@ -1721,6 +1721,46 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       })();
     }
 
+    // Re-send out-for-delivery WhatsApp when the delivery person is changed
+    // on an order that is already "out_for_delivery" (e.g. express order where
+    // the admin swaps Porter for an in-house person after the initial notification).
+    {
+      const prevAssigned = String(prev.assignedDeliveryPersonId ?? "");
+      const newAssigned = String(update.assignedDeliveryPersonId ?? prevAssigned);
+      const currentStatus = String((result as any).status ?? "");
+      const deliveryPersonChanged =
+        assignedDeliveryPersonId !== undefined && newAssigned !== prevAssigned;
+      const assignedRealPerson = !!newAssigned && newAssigned !== "porter_delivery";
+      const orderIsOfd = currentStatus === "out_for_delivery";
+      // Don't double-fire when status ALSO changed to out_for_delivery in this same request
+      const statusJustBecameOfd =
+        status !== undefined &&
+        String(status) === "out_for_delivery" &&
+        String(prev.status ?? "") !== "out_for_delivery";
+
+      if (deliveryPersonChanged && assignedRealPerson && orderIsOfd && !statusJustBecameOfd) {
+        const orderDoc = result as any;
+        (async () => {
+          try {
+            let dpPhone = "";
+            try {
+              const dp = await HubUser.findById(newAssigned, { phone: 1 }).lean();
+              dpPhone = String((dp as any)?.phone ?? "").trim();
+            } catch (e) {
+              req.log.warn({ err: e }, "[WhatsApp] Could not fetch delivery person phone for re-notification");
+            }
+            console.log(
+              `[WhatsApp] Re-firing out_for_delivery for order ${orderDoc.orderId} — ` +
+              `delivery person changed from ${prevAssigned} to ${newAssigned}`
+            );
+            await sendOutForDelivery(orderDoc, dpPhone, req.log);
+          } catch (e) {
+            req.log.error({ err: e }, "[WhatsApp] Re-notification error on delivery person change");
+          }
+        })();
+      }
+    }
+
     // Sync timeslot order counts to MongoDB after any status change on a slot order.
     if ((result as any).scheduleType === "slot" && (result as any).timeslotId && (result as any).subHubName) {
       syncTimeslotOrderCounts(String((result as any).timeslotId), String((result as any).subHubName), req.log);
