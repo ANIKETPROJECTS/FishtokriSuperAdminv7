@@ -124,20 +124,31 @@ async function attemptSend(
     "[WhatsApp] Admark raw response"
   );
 
-  if (!data?.success) {
-    const errMsg = `[WhatsApp] API returned failure: httpStatus=${httpStatus} body=${rawText}`;
+  // Admark quirk: it can return success:true at the top level but still fail delivery.
+  // The reliable check is: success:true AND sent >= 1 AND errors array is empty.
+  const topSuccess = data?.success === true;
+  const sentCount = Number(data?.sent ?? 0);
+  const errorsArr: any[] = Array.isArray(data?.errors) ? data.errors : [];
+  const actuallyDelivered = topSuccess && sentCount >= 1 && errorsArr.length === 0;
+
+  if (!actuallyDelivered) {
+    const errDetail = errorsArr.length > 0
+      ? errorsArr.map((e: any) => e.error ?? JSON.stringify(e)).join("; ")
+      : `success=${topSuccess} sent=${sentCount}`;
+    const errMsg = `[WhatsApp] Delivery failed: ${errDetail} | httpStatus=${httpStatus} | body=${rawText}`;
     log.error({ templateName, phone: formattedPhone, httpStatus, response: data, attempt: attemptNum }, errMsg);
     console.error(errMsg);
     throw new Error(errMsg);
   }
 
+  const msgId = data?.results?.[0]?.messageId ?? data?.messageId ?? "(none)";
   console.log(
     `[WhatsApp][attempt ${attemptNum}] SUCCESS → template=${templateName} phone=${formattedPhone} ` +
-    `requestId=${data.requestId ?? "(none)"} msgId=${data.messageId ?? data.msg_id ?? "(none)"}`
+    `sent=${sentCount} msgId=${msgId}`
   );
   log.info(
-    { templateName, phone: formattedPhone, requestId: data.requestId, response: data, attempt: attemptNum },
-    "[WhatsApp] Message accepted by Admark"
+    { templateName, phone: formattedPhone, sent: sentCount, msgId, response: data, attempt: attemptNum },
+    "[WhatsApp] Message delivered via Admark"
   );
 }
 
@@ -332,10 +343,7 @@ export async function sendOutForDelivery(
 
   if (isCod) {
     // COD template: {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
-    // The template also has a "Pay Now" CTA button with a dynamic URL (url1).
-    // Until Razorpay is integrated we pass a placeholder — this is required by WhatsApp
-    // to actually deliver the message; omitting url1 causes silent non-delivery.
-    const paymentLink = String(order.razorpayPaymentLink ?? "").trim() || "https://fishtokri.com";
+    // The "Pay Now" button has a STATIC URL set in Admark — no url variable needed.
     await sendTemplate(
       templateName,
       phone,
@@ -346,8 +354,7 @@ export async function sendOutForDelivery(
         dpName,
         dpPhone,
       ],
-      log,
-      { url1: paymentLink }
+      log
     );
   } else {
     // Non-COD template: {{1}} name, {{2}} orderId, {{3}} dp_name, {{4}} dp_phone
