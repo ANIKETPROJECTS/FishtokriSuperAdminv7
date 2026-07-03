@@ -12,6 +12,38 @@ const SEND_TIMEOUT_MS = 15_000; // 15 s per attempt
 const MAX_RETRIES = 2; // 1 initial + 1 retry
 
 // ---------------------------------------------------------------------------
+// Deduplication guard
+// Prevents the same WhatsApp notification from firing twice when two
+// concurrent PUT requests race to MongoDB and both read prev.status before
+// either write commits (classic TOCTOU double-fire).
+// Key: "<orderId>:<templateName>"  Value: timestamp (ms) of last send.
+// Any duplicate within DEDUP_TTL_MS is silently dropped.
+// ---------------------------------------------------------------------------
+const DEDUP_TTL_MS = 30_000; // 30 seconds
+const recentlySent = new Map<string, number>();
+
+function isDuplicate(orderId: string, templateName: string): boolean {
+  const key = `${orderId}:${templateName}`;
+  const last = recentlySent.get(key);
+  const now = Date.now();
+  if (last !== undefined && now - last < DEDUP_TTL_MS) {
+    console.warn(
+      `[WhatsApp] DEDUP — suppressing duplicate ${templateName} for order ${orderId} ` +
+      `(last sent ${now - last}ms ago, TTL=${DEDUP_TTL_MS}ms)`
+    );
+    return true;
+  }
+  recentlySent.set(key, now);
+  // Prune stale entries to avoid unbounded growth
+  if (recentlySent.size > 500) {
+    for (const [k, t] of recentlySent) {
+      if (now - t > DEDUP_TTL_MS) recentlySent.delete(k);
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -344,10 +376,14 @@ export async function sendOutForDelivery(
   if (isCod) {
     // COD template variables (body):
     //   {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
-    // The "Pay Now" button has a dynamic URL variable {{1}} on the button component.
-    // Admark expects this as a separate `url1` key — NOT as another body variable.
-    // Sending it as body6 causes Meta error #132000 (parameter count mismatch).
-    const paymentLink = String(order.razorpayPaymentLink ?? "").trim() || "https://fishtokri.com";
+    //
+    // The template also has a dynamic "Pay Now" button URL ({{1}} on the button component).
+    // Admark's /api/send/bytemplate `variables` field maps ALL keys as body parameters —
+    // there is no documented separate field for button URL variables.
+    // Sending any extra key beyond the 5 body vars causes Meta error #132000.
+    // TODO: Contact Admark support to ask how to pass the button URL parameter separately.
+    // Until then we send only the 5 body vars; the Pay Now button will use its base URL.
+    if (isDuplicate(orderId, templateName)) return;
     await sendTemplate(
       templateName,
       phone,
@@ -358,11 +394,11 @@ export async function sendOutForDelivery(
         dpName,
         dpPhone,
       ],
-      log,
-      { url1: paymentLink }  // button URL sent as separate url1 key
+      log
     );
   } else {
     // Non-COD template: {{1}} name, {{2}} orderId, {{3}} dp_name, {{4}} dp_phone
+    if (isDuplicate(orderId, templateName)) return;
     await sendTemplate(
       templateName,
       phone,
