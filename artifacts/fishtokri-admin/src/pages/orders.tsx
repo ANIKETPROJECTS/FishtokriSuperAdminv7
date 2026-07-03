@@ -757,9 +757,13 @@ function InlineDeliverySelect({
     );
   }
 
-  // Porter/express orders are locked — no dropdown
-  const isPorter = !!order.isExpress || order.scheduleType === "express" || assigned === "porter_delivery";
-  if (isPorter) {
+  // Porter/express orders show the Porter badge unless a real person is already
+  // assigned as a fallback (in which case treat it like a normal dropdown).
+  const isExpressOrder = !!order.isExpress || order.scheduleType === "express";
+  const isPorterAssigned = assigned === "porter_delivery";
+  const hasRealPerson = !!assigned && !isPorterAssigned;
+  const isPorterLocked = isPorterAssigned || (isExpressOrder && !hasRealPerson);
+  if (isPorterLocked) {
     return (
       <div className="flex items-center gap-1.5 rounded-full border border-orange-300 bg-orange-50 px-3 py-1 max-w-[130px]">
         <span className="text-xs font-semibold text-orange-700 truncate">Porter Deliv.</span>
@@ -908,6 +912,7 @@ export default function Orders() {
   const [selectedDeliveryPersonId, setSelectedDeliveryPersonId] = useState("");
   const [inlineAssigningId, setInlineAssigningId] = useState<string | null>(null);
   const [showAllPersons, setShowAllPersons] = useState(false);
+  const [showPorterFallback, setShowPorterFallback] = useState(false);
 
   // Edit order (full edit reuses the create form via /orders/edit/:id)
   const [editingOrderId, setEditingOrderId] = useState<string>("");
@@ -2960,6 +2965,7 @@ export default function Orders() {
                               setEditStatus(displayStatus(o.status, o.deliveryType));
                               setSelectedDeliveryPersonId(o.assignedDeliveryPersonId ?? "");
                               setShowAllPersons(false);
+                              setShowPorterFallback(false);
                             }}
                             className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-blue-50 transition-colors"
                           >
@@ -4557,37 +4563,154 @@ export default function Orders() {
                       <span className="text-xs font-bold text-[#364F9F] uppercase tracking-widest">Delivery Partner</span>
                     </div>
                     <div className="space-y-3">
-                      <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl">
-                        <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                          <MaskIcon src={iconMotorbike} color="#EA580C" className="w-[18px] h-[18px]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-extrabold text-orange-800">Porter Delivery</p>
-                          <p className="text-xs font-semibold text-orange-600 mt-0.5">Express order — handled by Porter</p>
-                        </div>
-                      </div>
-                      {selectedOrder.assignedDeliveryPersonId !== "porter_delivery" && (
-                        <Button
-                          onClick={async () => {
-                            setAssigningDelivery(true);
-                            try {
-                              const payload = { assignedDeliveryPersonId: "porter_delivery", assignedDeliveryPersonName: "Porter Delivery" };
-                              await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
-                              toast({ title: "Assigned to Porter Delivery" });
-                              setSelectedOrder((o: any) => ({ ...o, ...payload }));
-                              setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, ...payload } : o));
-                            } catch (err: any) {
-                              toast({ title: "Error", description: err.message, variant: "destructive" });
-                            } finally { setAssigningDelivery(false); }
-                          }}
-                          disabled={assigningDelivery}
-                          className="w-full bg-orange-500 hover:bg-orange-600 h-11 text-white font-bold rounded-xl"
-                        >
-                          {assigningDelivery ? "Saving..." : "Confirm Porter Delivery"}
-                        </Button>
-                      )}
-                      {selectedOrder.assignedDeliveryPersonId === "porter_delivery" && (
-                        <p className="text-xs font-semibold text-orange-600 text-center">✓ Assigned to Porter Delivery</p>
+                      {/* ── Case A: a real (non-Porter) team member is already assigned as fallback ── */}
+                      {selectedOrder.assignedDeliveryPersonId && selectedOrder.assignedDeliveryPersonId !== "porter_delivery" ? (
+                        <>
+                          <div className="flex items-center gap-3 px-4 py-3 bg-[#EEF1F9] rounded-xl">
+                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center flex-shrink-0 border border-[#364F9F]/20">
+                              <MaskIcon src={iconMotorbike} color="#364F9F" className="w-[18px] h-[18px]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-extrabold text-black truncate">{selectedOrder.assignedDeliveryPersonName}</p>
+                              <p className="text-xs font-semibold text-black mt-0.5">Assigned (express fallback)</p>
+                            </div>
+                            <button
+                              onClick={() => { setSelectedDeliveryPersonId("__none__"); setTimeout(() => handleAssignDelivery(), 0); }}
+                              disabled={assigningDelivery}
+                              className="text-xs font-bold text-red-600 hover:bg-red-600 hover:text-white border border-red-200 bg-white px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <Button
+                            onClick={async () => {
+                              setAssigningDelivery(true);
+                              try {
+                                const payload = { assignedDeliveryPersonId: "porter_delivery", assignedDeliveryPersonName: "Porter Delivery" };
+                                await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+                                toast({ title: "Switched to Porter Delivery" });
+                                setSelectedOrder((o: any) => ({ ...o, ...payload }));
+                                setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, ...payload } : o));
+                                setShowPorterFallback(false);
+                              } catch (err: any) {
+                                toast({ title: "Error", description: err.message, variant: "destructive" });
+                              } finally { setAssigningDelivery(false); }
+                            }}
+                            disabled={assigningDelivery}
+                            variant="outline"
+                            className="w-full h-10 text-orange-700 border-orange-300 font-semibold rounded-xl"
+                          >
+                            Switch back to Porter Delivery
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          {/* ── Porter badge ── */}
+                          <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl">
+                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                              <MaskIcon src={iconMotorbike} color="#EA580C" className="w-[18px] h-[18px]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-extrabold text-orange-800">Porter Delivery</p>
+                              <p className="text-xs font-semibold text-orange-600 mt-0.5">Express order — handled by Porter</p>
+                            </div>
+                          </div>
+
+                          {!showPorterFallback ? (
+                            <>
+                              {selectedOrder.assignedDeliveryPersonId !== "porter_delivery" && (
+                                <Button
+                                  onClick={async () => {
+                                    setAssigningDelivery(true);
+                                    try {
+                                      const payload = { assignedDeliveryPersonId: "porter_delivery", assignedDeliveryPersonName: "Porter Delivery" };
+                                      await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+                                      toast({ title: "Assigned to Porter Delivery" });
+                                      setSelectedOrder((o: any) => ({ ...o, ...payload }));
+                                      setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, ...payload } : o));
+                                    } catch (err: any) {
+                                      toast({ title: "Error", description: err.message, variant: "destructive" });
+                                    } finally { setAssigningDelivery(false); }
+                                  }}
+                                  disabled={assigningDelivery}
+                                  className="w-full bg-orange-500 hover:bg-orange-600 h-11 text-white font-bold rounded-xl"
+                                >
+                                  {assigningDelivery ? "Saving..." : "Confirm Porter Delivery"}
+                                </Button>
+                              )}
+                              {selectedOrder.assignedDeliveryPersonId === "porter_delivery" && (
+                                <p className="text-xs font-semibold text-orange-600 text-center">✓ Assigned to Porter Delivery</p>
+                              )}
+                              {/* Fallback trigger */}
+                              <button
+                                onClick={() => { setShowPorterFallback(true); setSelectedDeliveryPersonId(""); }}
+                                className="w-full text-xs font-semibold text-gray-500 hover:text-gray-800 underline underline-offset-2 text-center py-1 transition-colors"
+                              >
+                                Porter not available? Assign from your team instead
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {/* ── Fallback: assign a registered delivery person ── */}
+                              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-100 rounded-xl">
+                                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-sm font-semibold text-black">Assigning a team member will replace Porter for this express order.</p>
+                              </div>
+                              {modalFiltered && (
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-semibold text-black">
+                                    Showing <strong>{showAllPersons ? deliveryPersons.length : modalFilteredCount}</strong> partner{(showAllPersons ? deliveryPersons.length : modalFilteredCount) !== 1 ? "s" : ""}{!showAllPersons ? " from this hub" : ""}.
+                                  </p>
+                                  <button onClick={() => setShowAllPersons((v) => !v)} className="text-xs font-bold text-[#F05B4E] hover:underline">
+                                    {showAllPersons ? "Show hub-only" : "Show all"}
+                                  </button>
+                                </div>
+                              )}
+                              <div className="flex gap-2">
+                                <Select value={selectedDeliveryPersonId} onValueChange={setSelectedDeliveryPersonId}>
+                                  <SelectTrigger className="h-11 flex-1 text-sm rounded-xl font-semibold">
+                                    <SelectValue placeholder="Select delivery partner..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {modalPersons.length === 0 && (
+                                      <div className="py-4 text-center text-sm font-semibold text-black">No delivery partners {modalFiltered && !showAllPersons ? "for this hub" : "available"}</div>
+                                    )}
+                                    {modalPersons.map((p) => {
+                                      const hubs = [
+                                        ...(p.superHubNames ?? (p.superHubName ? [p.superHubName] : [])),
+                                        ...(p.subHubNames ?? (p.subHubName ? [p.subHubName] : [])),
+                                      ].filter(Boolean);
+                                      return (
+                                        <SelectItem key={p.id} value={p.id}>
+                                          <div className="flex flex-col">
+                                            <span className="font-bold text-black">{p.name}</span>
+                                            <div className="flex items-center gap-2 text-xs font-semibold text-black">
+                                              {p.phone && <span>{p.phone}</span>}
+                                              {hubs.length > 0 && <span>· {hubs.slice(0, 2).join(", ")}{hubs.length > 2 ? ` +${hubs.length - 2}` : ""}</span>}
+                                            </div>
+                                          </div>
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  onClick={async () => { await handleAssignDelivery(); setShowPorterFallback(false); }}
+                                  disabled={assigningDelivery || !selectedDeliveryPersonId}
+                                  className="bg-[#364F9F] hover:bg-[#2C418A] h-11 px-5 text-white font-bold rounded-xl"
+                                >
+                                  {assigningDelivery ? "Saving..." : "Assign"}
+                                </Button>
+                              </div>
+                              <button
+                                onClick={() => { setShowPorterFallback(false); setSelectedDeliveryPersonId(""); setShowAllPersons(false); }}
+                                className="w-full text-xs font-semibold text-gray-400 hover:text-gray-700 underline underline-offset-2 text-center py-1 transition-colors"
+                              >
+                                Cancel — keep Porter
+                              </button>
+                            </>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
