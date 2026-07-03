@@ -80,11 +80,16 @@ FishTokri – Fresh from the sea to your door
 > `�` character on the customer's phone. The only reliable way to get a
 > genuine one-item-per-line layout is to make each item line **static
 > template text** with its own variable, instead of packing a whole list
-> into a single free-text variable. This template supports **up to 10
-> items**; orders with more collapse the extra into a single
-> "+N more items" line (see `buildOrderConfirmedItemSlots()` in
-> `artifacts/api-server/src/services/whatsapp.ts`, already implemented and
-> ready to wire in once this template is approved).
+> into a single free-text variable.
+>
+> This template supports **5 item-line slots**. Orders with 5 or fewer items
+> get one line each. Orders with **more than 5 items**: the first 4 items
+> get their own line, and the 5th slot lists ALL remaining items together,
+> joined with " | " on that one line (e.g. `5. Item A x1 - Rs.100 | 6. Item B
+> x2 - Rs.200 | 7. Item C x1 - Rs.150`) — so nothing is dropped, it just
+> stops being one-per-line beyond item 4. See `buildOrderConfirmedItemSlots()`
+> in `artifacts/api-server/src/services/whatsapp.ts`, already implemented
+> and ready to wire in once this template is approved.
 >
 > This also moves the delivery time onto its own dedicated line below the
 > address (its own variable, not appended to the address text).
@@ -117,20 +122,15 @@ Your FishTokri order has been *confirmed and accepted!*
 {{5}}
 {{6}}
 {{7}}
-{{8}}
-{{9}}
-{{10}}
-{{11}}
-{{12}}
 
-Subtotal:      ₹{{13}}
-Discount:     -₹{{14}}
-Delivery:      ₹{{15}}
-*TOTAL:        ₹{{16}}*
+Subtotal:      ₹{{8}}
+Discount:     -₹{{9}}
+Delivery:      ₹{{10}}
+*TOTAL:        ₹{{11}}*
 
-*Payment:* {{17}}
-*Deliver to:* {{18}}
-⏰ *Delivery Time:* {{19}}
+*Payment:* {{12}}
+*Deliver to:* {{13}}
+⏰ *Delivery Time:* {{14}}
 
 Your fresh seafood is being prepared. We'll notify you when it's out for delivery!
 
@@ -153,24 +153,21 @@ FishTokri – Fresh from the sea to your door
 | `{{5}}`  | 3. Surmai Steak 500g x1 - Rs.280 |
 | `{{6}}`  | (single space) |
 | `{{7}}`  | (single space) |
-| `{{8}}`  | (single space) |
-| `{{9}}`  | (single space) |
-| `{{10}}` | (single space) |
-| `{{11}}` | (single space) |
-| `{{12}}` | (single space) |
-| `{{13}}` | 1110 |
-| `{{14}}` | 50 |
-| `{{15}}` | 30 |
-| `{{16}}` | 1090 |
-| `{{17}}` | Cash on Delivery |
-| `{{18}}` | 12, Sea View Apartments, Kochi – 682001 |
-| `{{19}}` | 03 Jul 2026, 09:30 PM - 10:30 PM |
+| `{{8}}`  | 1110 |
+| `{{9}}`  | 50 |
+| `{{10}}` | 30 |
+| `{{11}}` | 1090 |
+| `{{12}}` | Cash on Delivery |
+| `{{13}}` | 12, Sea View Apartments, Kochi – 682001 |
+| `{{14}}` | 03 Jul 2026, 09:30 PM - 10:30 PM |
 
-> **Note on unused item slots:** orders with fewer than 10 items pass a
+> **Note on unused item slots:** orders with fewer than 5 items pass a
 > single space `" "` for the unused `{{n}}` variables — Meta does not allow
 > an empty string as a variable value. This renders as a blank line at the
 > bottom of the item list; it's a minor, accepted cosmetic trade-off for a
-> fixed-structure template with a variable-length list.
+> fixed-structure template with a variable-length list. With only 5 slots
+> (down from an earlier 10-slot draft), this gap is much smaller for typical
+> orders.
 >
 > **Do not delete Template 1** (`fishtokri_order_confirmed`) until v2 is
 > approved and the backend has been switched over and verified — it is the

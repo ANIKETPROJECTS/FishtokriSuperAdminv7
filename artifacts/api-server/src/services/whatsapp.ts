@@ -106,14 +106,18 @@ export function buildItemsText(
  * Splits an order's items into exactly `maxSlots` template-variable values,
  * one per item so each renders on its own hardcoded template line (true
  * line breaks, since they're static text in the approved template body —
- * not embedded inside a single free-text variable). Orders with more items
- * than `maxSlots` collapse the overflow into the last slot as
- * "+N more item(s)". Unused trailing slots get a single space (" ") — Meta
+ * not embedded inside a single free-text variable).
+ *
+ * Orders with more items than `maxSlots`: the first `maxSlots - 1` items get
+ * their own line as usual, and ALL remaining items are packed into the last
+ * slot together, joined with " | " (still numbered, so nothing is lost —
+ * just not one-per-line beyond the cap). Unused trailing slots (when an
+ * order has fewer items than `maxSlots`) get a single space (" ") — Meta
  * template variables cannot be an empty string.
  */
 export function buildOrderConfirmedItemSlots(
   items: Array<{ name: string; quantity: number; price: number; unit?: string }>,
-  maxSlots = 10
+  maxSlots = 5
 ): string[] {
   const list = Array.isArray(items) ? items : [];
   const lines = list.map((it, idx) => {
@@ -127,8 +131,8 @@ export function buildOrderConfirmedItemSlots(
   } else {
     const shown = lines.slice(0, maxSlots - 1);
     shown.forEach((line, i) => { slots[i] = line; });
-    const remaining = lines.length - shown.length;
-    slots[maxSlots - 1] = `+${remaining} more item${remaining > 1 ? "s" : ""}`;
+    const overflow = lines.slice(maxSlots - 1);
+    slots[maxSlots - 1] = overflow.join(" | ");
   }
   return slots;
 }
