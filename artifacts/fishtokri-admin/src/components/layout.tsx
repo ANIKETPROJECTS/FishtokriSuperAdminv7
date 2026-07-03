@@ -316,25 +316,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         } md:translate-x-0`}
       >
-        {/* Logo */}
-        <div className={`relative flex items-center border-b border-white/10 transition-all duration-300 ${expanded ? "justify-center px-4 py-4" : "justify-center px-2 py-3"}`}>
-          {expanded ? (
-            isDelivery ? (
-              <div className="w-full mx-2 h-[76px] rounded-2xl bg-white flex items-center justify-center flex-shrink-0 shadow-md">
-                <img src="/logo.png" alt="FishTokri" className="w-[180px] h-[64px] object-contain" />
-              </div>
-            ) : (
-              <div className="w-[180px] h-[64px] rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                <img src="/logo.png" alt="FishTokri" className="w-[164px] h-[56px] object-contain" />
-              </div>
-            )
-          ) : (
-            <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <img src="/logo.png" alt="FishTokri" className="w-7 h-7 object-contain" />
-            </div>
-          )}
-        </div>
-
         {/* Role Label — hidden for delivery */}
         {expanded && !isDelivery && (
           <div className="px-5 pt-5 pb-2">
