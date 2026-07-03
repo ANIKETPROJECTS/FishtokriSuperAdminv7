@@ -332,7 +332,7 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
  *     → fishtokri_out_for_delivery  (4 vars): name, orderId, dp_name, dp_phone
  *
  *   COD / COD+wallet with outstanding due amount (dueAmount > 0)
- *     → fishtokri_out_for_delivery_cod (5 vars): name, orderId, amount_due, dp_name, dp_phone
+ *     → fishtokri_out_for_delivery_cod_new (6 vars): name, orderId, amount_due, dp_name, dp_phone, payment_link
  *     Includes a Razorpay "Pay Now" button baked into the template.
  */
 export async function sendOutForDelivery(
@@ -364,7 +364,7 @@ export async function sendOutForDelivery(
   const isCod = isCashMode && dueAmount > 0;
 
   const templateName = isCod
-    ? "fishtokri_out_for_delivery_cod"
+    ? "fishtokri_out_for_delivery_cod_new"
     : "fishtokri_out_for_delivery";
 
   console.log(

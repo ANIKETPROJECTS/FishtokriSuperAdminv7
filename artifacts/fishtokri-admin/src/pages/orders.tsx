@@ -2076,7 +2076,7 @@ export default function Orders() {
           const isCashMode = mode === "cod" || mode === "cash" || mode === "";
           const dueAmount = Number(selectedOrder.dueAmount ?? 0);
           return (isCashMode && dueAmount > 0)
-            ? "fishtokri_out_for_delivery_cod"
+            ? "fishtokri_out_for_delivery_cod_new"
             : "fishtokri_out_for_delivery";
         }
         if (status === "cancelled") return "fishtokri_order_cancelled";
