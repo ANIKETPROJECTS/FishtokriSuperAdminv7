@@ -374,15 +374,14 @@ export async function sendOutForDelivery(
   );
 
   if (isCod) {
-    // COD template variables (body):
-    //   {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
+    // COD template variables (body) — 6 body vars, no dynamic button URL:
+    //   {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone, {{6}} payment_link
     //
-    // The template also has a dynamic "Pay Now" button URL ({{1}} on the button component).
-    // Admark's /api/send/bytemplate `variables` field maps ALL keys as body parameters —
-    // there is no documented separate field for button URL variables.
-    // Sending any extra key beyond the 5 body vars causes Meta error #132000.
-    // TODO: Contact Admark support to ask how to pass the button URL parameter separately.
-    // Until then we send only the 5 body vars; the Pay Now button will use its base URL.
+    // The template body includes the payment link as {{6}} in plain text.
+    // There is NO dynamic button URL component — that caused error #132000 because
+    // Admark's /api/send/bytemplate has no way to pass button URL params separately.
+    // The template was recreated with all 6 values as body variables.
+    const paymentLink = String(order.razorpayPaymentLink ?? "").trim() || "https://fishtokri.com";
     if (isDuplicate(orderId, templateName)) return;
     await sendTemplate(
       templateName,
@@ -393,6 +392,7 @@ export async function sendOutForDelivery(
         String(dueAmount),
         dpName,
         dpPhone,
+        paymentLink,   // body6 → inline payment link in body text
       ],
       log
     );

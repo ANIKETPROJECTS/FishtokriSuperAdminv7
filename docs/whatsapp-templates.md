@@ -120,6 +120,11 @@ Thank you for choosing FishTokri! 🐟
 | **Category**      | **Utility**                            |
 | **Language**      | English                                |
 
+> ⚠️ **No dynamic button URL** — Admark's `/api/send/bytemplate` API cannot pass button URL
+> variables separately from body variables. The payment link is included as `{{6}}` in the
+> body text instead. Delete the old template (which had a dynamic "Pay Now" button) and
+> recreate it exactly as shown below.
+
 **Header (Text):**
 ```
 Out for Delivery 🚚
@@ -138,35 +143,24 @@ Your FishTokri order *#{{2}}* is now *Out for Delivery!*
 📞 {{5}}
 
 ⏱️ *Save time — pay online before delivery arrives!*
-Tap the button below to pay ₹{{3}} securely via Razorpay. No cash needed at the door.
+Pay securely via Razorpay (no cash needed at the door):
+{{6}}
 
 — Team FishTokri
 ```
 
-**Button — Call to Action (URL):**
-
-| Field       | Value                    |
-|-------------|--------------------------|
-| Button Type | Visit Website            |
-| Button Text | `Pay Now`                |
-| URL Type    | Dynamic                  |
-| Base URL    | `https://rzp.io/l/`      |
-| URL Variable | `{{1}}`                 |
-
-> The full button URL becomes `https://rzp.io/l/<razorpay_payment_link_id>`.
-> At send time the backend passes the Razorpay Payment Link short code as the URL variable.
-> If you have a custom Razorpay domain configured, replace `rzp.io/l/` with that domain.
+**No button / Interactive Actions** — leave the Interactive Actions section empty. Do NOT add a URL button.
 
 **Sample variable values:**
 
-| Variable        | Sample Value           |
-|-----------------|------------------------|
-| `{{1}}`         | Rahul Sharma           |
-| `{{2}}`         | ORD-2847               |
-| `{{3}}`         | 1090                   |
-| `{{4}}`         | Mohammed Arif          |
-| `{{5}}`         | +91 98765 43210        |
-| Button `{{1}}`  | AbCd1234               |
+| Variable | Sample Value                    |
+|----------|---------------------------------|
+| `{{1}}`  | Rahul Sharma                    |
+| `{{2}}`  | ORD-2847                        |
+| `{{3}}`  | 1090                            |
+| `{{4}}`  | Mohammed Arif                   |
+| `{{5}}`  | +91 98765 43210                 |
+| `{{6}}`  | https://rzp.io/l/AbCd1234       |
 
 ---
 
