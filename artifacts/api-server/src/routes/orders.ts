@@ -1656,6 +1656,44 @@ router.put("/:id", async (req: ScopedRequest, res) => {
 
     res.json({ order: result });
 
+    // --- WhatsApp notifications (fire-and-forget, never blocks the response) ---
+    if (status !== undefined && String(status) !== String(prev.status ?? "")) {
+      const newStatus = String(status);
+      const orderDoc = result as any;
+      (async () => {
+        try {
+          if (newStatus === "confirmed") {
+            await sendOrderConfirmed(orderDoc, req.log);
+          } else if (newStatus === "out_for_delivery") {
+            // Look up the delivery person's phone from hub_users.
+            let dpPhone = "";
+            if (orderDoc.assignedDeliveryPersonId) {
+              try {
+                const dp = await HubUser.findById(
+                  orderDoc.assignedDeliveryPersonId,
+                  { phone: 1 }
+                ).lean();
+                dpPhone = String((dp as any)?.phone ?? "").trim();
+              } catch (e) {
+                req.log.warn({ err: e }, "[WhatsApp] Could not fetch delivery person phone");
+              }
+            }
+            await sendOutForDelivery(orderDoc, dpPhone, req.log);
+          } else if (newStatus === "cancelled") {
+            // Merge the cancellationReason from the update body (may not be on result yet).
+            const cancelDoc = {
+              ...orderDoc,
+              cancellationReason:
+                (cancellationReason ?? orderDoc.cancellationReason ?? "").toString().trim(),
+            };
+            await sendOrderCancelled(cancelDoc, req.log);
+          }
+        } catch (e) {
+          req.log.error({ err: e }, "[WhatsApp] Notification error");
+        }
+      })();
+    }
+
     // Sync timeslot order counts to MongoDB after any status change on a slot order.
     if ((result as any).scheduleType === "slot" && (result as any).timeslotId && (result as any).subHubName) {
       syncTimeslotOrderCounts(String((result as any).timeslotId), String((result as any).subHubName), req.log);

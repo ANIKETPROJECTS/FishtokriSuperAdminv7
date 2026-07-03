@@ -16,11 +16,16 @@ const WABA_API_BASE = "https://verifiedwhatsapp.admarksolution.com";
 /**
  * Normalise an Indian mobile number to the 91XXXXXXXXXX format the API
  * expects. Returns null for unrecognised formats (caller skips the send).
+ * Handles:
+ *   10 digits            → 91XXXXXXXXXX
+ *   11 digits, leading 0 → 91XXXXXXXXXX  (e.g. 0XXXXXXXXXX)
+ *   12 digits, starts 91 → unchanged
  */
 function formatPhone(phone: string): string | null {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("91") && digits.length === 12) return digits;
   if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) return `91${digits.slice(1)}`;
   return null;
 }
 
@@ -129,7 +134,10 @@ async function sendTemplate(
  */
 export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void> {
   const phone = String(order.phone ?? "").trim();
-  if (!phone) return;
+  if (!phone) {
+    (log ?? console).warn({ orderId: String(order._id) }, "[WhatsApp] Order has no phone — skipping order_confirmed");
+    return;
+  }
 
   const orderId = `ORD-${String(order._id).slice(-6).toUpperCase()}`;
   const itemsText = buildItemsText(order.items ?? []);
