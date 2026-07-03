@@ -14,6 +14,7 @@ import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { HubUser } from "../db/models/hub-user.js";
 import { sendOrderConfirmed, sendOutForDelivery, sendOrderCancelled } from "../services/whatsapp.js";
+import { createPaymentLink } from "../services/razorpay.js";
 
 const router = Router();
 router.use(requireAuth as any);
@@ -1678,6 +1679,34 @@ router.put("/:id", async (req: ScopedRequest, res) => {
                 req.log.warn({ err: e }, "[WhatsApp] Could not fetch delivery person phone");
               }
             }
+
+            // Auto-generate a Razorpay payment link for COD orders so the
+            // customer can pay online before the delivery partner arrives.
+            const rawPayMode = String(orderDoc.paymentMode ?? "").trim().toLowerCase();
+            const isCashMode = rawPayMode === "cod" || rawPayMode === "cash" || rawPayMode === "";
+            const dueAmt = Number(orderDoc.dueAmount ?? 0);
+            const needsPayLink = isCashMode && dueAmt > 0 && !orderDoc.razorpayPaymentLink;
+            if (needsPayLink) {
+              try {
+                const payLink = await createPaymentLink(orderDoc, req.log);
+                if (payLink) {
+                  // Persist the link on the order document for future reference.
+                  const conn2 = await getOrdersDb();
+                  await conn2.db.collection(COLLECTION).updateOne(
+                    { _id: orderDoc._id },
+                    { $set: { razorpayPaymentLink: payLink } }
+                  );
+                  orderDoc.razorpayPaymentLink = payLink;
+                  req.log.info(
+                    { orderId: orderDoc.orderId, payLink },
+                    "[Razorpay] Payment link saved to order"
+                  );
+                }
+              } catch (e) {
+                req.log.error({ err: e }, "[Razorpay] Failed to create/save payment link");
+              }
+            }
+
             await sendOutForDelivery(orderDoc, dpPhone, req.log);
           } else if (newStatus === "cancelled") {
             // Merge the cancellationReason from the update body (may not be on result yet).
