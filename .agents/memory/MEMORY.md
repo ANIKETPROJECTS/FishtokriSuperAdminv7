@@ -1,1 +1,2 @@
 - [API server has no watch mode](api-server-no-watch.md) — always restart `Start API` workflow after editing any `api-server/src/` TypeScript file or changes won't take effect.
+- [WhatsApp template param newlines unreliable](whatsapp-template-param-newlines.md) — `\n` in a template variable can get collapsed (e.g. to " | "); number list entries instead of relying on line breaks.

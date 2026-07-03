@@ -65,23 +65,70 @@ function formatPhone(phone: string): string | null {
 
 /**
  * Build the human-readable items block used inside the order-confirmed bill.
- * Each item is on its own line so the message body is easy to read.
- * WhatsApp template variable values accept "\n" line breaks.
- * Example:
- *   "Fish (500g) x2 - Rs.300
- *    Prawns x1 - Rs.450"
+ *
+ * Each item is prefixed with its sequence number (1., 2., 3., …) so the list
+ * still reads as a clear, one-by-one sequence even if the WhatsApp/Admark
+ * pipeline collapses the "\n" line breaks we send (some WhatsApp Business
+ * API relays strip newlines from template parameters and squash the value
+ * onto a single line, e.g. joined with " | "). Numbering removes the
+ * ambiguity either way — multi-line when newlines survive, still clearly
+ * ordered when they don't.
+ *
+ * Example (rendered as separate lines):
+ *   "1. Fish (500g) x2 - Rs.300
+ *    2. Prawns x1 - Rs.450"
+ *
+ * Example (if the relay strips newlines):
+ *   "1. Fish (500g) x2 - Rs.300 | 2. Prawns x1 - Rs.450"
  */
 export function buildItemsText(
   items: Array<{ name: string; quantity: number; price: number; unit?: string }>
 ): string {
   if (!Array.isArray(items) || items.length === 0) return "-";
   return items
-    .map((it) => {
+    .map((it, idx) => {
       const unit = it.unit ? ` (${it.unit})` : "";
       const lineTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
-      return `${it.name}${unit} x${it.quantity} - Rs.${lineTotal}`;
+      return `${idx + 1}. ${it.name}${unit} x${it.quantity} - Rs.${lineTotal}`;
     })
     .join("\n");
+}
+
+/** Formats a "YYYY-MM-DD" delivery date string as "03 Jul 2026". Leaves other formats untouched. */
+function formatDeliveryDateLabel(d: string): string {
+  const s = String(d ?? "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return s;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthIdx = Number(m[2]) - 1;
+  return `${m[3]} ${months[monthIdx] ?? m[2]} ${m[1]}`;
+}
+
+/**
+ * Build a human-readable delivery-timing label so the order-confirmed
+ * message always tells the customer *when* to expect delivery — for
+ * scheduled slot orders, express (Porter) orders, and instant/ASAP orders
+ * alike. Previously this only showed anything when timeslotLabel /
+ * timeslotStart+End were set, so express/instant orders (and slot orders
+ * missing those specific fields) silently showed no timing at all.
+ */
+function buildDeliveryTimingLabel(order: any): string {
+  const scheduleType = String(order?.scheduleType ?? "").trim().toLowerCase();
+  const slotLabel =
+    String(order?.timeslotLabel ?? "").trim() ||
+    (order?.timeslotStart && order?.timeslotEnd ? `${order.timeslotStart} - ${order.timeslotEnd}` : "");
+  const dateLabel = order?.deliveryDate ? formatDeliveryDateLabel(String(order.deliveryDate)) : "";
+
+  if (order?.isExpress || scheduleType === "express") {
+    return "Express Delivery (via Porter)";
+  }
+  if (scheduleType === "instant") {
+    return "As soon as possible";
+  }
+  if (slotLabel && dateLabel) return `${dateLabel}, ${slotLabel}`;
+  if (slotLabel) return slotLabel;
+  if (dateLabel) return dateLabel;
+  return "";
 }
 
 type Logger = {
@@ -302,17 +349,14 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     rawMode || "Cash on Delivery";
   const baseAddress =
     String(order.address ?? order.deliveryArea ?? "").trim() || "—";
-  // Append time slot if available so the customer knows when to expect delivery.
+  // Append delivery timing (slot / express / instant) so the customer always
+  // knows when to expect delivery, regardless of order schedule type.
   // Embedded in the existing {{9}} variable — no template change required.
-  const slotLabel =
-    String(order.timeslotLabel ?? "").trim() ||
-    (order.timeslotStart && order.timeslotEnd
-      ? `${order.timeslotStart} - ${order.timeslotEnd}`
-      : "");
-  const address = slotLabel ? `${baseAddress}\n⏰ Time Slot: ${slotLabel}` : baseAddress;
+  const timingLabel = buildDeliveryTimingLabel(order);
+  const address = timingLabel ? `${baseAddress}\n⏰ Delivery Time: ${timingLabel}` : baseAddress;
 
   console.log(
-    `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} slot="${slotLabel}"`
+    `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} timing="${timingLabel}"`
   );
 
   await sendTemplate(
