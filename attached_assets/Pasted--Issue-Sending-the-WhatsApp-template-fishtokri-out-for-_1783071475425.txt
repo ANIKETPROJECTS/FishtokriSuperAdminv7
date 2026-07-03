@@ -1,0 +1,38 @@
+**Issue:**
+
+Sending the WhatsApp template `fishtokri_out_for_delivery_cod` via `/api/send/bytemplate` returns error `#132000 - Number of parameters does not match the expected number of params`.
+
+**Root cause:**
+
+The template has **two separate parameter groups**:
+
+1. **Body** — 5 placeholders:
+```
+Hello {{1}},
+Your FishTokri order #{{2}} is now Out for Delivery!
+Amount Due: ₹{{3}}
+Your Delivery Partner: 👤 {{4}} 📞 {{5}}
+```
+
+2. **Button (URL)** — 1 placeholder, independent of the body's numbering:
+```
+https://rzp.io/l/{{1}}
+```
+
+WhatsApp requires these to be sent as **separate components** in the template payload — body params and button/URL params are not part of the same sequence, even though both start at `{{1}}`.
+
+Our request sent all 6 values as one flat list (`body1`...`body6`) under a single `variables` object. The API appears to either map all 6 to the body (which only has 5 slots → mismatch), or has no defined way to split the 6th value into the button component — the documented `variables` field only describes generic "named variables for templates" with no distinction between body and button parameters.
+
+**Fix / What needs to happen:**
+
+1. Send exactly 5 values for the body (`body1`–`body5`, i.e. name, order#, amount, partner name, partner phone).
+2. Send the Razorpay link suffix (the value that fills `https://rzp.io/l/{{1}}`) as a **separate button parameter**, not as a 6th body variable.
+
+**Action needed:**
+
+The current API documentation doesn't show a distinct field for button/URL parameters (only `variables` / `csvVariables` for body text). Ask Admark Solutions support:
+> "Our template has a dynamic URL button (`https://rzp.io/l/{{1}}`) in addition to 5 body placeholders. How do we pass the button parameter separately from the body variables in `/api/send/bytemplate`? Is there a dedicated field (e.g. `buttonVariables`, `components`), or does `variables` support a reserved key like `button1` for this?"
+
+**Temporary workaround to test:**
+
+Send only the 5 body variables first — the message should then send successfully, but the "Pay Now" button will likely be broken/non-functional (empty or malformed link) since it has no value.

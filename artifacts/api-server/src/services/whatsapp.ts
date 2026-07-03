@@ -342,11 +342,11 @@ export async function sendOutForDelivery(
   );
 
   if (isCod) {
-    // COD template variables:
+    // COD template variables (body):
     //   {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
-    // The "Pay Now" button has a dynamic URL. Admark maps the button URL as the NEXT
-    // sequential body variable (body6), not as a separate url1/button1 key.
-    // WhatsApp expects 6 params total (5 body + 1 button URL); passing only 5 gives error 132000.
+    // The "Pay Now" button has a dynamic URL variable {{1}} on the button component.
+    // Admark expects this as a separate `url1` key — NOT as another body variable.
+    // Sending it as body6 causes Meta error #132000 (parameter count mismatch).
     const paymentLink = String(order.razorpayPaymentLink ?? "").trim() || "https://fishtokri.com";
     await sendTemplate(
       templateName,
@@ -357,9 +357,9 @@ export async function sendOutForDelivery(
         String(dueAmount),
         dpName,
         dpPhone,
-        paymentLink,          // body6 → button URL (Pay Now)
       ],
-      log
+      log,
+      { url1: paymentLink }  // button URL sent as separate url1 key
     );
   } else {
     // Non-COD template: {{1}} name, {{2}} orderId, {{3}} dp_name, {{4}} dp_phone
