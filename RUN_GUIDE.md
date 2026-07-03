@@ -54,13 +54,9 @@ If the preview pane shows blank on first load, wait a few more seconds and refre
 
 ## 5. Log In
 
-| Field    | Value                    |
-|----------|--------------------------|
-| Email    | `admin@fishtokri.com`    |
-| Password | `FishTokri@Admin2024`    |
-| Role     | Master Admin             |
+Select **Master Admin** on the role screen, then enter your admin email and password.
 
-Select **Master Admin** on the role screen, then enter the credentials above.
+> ⚠️ Admin credentials are not stored in this file. Retrieve them from your password manager or internal documentation. Do not commit credentials to the repository.
 
 ---
 
