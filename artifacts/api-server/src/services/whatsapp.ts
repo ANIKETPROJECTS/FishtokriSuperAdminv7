@@ -262,14 +262,13 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
 /**
  * Fires when an order goes out for delivery (status → out_for_delivery).
  *
- * For non-COD orders → template: fishtokri_out_for_delivery
- * For COD orders     → template: fishtokri_out_for_delivery_cod
+ * Routing:
+ *   UPI / wallet / UPI+wallet (or COD fully paid via wallet, dueAmount = 0)
+ *     → fishtokri_out_for_delivery  (4 vars): name, orderId, dp_name, dp_phone
  *
- * Variables for both templates: {{1}} name, {{2}} orderId,
- *   {{3}} partner name, {{4}} partner phone
- *
- * NOTE: When Razorpay is integrated, pass the payment link as {{5}} to
- * the fishtokri_out_for_delivery_cod template for online-collect-on-delivery.
+ *   COD / COD+wallet with outstanding due amount (dueAmount > 0)
+ *     → fishtokri_out_for_delivery_cod (5 vars): name, orderId, amount_due, dp_name, dp_phone
+ *     Includes a Razorpay "Pay Now" button baked into the template.
  */
 export async function sendOutForDelivery(
   order: any,
@@ -291,29 +290,52 @@ export async function sendOutForDelivery(
     "Our delivery partner";
   const dpPhone = deliveryPersonPhone.trim() || "-";
 
-  // Detect COD: paymentMode is "cod", "cash", or not set (default for cash orders).
+  // COD detection:
+  //   - paymentMode must be "cod", "cash", or empty (default cash order)
+  //   - AND dueAmount must be > 0 (if fully paid via wallet the customer owes nothing at door)
   const rawMode = String(order.paymentMode ?? "").trim().toLowerCase();
-  const isCod = rawMode === "cod" || rawMode === "cash" || rawMode === "";
+  const isCashMode = rawMode === "cod" || rawMode === "cash" || rawMode === "";
+  const dueAmount = Number(order.dueAmount ?? 0);
+  const isCod = isCashMode && dueAmount > 0;
 
   const templateName = isCod
     ? "fishtokri_out_for_delivery_cod"
     : "fishtokri_out_for_delivery";
 
   console.log(
-    `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} phone=${phone} dp=${dpName} dpPhone=${dpPhone} paymentMode=${rawMode || "(empty)"} template=${templateName}`
+    `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} ` +
+    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} ` +
+    `paymentMode=${rawMode || "(empty)"} dueAmount=${dueAmount} template=${templateName}`
   );
 
-  await sendTemplate(
-    templateName,
-    phone,
-    [
-      String(order.customerName ?? "Customer"),
-      orderId,
-      dpName,
-      dpPhone,
-    ],
-    log
-  );
+  if (isCod) {
+    // COD template: {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
+    await sendTemplate(
+      templateName,
+      phone,
+      [
+        String(order.customerName ?? "Customer"),
+        orderId,
+        String(dueAmount),
+        dpName,
+        dpPhone,
+      ],
+      log
+    );
+  } else {
+    // Non-COD template: {{1}} name, {{2}} orderId, {{3}} dp_name, {{4}} dp_phone
+    await sendTemplate(
+      templateName,
+      phone,
+      [
+        String(order.customerName ?? "Customer"),
+        orderId,
+        dpName,
+        dpPhone,
+      ],
+      log
+    );
+  }
 }
 
 /**

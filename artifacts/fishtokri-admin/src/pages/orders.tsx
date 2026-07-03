@@ -2072,8 +2072,10 @@ export default function Orders() {
       const _waTemplateHint = (status: string): string => {
         if (status === "confirmed") return "fishtokri_order_confirmed";
         if (status === "out_for_delivery") {
-          const mode = String(selectedOrder.paymentMode ?? "").toLowerCase();
-          return (mode === "cod" || mode === "cash" || mode === "")
+          const mode = String(selectedOrder.paymentMode ?? "").trim().toLowerCase();
+          const isCashMode = mode === "cod" || mode === "cash" || mode === "";
+          const dueAmount = Number(selectedOrder.dueAmount ?? 0);
+          return (isCashMode && dueAmount > 0)
             ? "fishtokri_out_for_delivery_cod"
             : "fishtokri_out_for_delivery";
         }
