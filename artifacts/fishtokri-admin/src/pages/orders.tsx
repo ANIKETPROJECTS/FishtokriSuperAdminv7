@@ -2061,6 +2061,17 @@ export default function Orders() {
 
     setSavingStatus(true);
     try {
+      const _waTemplates: Record<string, string> = {
+        confirmed: "fishtokri_order_confirmed",
+        out_for_delivery: "fishtokri_out_for_delivery",
+        cancelled: "fishtokri_order_cancelled",
+      };
+      console.log(
+        `[WhatsApp] Status change triggered → orderId=${selectedOrder.orderId || selectedOrder._id} ` +
+        `customer=${selectedOrder.customerName} phone=${selectedOrder.phone} ` +
+        `${selectedOrder.status} → ${editStatus}` +
+        (_waTemplates[editStatus] ? ` | WA template: ${_waTemplates[editStatus]}` : " | no WA notification")
+      );
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify({ status: editStatus }) });
       const movedOutOfDelivered =
         selectedOrder.status === "delivered" &&
@@ -2171,6 +2182,10 @@ export default function Orders() {
         payload.assignedDeliveryPersonId = "porter_delivery";
         payload.assignedDeliveryPersonName = "Porter Delivery";
       }
+      console.log(
+        `[WhatsApp] acceptOrder → orderId=${order.orderId || orderId} customer=${order.customerName} phone=${order.phone} ` +
+        `pending → confirmed | WA template: fishtokri_order_confirmed`
+      );
       await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify(payload) });
       toast({
         title: "Order accepted",
@@ -2195,6 +2210,10 @@ export default function Orders() {
     const orderId = String(rejectingOrder._id);
     setConfirmingReject(true);
     try {
+      console.log(
+        `[WhatsApp] submitReject → orderId=${rejectingOrder.orderId || orderId} customer=${rejectingOrder.customerName} phone=${rejectingOrder.phone} ` +
+        `→ cancelled | WA template: fishtokri_order_cancelled | reason="${reason}"`
+      );
       await apiFetch(`/api/orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify({ status: "cancelled", cancellationReason: reason }),
