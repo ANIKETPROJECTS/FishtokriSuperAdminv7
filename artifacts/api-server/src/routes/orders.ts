@@ -1680,12 +1680,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
               }
             }
 
-            // Auto-generate a Razorpay payment link for COD orders so the
-            // customer can pay online before the delivery partner arrives.
-            const rawPayMode = String(orderDoc.paymentMode ?? "").trim().toLowerCase();
-            const isCashMode = rawPayMode === "cod" || rawPayMode === "cash" || rawPayMode === "";
+            // Auto-generate a Razorpay payment link whenever there is an outstanding
+            // due amount — covers COD, wallet-partial, and any other partially-paid mode.
             const dueAmt = Number(orderDoc.dueAmount ?? 0);
-            const needsPayLink = isCashMode && dueAmt > 0 && !orderDoc.razorpayPaymentLink;
+            const needsPayLink = dueAmt > 0 && !orderDoc.razorpayPaymentLink;
             if (needsPayLink) {
               try {
                 const payLink = await createPaymentLink(orderDoc, req.log);

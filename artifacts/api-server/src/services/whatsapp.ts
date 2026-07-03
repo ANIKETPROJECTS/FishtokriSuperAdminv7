@@ -355,15 +355,16 @@ export async function sendOutForDelivery(
     "Our delivery partner";
   const dpPhone = deliveryPersonPhone.trim() || "-";
 
-  // COD detection:
-  //   - paymentMode must be "cod", "cash", or empty (default cash order)
-  //   - AND dueAmount must be > 0 (if fully paid via wallet the customer owes nothing at door)
+  // Payment-link routing:
+  //   Any order with dueAmount > 0 (whether COD, wallet-partial, or any other mode)
+  //   gets the COD template which embeds a Razorpay payment link so the customer
+  //   can pay the remaining balance digitally before the delivery partner arrives.
+  //   Orders that are fully paid (dueAmount === 0) get the plain delivery template.
   const rawMode = String(order.paymentMode ?? "").trim().toLowerCase();
-  const isCashMode = rawMode === "cod" || rawMode === "cash" || rawMode === "";
   const dueAmount = Number(order.dueAmount ?? 0);
-  const isCod = isCashMode && dueAmount > 0;
+  const hasOutstandingDue = dueAmount > 0;
 
-  const templateName = isCod
+  const templateName = hasOutstandingDue
     ? "fishtokri_out_for_delivery_cod_new"
     : "fishtokri_out_for_delivery";
 
@@ -373,7 +374,7 @@ export async function sendOutForDelivery(
     `paymentMode=${rawMode || "(empty)"} dueAmount=${dueAmount} template=${templateName}`
   );
 
-  if (isCod) {
+  if (hasOutstandingDue) {
     // COD template variables (body) — 6 body vars, no dynamic button URL:
     //   {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone, {{6}} payment_link
     //
