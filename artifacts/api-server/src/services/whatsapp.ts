@@ -66,32 +66,45 @@ function formatPhone(phone: string): string | null {
 /**
  * Build the human-readable items block used inside the order-confirmed bill.
  *
- * Each item is prefixed with its sequence number (1., 2., 3., …) so the list
- * still reads as a clear, one-by-one sequence even if the WhatsApp/Admark
- * pipeline collapses the "\n" line breaks we send (some WhatsApp Business
- * API relays strip newlines from template parameters and squash the value
- * onto a single line, e.g. joined with " | "). Numbering removes the
- * ambiguity either way — multi-line when newlines survive, still clearly
- * ordered when they don't.
+ * Each item is prefixed with its sequence number (1., 2., 3., …) and the
+ * whole list is joined with " | " rather than a real line break. WhatsApp's
+ * Cloud API hard-rejects any template parameter value containing a literal
+ * newline (the send fails outright with "(#100) Invalid parameter" — it does
+ * not just get squashed) so a true one-per-line layout is not possible
+ * inside a single free-text template variable. Numbering keeps the list
+ * clearly ordered even though it renders on one line.
  *
- * Example (rendered as separate lines):
- *   "1. Fish (500g) x2 - Rs.300
- *    2. Prawns x1 - Rs.450"
- *
- * Example (if the relay strips newlines):
+ * Example:
  *   "1. Fish (500g) x2 - Rs.300 | 2. Prawns x1 - Rs.450"
  */
 export function buildItemsText(
   items: Array<{ name: string; quantity: number; price: number; unit?: string }>
 ): string {
   if (!Array.isArray(items) || items.length === 0) return "-";
+  // NOTE: joined with " | ", not "\n" — WhatsApp's Cloud API rejects template
+  // parameter values containing a literal newline (see sanitizeTemplateParam).
+  // Each item is still numbered so the list reads as a clear sequence.
   return items
     .map((it, idx) => {
       const unit = it.unit ? ` (${it.unit})` : "";
       const lineTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
       return `${idx + 1}. ${it.name}${unit} x${it.quantity} - Rs.${lineTotal}`;
     })
-    .join("\n");
+    .join(" | ");
+}
+
+/**
+ * WhatsApp's Cloud API rejects template parameter values that contain a
+ * newline (\n), a carriage return (\r), a tab (\t), or 4+ consecutive
+ * spaces — the entire send fails with "(#100) Invalid parameter" and the
+ * customer receives nothing. Call this on every value right before it is
+ * placed into a template variable.
+ */
+function sanitizeTemplateParam(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\r\n\t]+/g, " | ")
+    .replace(/ {2,}/g, " ")
+    .trim();
 }
 
 /** Formats a "YYYY-MM-DD" delivery date string as "03 Jul 2026". Leaves other formats untouched. */
@@ -275,9 +288,16 @@ async function sendTemplate(
 
   // Build named variable object: { body1: "...", body2: "...", … }
   // Merge any extra vars (e.g. url1 for CTA button URLs) after the body vars.
+  //
+  // IMPORTANT: WhatsApp's Cloud API rejects template parameter values that
+  // contain a newline (\n), a tab (\t), or 4+ consecutive spaces — the whole
+  // send fails with "(#100) Invalid parameter". Any value we build (item
+  // lists, addresses with an appended timing line, etc.) MUST be sanitized
+  // before it goes into a template variable, or the message silently fails
+  // to deliver even though our own code has no bug.
   const varsObj: Record<string, string> = {};
   bodyVars.forEach((v, i) => {
-    varsObj[`body${i + 1}`] = String(v ?? "").trim();
+    varsObj[`body${i + 1}`] = sanitizeTemplateParam(v);
   });
   if (extraVars) {
     Object.assign(varsObj, extraVars);
@@ -353,7 +373,9 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
   // knows when to expect delivery, regardless of order schedule type.
   // Embedded in the existing {{9}} variable — no template change required.
   const timingLabel = buildDeliveryTimingLabel(order);
-  const address = timingLabel ? `${baseAddress}\n⏰ Delivery Time: ${timingLabel}` : baseAddress;
+  // Use " | " here too — a literal newline in a template variable causes
+  // WhatsApp to reject the whole message with "(#100) Invalid parameter".
+  const address = timingLabel ? `${baseAddress} | ⏰ Delivery Time: ${timingLabel}` : baseAddress;
 
   console.log(
     `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} timing="${timingLabel}"`
