@@ -33,19 +33,22 @@ function formatPhone(phone: string): string | null {
 
 /**
  * Build the human-readable items block used inside the order-confirmed bill.
- * Each line: "• Item name (unit) × qty — ₹total"
+ * Items are joined with " | " (single line) so the value is safe for
+ * WhatsApp template variables — multi-line newlines and bullet characters
+ * cause some API implementations to reject the request.
+ * Example: "Fish (500g) x2 - Rs.300 | Prawns x1 - Rs.450"
  */
 export function buildItemsText(
   items: Array<{ name: string; quantity: number; price: number; unit?: string }>
 ): string {
-  if (!Array.isArray(items) || items.length === 0) return "—";
+  if (!Array.isArray(items) || items.length === 0) return "-";
   return items
     .map((it) => {
       const unit = it.unit ? ` (${it.unit})` : "";
       const lineTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
-      return `• ${it.name}${unit} x${it.quantity} - Rs.${lineTotal}`;
+      return `${it.name}${unit} x${it.quantity} - Rs.${lineTotal}`;
     })
-    .join("\n");
+    .join(" | ");
 }
 
 type Logger = {
@@ -256,12 +259,15 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
 
 /**
  * Fires when an order goes out for delivery (status → out_for_delivery).
- * Template: fishtokri_out_for_delivery
- * Variables: {{1}} name, {{2}} orderId, {{3}} partner name, {{4}} partner phone
  *
- * NOTE: The COD variant (fishtokri_out_for_delivery_cod) requires a Razorpay
- * payment link. Once Razorpay is integrated, replace this call with the COD
- * template for orders where paymentMode === "cod".
+ * For non-COD orders → template: fishtokri_out_for_delivery
+ * For COD orders     → template: fishtokri_out_for_delivery_cod
+ *
+ * Variables for both templates: {{1}} name, {{2}} orderId,
+ *   {{3}} partner name, {{4}} partner phone
+ *
+ * NOTE: When Razorpay is integrated, pass the payment link as {{5}} to
+ * the fishtokri_out_for_delivery_cod template for online-collect-on-delivery.
  */
 export async function sendOutForDelivery(
   order: any,
@@ -281,14 +287,22 @@ export async function sendOutForDelivery(
   const dpName =
     String(order.assignedDeliveryPersonName ?? "").trim() ||
     "Our delivery partner";
-  const dpPhone = deliveryPersonPhone.trim() || "—";
+  const dpPhone = deliveryPersonPhone.trim() || "-";
+
+  // Detect COD: paymentMode is "cod", "cash", or not set (default for cash orders).
+  const rawMode = String(order.paymentMode ?? "").trim().toLowerCase();
+  const isCod = rawMode === "cod" || rawMode === "cash" || rawMode === "";
+
+  const templateName = isCod
+    ? "fishtokri_out_for_delivery_cod"
+    : "fishtokri_out_for_delivery";
 
   console.log(
-    `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} phone=${phone} dp=${dpName} dpPhone=${dpPhone}`
+    `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} phone=${phone} dp=${dpName} dpPhone=${dpPhone} paymentMode=${rawMode || "(empty)"} template=${templateName}`
   );
 
   await sendTemplate(
-    "fishtokri_out_for_delivery",
+    templateName,
     phone,
     [
       String(order.customerName ?? "Customer"),
