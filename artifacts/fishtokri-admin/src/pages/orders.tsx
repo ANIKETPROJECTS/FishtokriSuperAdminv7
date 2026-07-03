@@ -2044,6 +2044,14 @@ export default function Orders() {
   const handleStatusUpdate = async () => {
     if (!selectedOrder || !editStatus) return;
 
+    // When cancelling via the status dropdown, open the reason dialog instead of
+    // submitting directly — cancellation reason is required for the WhatsApp message.
+    if (editStatus === "cancelled") {
+      setRejectingOrder(selectedOrder);
+      setRejectReason("");
+      return;
+    }
+
     // When marking as delivered, prompt for payment collection unless already fully paid.
     if (editStatus === "delivered" && selectedOrder.paymentStatus !== "paid") {
       const total = Number(selectedOrder.total) > 0
@@ -2061,16 +2069,23 @@ export default function Orders() {
 
     setSavingStatus(true);
     try {
-      const _waTemplates: Record<string, string> = {
-        confirmed: "fishtokri_order_confirmed",
-        out_for_delivery: "fishtokri_out_for_delivery",
-        cancelled: "fishtokri_order_cancelled",
+      const _waTemplateHint = (status: string): string => {
+        if (status === "confirmed") return "fishtokri_order_confirmed";
+        if (status === "out_for_delivery") {
+          const mode = String(selectedOrder.paymentMode ?? "").toLowerCase();
+          return (mode === "cod" || mode === "cash" || mode === "")
+            ? "fishtokri_out_for_delivery_cod"
+            : "fishtokri_out_for_delivery";
+        }
+        if (status === "cancelled") return "fishtokri_order_cancelled";
+        return "";
       };
+      const waTemplate = _waTemplateHint(editStatus);
       console.log(
         `[WhatsApp] Status change triggered → orderId=${selectedOrder.orderId || selectedOrder._id} ` +
         `customer=${selectedOrder.customerName} phone=${selectedOrder.phone} ` +
         `${selectedOrder.status} → ${editStatus}` +
-        (_waTemplates[editStatus] ? ` | WA template: ${_waTemplates[editStatus]}` : " | no WA notification")
+        (waTemplate ? ` | WA template: ${waTemplate}` : " | no WA notification")
       );
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify({ status: editStatus }) });
       const movedOutOfDelivered =
@@ -2218,10 +2233,14 @@ export default function Orders() {
         method: "PUT",
         body: JSON.stringify({ status: "cancelled", cancellationReason: reason }),
       });
-      toast({ title: "Order rejected", description: "Order has been cancelled." });
+      toast({ title: "Order cancelled", description: "Order has been cancelled." });
       setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, status: "cancelled", cancellationReason: reason } : o));
+      // Keep the detail panel in sync if this order is currently open.
+      setSelectedOrder((o: any) => o && String(o._id) === orderId ? { ...o, status: "cancelled", cancellationReason: reason } : o);
+      setEditStatus("cancelled");
       setRejectingOrder(null);
       setRejectReason("");
+      load();
       loadStats();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });

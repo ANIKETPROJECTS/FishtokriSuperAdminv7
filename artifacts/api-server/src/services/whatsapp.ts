@@ -216,10 +216,12 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     return;
   }
 
-  // Use the stored #FTS order ID; fall back to short hex if missing.
+  // Use the stored FTS order ID; fall back to short hex if missing.
+  // Strip any leading '#' — the WhatsApp template text already has a '#' before {{2}},
+  // so passing '#FTS...' would produce '##FTS...' in the delivered message.
   const orderId =
-    String(order.orderId ?? "").trim() ||
-    `#ORD-${String(order._id).slice(-6).toUpperCase()}`;
+    (String(order.orderId ?? "").trim() ||
+     `ORD-${String(order._id).slice(-6).toUpperCase()}`).replace(/^#+/, "");
 
   const itemsText = buildItemsText(order.items ?? []);
   const subtotal = String(order.subtotal ?? 0);
@@ -281,8 +283,8 @@ export async function sendOutForDelivery(
   }
 
   const orderId =
-    String(order.orderId ?? "").trim() ||
-    `#ORD-${String(order._id).slice(-6).toUpperCase()}`;
+    (String(order.orderId ?? "").trim() ||
+     `ORD-${String(order._id).slice(-6).toUpperCase()}`).replace(/^#+/, "");
 
   const dpName =
     String(order.assignedDeliveryPersonName ?? "").trim() ||
@@ -327,8 +329,8 @@ export async function sendOrderCancelled(order: any, log?: Logger): Promise<void
   }
 
   const orderId =
-    String(order.orderId ?? "").trim() ||
-    `#ORD-${String(order._id).slice(-6).toUpperCase()}`;
+    (String(order.orderId ?? "").trim() ||
+     `ORD-${String(order._id).slice(-6).toUpperCase()}`).replace(/^#+/, "");
 
   const reason =
     String(order.cancellationReason ?? "").trim() ||
