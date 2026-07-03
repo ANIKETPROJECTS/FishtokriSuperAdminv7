@@ -64,25 +64,26 @@ function formatPhone(phone: string): string | null {
 }
 
 /**
- * U+2028 LINE SEPARATOR — a real Unicode line-break character that WhatsApp
- * mobile clients render as a visual line break inside template text, but
- * that is NOT the literal "\n" (U+000A) character Meta's Cloud API validator
- * rejects with "(#100) Invalid parameter". This lets us render a true
- * one-item-per-line list (and a separate delivery-timing line) from inside
- * a single free-text template variable. sanitizeTemplateParam() below only
- * strips \r, \n and \t, so this character passes through untouched.
+ * NOTE: U+2028 (LINE SEPARATOR) was tried here as a way to render a real
+ * line break inside a WhatsApp template variable without tripping Meta's
+ * "no literal \n" validator. In production it came through as a broken "�"
+ * glyph on the customer's phone — the Admark/WhatsApp pipeline does not
+ * preserve that codepoint. Do NOT reintroduce it. A true one-item-per-line
+ * layout requires a template redesign with fixed line slots (see
+ * docs/whatsapp-templates.md) — it is not achievable from a single
+ * free-text variable.
  */
-const WA_LINE_BREAK = "\u2028";
 
 /**
  * Build the human-readable items block used inside the order-confirmed bill.
- * Each item is prefixed with its sequence number (1., 2., 3., …) and
- * rendered on its own line using WA_LINE_BREAK. Per-unit labels like
- * "(per piece)" / "(per pack)" are intentionally omitted — not useful to
- * the customer on the confirmation message.
+ * Each item is prefixed with its sequence number (1., 2., 3., …) and the
+ * whole list is joined with " | " — the only separator that reliably
+ * survives the WhatsApp/Admark pipeline. Per-unit labels like "(per piece)"
+ * / "(per pack)" are intentionally omitted — not useful to the customer on
+ * the confirmation message.
  *
- * Example (renders as 2 separate lines on WhatsApp):
- *   "1. Fish x2 - Rs.300␊2. Prawns x1 - Rs.450"
+ * Example:
+ *   "1. Fish x2 - Rs.300 | 2. Prawns x1 - Rs.450"
  */
 export function buildItemsText(
   items: Array<{ name: string; quantity: number; price: number; unit?: string }>
@@ -93,7 +94,7 @@ export function buildItemsText(
       const lineTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
       return `${idx + 1}. ${it.name} x${it.quantity} - Rs.${lineTotal}`;
     })
-    .join(WA_LINE_BREAK);
+    .join(" | ");
 }
 
 /**
@@ -378,10 +379,11 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
   // knows when to expect delivery, regardless of order schedule type.
   // Embedded in the existing {{9}} variable — no template change required.
   const timingLabel = buildDeliveryTimingLabel(order);
-  // WA_LINE_BREAK renders as a real line break on WhatsApp without tripping
-  // Meta's "no literal \n in template params" validator — puts the timing
-  // on its own line below the address instead of on the same line.
-  const address = timingLabel ? `${baseAddress}${WA_LINE_BREAK}⏰ Delivery Time: ${timingLabel}` : baseAddress;
+  // " | " is the only separator that reliably survives the WhatsApp/Admark
+  // pipeline — a literal newline gets rejected outright, and U+2028 comes
+  // through as a broken "�" glyph (both tried and confirmed bad in prod).
+  // A true separate line for the timing requires a template redesign.
+  const address = timingLabel ? `${baseAddress} | ⏰ Delivery Time: ${timingLabel}` : baseAddress;
 
   console.log(
     `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} timing="${timingLabel}"`
