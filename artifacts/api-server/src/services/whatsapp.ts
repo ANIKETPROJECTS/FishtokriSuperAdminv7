@@ -98,6 +98,42 @@ export function buildItemsText(
 }
 
 /**
+ * NOT YET WIRED UP — for use once the new "fishtokri_order_confirmed_v2"
+ * template (with 10 fixed item-line slots, one per hardcoded template line)
+ * has been created in Admark and approved by Meta. See
+ * docs/whatsapp-templates.md for the exact template body to submit.
+ *
+ * Splits an order's items into exactly `maxSlots` template-variable values,
+ * one per item so each renders on its own hardcoded template line (true
+ * line breaks, since they're static text in the approved template body —
+ * not embedded inside a single free-text variable). Orders with more items
+ * than `maxSlots` collapse the overflow into the last slot as
+ * "+N more item(s)". Unused trailing slots get a single space (" ") — Meta
+ * template variables cannot be an empty string.
+ */
+export function buildOrderConfirmedItemSlots(
+  items: Array<{ name: string; quantity: number; price: number; unit?: string }>,
+  maxSlots = 10
+): string[] {
+  const list = Array.isArray(items) ? items : [];
+  const lines = list.map((it, idx) => {
+    const lineTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
+    return `${idx + 1}. ${it.name} x${it.quantity} - Rs.${lineTotal}`;
+  });
+
+  const slots: string[] = new Array(maxSlots).fill(" ");
+  if (lines.length <= maxSlots) {
+    lines.forEach((line, i) => { slots[i] = line; });
+  } else {
+    const shown = lines.slice(0, maxSlots - 1);
+    shown.forEach((line, i) => { slots[i] = line; });
+    const remaining = lines.length - shown.length;
+    slots[maxSlots - 1] = `+${remaining} more item${remaining > 1 ? "s" : ""}`;
+  }
+  return slots;
+}
+
+/**
  * WhatsApp's Cloud API rejects template parameter values that contain a
  * literal newline (\n), a carriage return (\r), or a tab (\t), or 4+
  * consecutive spaces — the entire send fails with "(#100) Invalid
