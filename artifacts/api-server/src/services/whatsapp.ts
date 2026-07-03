@@ -82,48 +82,62 @@ async function attemptSend(
     variables: JSON.stringify(varsObj),
   });
 
-  const url = `${WABA_API_BASE}/api/send/bytemplate?${params.toString()}`;
+  const requestUrl = `${WABA_API_BASE}/api/send/bytemplate?${params.toString()}`;
 
-  log.info(
-    {
-      templateName,
-      phone: formattedPhone,
-      variables: varsObj,
-      attempt: attemptNum,
-    },
-    `[WhatsApp] Sending template (attempt ${attemptNum})`
-  );
-
-  // Also echo to stdout for easy viewing in Replit workflow logs
+  // Log full details (mask API key in the URL shown)
+  const maskedUrl = requestUrl.replace(/(api-key=)[^&]+/, "$1***");
   console.log(
-    `[WhatsApp][attempt ${attemptNum}] SEND → template=${templateName} phone=${formattedPhone}`,
-    JSON.stringify(varsObj)
+    `[WhatsApp][attempt ${attemptNum}] SEND → template=${templateName} phone=${formattedPhone}\n` +
+    `  variables: ${JSON.stringify(varsObj)}\n` +
+    `  url: ${maskedUrl}`
+  );
+  log.info(
+    { templateName, phone: formattedPhone, variables: varsObj, attempt: attemptNum },
+    `[WhatsApp] Sending template (attempt ${attemptNum})`
   );
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
 
+  let httpStatus: number;
+  let rawText: string;
   let data: any;
   try {
-    const resp = await fetch(url, { signal: controller.signal });
-    data = await resp.json();
+    const resp = await fetch(requestUrl, { signal: controller.signal });
+    httpStatus = resp.status;
+    rawText = await resp.text();
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = { rawText };
+    }
   } finally {
     clearTimeout(timer);
   }
 
+  // Always log the full raw response so we can see exactly what Admark returns.
+  console.log(
+    `[WhatsApp][attempt ${attemptNum}] RESPONSE ← httpStatus=${httpStatus} body=${rawText}`
+  );
+  log.info(
+    { templateName, phone: formattedPhone, httpStatus, response: data, attempt: attemptNum },
+    "[WhatsApp] Admark raw response"
+  );
+
   if (!data?.success) {
-    const errMsg = `[WhatsApp] API returned failure: ${JSON.stringify(data)}`;
-    log.error({ templateName, phone: formattedPhone, response: data, attempt: attemptNum }, errMsg);
+    const errMsg = `[WhatsApp] API returned failure: httpStatus=${httpStatus} body=${rawText}`;
+    log.error({ templateName, phone: formattedPhone, httpStatus, response: data, attempt: attemptNum }, errMsg);
     console.error(errMsg);
     throw new Error(errMsg);
   }
 
-  log.info(
-    { templateName, phone: formattedPhone, requestId: data.requestId, attempt: attemptNum },
-    "[WhatsApp] Message sent successfully"
-  );
   console.log(
-    `[WhatsApp][attempt ${attemptNum}] SUCCESS → template=${templateName} phone=${formattedPhone} requestId=${data.requestId}`
+    `[WhatsApp][attempt ${attemptNum}] SUCCESS → template=${templateName} phone=${formattedPhone} ` +
+    `requestId=${data.requestId ?? "(none)"} msgId=${data.messageId ?? data.msg_id ?? "(none)"}`
+  );
+  log.info(
+    { templateName, phone: formattedPhone, requestId: data.requestId, response: data, attempt: attemptNum },
+    "[WhatsApp] Message accepted by Admark"
   );
 }
 
@@ -132,12 +146,16 @@ async function attemptSend(
  * Variables are passed as a URL-encoded JSON object (body1, body2, …)
  * so commas and newlines inside variable values are safe.
  * Retries up to MAX_RETRIES times on timeout or network error.
+ *
+ * @param extraVars  Additional Admark variable keys to merge in, e.g. { url1: "https://..." }
+ *                   for templates that have a dynamic CTA button URL.
  */
 async function sendTemplate(
   templateName: string,
   phone: string,
   bodyVars: string[],
-  log?: Logger
+  log?: Logger,
+  extraVars?: Record<string, string>
 ): Promise<void> {
   const logger: Logger = log ?? {
     warn: (o, m) => console.warn(m, o),
@@ -165,10 +183,14 @@ async function sendTemplate(
   }
 
   // Build named variable object: { body1: "...", body2: "...", … }
+  // Merge any extra vars (e.g. url1 for CTA button URLs) after the body vars.
   const varsObj: Record<string, string> = {};
   bodyVars.forEach((v, i) => {
     varsObj[`body${i + 1}`] = String(v ?? "").trim();
   });
+  if (extraVars) {
+    Object.assign(varsObj, extraVars);
+  }
 
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -310,6 +332,10 @@ export async function sendOutForDelivery(
 
   if (isCod) {
     // COD template: {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
+    // The template also has a "Pay Now" CTA button with a dynamic URL (url1).
+    // Until Razorpay is integrated we pass a placeholder — this is required by WhatsApp
+    // to actually deliver the message; omitting url1 causes silent non-delivery.
+    const paymentLink = String(order.razorpayPaymentLink ?? "").trim() || "https://fishtokri.com";
     await sendTemplate(
       templateName,
       phone,
@@ -320,7 +346,8 @@ export async function sendOutForDelivery(
         dpName,
         dpPhone,
       ],
-      log
+      log,
+      { url1: paymentLink }
     );
   } else {
     // Non-COD template: {{1}} name, {{2}} orderId, {{3}} dp_name, {{4}} dp_phone
