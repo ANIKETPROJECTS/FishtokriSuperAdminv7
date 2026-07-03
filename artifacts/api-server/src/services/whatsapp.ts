@@ -64,41 +64,46 @@ function formatPhone(phone: string): string | null {
 }
 
 /**
+ * U+2028 LINE SEPARATOR — a real Unicode line-break character that WhatsApp
+ * mobile clients render as a visual line break inside template text, but
+ * that is NOT the literal "\n" (U+000A) character Meta's Cloud API validator
+ * rejects with "(#100) Invalid parameter". This lets us render a true
+ * one-item-per-line list (and a separate delivery-timing line) from inside
+ * a single free-text template variable. sanitizeTemplateParam() below only
+ * strips \r, \n and \t, so this character passes through untouched.
+ */
+const WA_LINE_BREAK = "\u2028";
+
+/**
  * Build the human-readable items block used inside the order-confirmed bill.
+ * Each item is prefixed with its sequence number (1., 2., 3., …) and
+ * rendered on its own line using WA_LINE_BREAK. Per-unit labels like
+ * "(per piece)" / "(per pack)" are intentionally omitted — not useful to
+ * the customer on the confirmation message.
  *
- * Each item is prefixed with its sequence number (1., 2., 3., …) and the
- * whole list is joined with " | " rather than a real line break. WhatsApp's
- * Cloud API hard-rejects any template parameter value containing a literal
- * newline (the send fails outright with "(#100) Invalid parameter" — it does
- * not just get squashed) so a true one-per-line layout is not possible
- * inside a single free-text template variable. Numbering keeps the list
- * clearly ordered even though it renders on one line.
- *
- * Example:
- *   "1. Fish (500g) x2 - Rs.300 | 2. Prawns x1 - Rs.450"
+ * Example (renders as 2 separate lines on WhatsApp):
+ *   "1. Fish x2 - Rs.300␊2. Prawns x1 - Rs.450"
  */
 export function buildItemsText(
   items: Array<{ name: string; quantity: number; price: number; unit?: string }>
 ): string {
   if (!Array.isArray(items) || items.length === 0) return "-";
-  // NOTE: joined with " | ", not "\n" — WhatsApp's Cloud API rejects template
-  // parameter values containing a literal newline (see sanitizeTemplateParam).
-  // Each item is still numbered so the list reads as a clear sequence.
   return items
     .map((it, idx) => {
-      const unit = it.unit ? ` (${it.unit})` : "";
       const lineTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
-      return `${idx + 1}. ${it.name}${unit} x${it.quantity} - Rs.${lineTotal}`;
+      return `${idx + 1}. ${it.name} x${it.quantity} - Rs.${lineTotal}`;
     })
-    .join(" | ");
+    .join(WA_LINE_BREAK);
 }
 
 /**
  * WhatsApp's Cloud API rejects template parameter values that contain a
- * newline (\n), a carriage return (\r), a tab (\t), or 4+ consecutive
- * spaces — the entire send fails with "(#100) Invalid parameter" and the
- * customer receives nothing. Call this on every value right before it is
- * placed into a template variable.
+ * literal newline (\n), a carriage return (\r), or a tab (\t), or 4+
+ * consecutive spaces — the entire send fails with "(#100) Invalid
+ * parameter" and the customer receives nothing. Call this on every value
+ * right before it is placed into a template variable. This intentionally
+ * does NOT touch WA_LINE_BREAK (U+2028), which is how we render intentional
+ * line breaks inside a template variable.
  */
 function sanitizeTemplateParam(value: unknown): string {
   return String(value ?? "")
@@ -373,9 +378,10 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
   // knows when to expect delivery, regardless of order schedule type.
   // Embedded in the existing {{9}} variable — no template change required.
   const timingLabel = buildDeliveryTimingLabel(order);
-  // Use " | " here too — a literal newline in a template variable causes
-  // WhatsApp to reject the whole message with "(#100) Invalid parameter".
-  const address = timingLabel ? `${baseAddress} | ⏰ Delivery Time: ${timingLabel}` : baseAddress;
+  // WA_LINE_BREAK renders as a real line break on WhatsApp without tripping
+  // Meta's "no literal \n in template params" validator — puts the timing
+  // on its own line below the address instead of on the same line.
+  const address = timingLabel ? `${baseAddress}${WA_LINE_BREAK}⏰ Delivery Time: ${timingLabel}` : baseAddress;
 
   console.log(
     `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} timing="${timingLabel}"`
