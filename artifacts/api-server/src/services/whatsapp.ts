@@ -342,8 +342,12 @@ export async function sendOutForDelivery(
   );
 
   if (isCod) {
-    // COD template: {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
-    // The "Pay Now" button has a STATIC URL set in Admark — no url variable needed.
+    // COD template variables:
+    //   {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone
+    // The "Pay Now" button has a dynamic URL. Admark maps the button URL as the NEXT
+    // sequential body variable (body6), not as a separate url1/button1 key.
+    // WhatsApp expects 6 params total (5 body + 1 button URL); passing only 5 gives error 132000.
+    const paymentLink = String(order.razorpayPaymentLink ?? "").trim() || "https://fishtokri.com";
     await sendTemplate(
       templateName,
       phone,
@@ -353,6 +357,7 @@ export async function sendOutForDelivery(
         String(dueAmount),
         dpName,
         dpPhone,
+        paymentLink,          // body6 → button URL (Pay Now)
       ],
       log
     );
