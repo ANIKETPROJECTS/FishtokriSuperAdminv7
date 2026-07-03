@@ -65,10 +65,11 @@ function formatPhone(phone: string): string | null {
 
 /**
  * Build the human-readable items block used inside the order-confirmed bill.
- * Items are joined with " | " (single line) so the value is safe for
- * WhatsApp template variables — multi-line newlines and bullet characters
- * cause some API implementations to reject the request.
- * Example: "Fish (500g) x2 - Rs.300 | Prawns x1 - Rs.450"
+ * Each item is on its own line so the message body is easy to read.
+ * WhatsApp template variable values accept "\n" line breaks.
+ * Example:
+ *   "Fish (500g) x2 - Rs.300
+ *    Prawns x1 - Rs.450"
  */
 export function buildItemsText(
   items: Array<{ name: string; quantity: number; price: number; unit?: string }>
@@ -80,7 +81,7 @@ export function buildItemsText(
       const lineTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
       return `${it.name}${unit} x${it.quantity} - Rs.${lineTotal}`;
     })
-    .join(" | ");
+    .join("\n");
 }
 
 type Logger = {
@@ -299,11 +300,19 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     rawMode === "upi" ? "UPI" :
     rawMode === "online" ? "Online" :
     rawMode || "Cash on Delivery";
-  const address =
+  const baseAddress =
     String(order.address ?? order.deliveryArea ?? "").trim() || "—";
+  // Append time slot if available so the customer knows when to expect delivery.
+  // Embedded in the existing {{9}} variable — no template change required.
+  const slotLabel =
+    String(order.timeslotLabel ?? "").trim() ||
+    (order.timeslotStart && order.timeslotEnd
+      ? `${order.timeslotStart} - ${order.timeslotEnd}`
+      : "");
+  const address = slotLabel ? `${baseAddress}\n⏰ Time Slot: ${slotLabel}` : baseAddress;
 
   console.log(
-    `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone}`
+    `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} slot="${slotLabel}"`
   );
 
   await sendTemplate(
