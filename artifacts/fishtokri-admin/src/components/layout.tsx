@@ -317,16 +317,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         } md:translate-x-0`}
       >
         {/* Brand */}
-        {expanded ? (
-          <div className="flex items-center gap-2.5 px-5 pt-5 pb-1">
-            <img src="/logo.png" alt="FishTokri" className="w-7 h-7 object-contain flex-shrink-0" />
-            <span className="text-base font-bold text-white truncate">FishTokri</span>
+        <div className="flex justify-center pt-5 pb-1">
+          <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center flex-shrink-0">
+            <img src="/logo.png" alt="FishTokri" className="w-8 h-8 object-contain" />
           </div>
-        ) : (
-          <div className="flex justify-center pt-5 pb-1">
-            <img src="/logo.png" alt="FishTokri" className="w-7 h-7 object-contain" />
-          </div>
-        )}
+        </div>
 
         {/* Role Label — hidden for delivery */}
         {expanded && !isDelivery && (
