@@ -147,10 +147,16 @@ export function buildOrderConfirmedItemSlots(
  * line breaks inside a template variable.
  */
 function sanitizeTemplateParam(value: unknown): string {
-  return String(value ?? "")
+  const cleaned = String(value ?? "")
     .replace(/[\r\n\t]+/g, " | ")
     .replace(/ {2,}/g, " ")
     .trim();
+  // Meta's Cloud API hard-rejects a template call if ANY parameter resolves
+  // to an empty string — fails with "(#131008) Required parameter is
+  // missing" for the WHOLE message, not just that slot. Placeholder values
+  // for unused item slots (a single " ") must survive sanitization, so if
+  // trimming collapsed the value to nothing, fall back to a single space.
+  return cleaned.length > 0 ? cleaned : " ";
 }
 
 /** Formats a "YYYY-MM-DD" delivery date string as "03 Jul 2026". Leaves other formats untouched. */
