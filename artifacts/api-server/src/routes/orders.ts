@@ -14,7 +14,6 @@ import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { HubUser } from "../db/models/hub-user.js";
 import { sendOrderConfirmed, sendOutForDelivery, sendOrderCancelled } from "../services/whatsapp.js";
-import { createPaymentLink } from "../services/razorpay.js";
 
 const router = Router();
 router.use(requireAuth as any);
@@ -1680,30 +1679,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
               }
             }
 
-            // Auto-generate a Razorpay payment link whenever there is an outstanding
-            // due amount — covers COD, wallet-partial, and any other partially-paid mode.
-            const dueAmt = Number(orderDoc.dueAmount ?? 0);
-            const needsPayLink = dueAmt > 0 && !orderDoc.razorpayPaymentLink;
-            if (needsPayLink) {
-              try {
-                const payLink = await createPaymentLink(orderDoc, req.log);
-                if (payLink) {
-                  // Persist the link on the order document for future reference.
-                  const conn2 = await getOrdersDb();
-                  await conn2.db.collection(COLLECTION).updateOne(
-                    { _id: orderDoc._id },
-                    { $set: { razorpayPaymentLink: payLink } }
-                  );
-                  orderDoc.razorpayPaymentLink = payLink;
-                  req.log.info(
-                    { orderId: orderDoc.orderId, payLink },
-                    "[Razorpay] Payment link saved to order"
-                  );
-                }
-              } catch (e) {
-                req.log.error({ err: e }, "[Razorpay] Failed to create/save payment link");
-              }
-            }
+            // Note: WhatsApp out-for-delivery notifications no longer include a
+            // Razorpay payment link (removed per product decision — same template
+            // is used for both COD and UPI orders now), so the payment link is
+            // no longer auto-generated here.
 
             await sendOutForDelivery(orderDoc, dpPhone, req.log);
           } else if (newStatus === "cancelled") {

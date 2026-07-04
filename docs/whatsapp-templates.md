@@ -71,8 +71,13 @@ FishTokri – Fresh from the sea to your door
 
 ---
 
-## Template 1b — Order Confirmed v2 (fixed item lines, replaces Template 1)
+## Template 1b — Order Confirmed v2 (fixed item lines) — LIVE, replaces Template 1
 
+> **Status: implemented and active.** The backend now sends this template
+> (`fishtokri_confirmed`) for every order-confirmed notification. The old
+> `fishtokri_order_confirmed` (Template 1, single free-text items variable)
+> is retired and can be deleted from Admark/Meta.
+>
 > **Why a new template:** WhatsApp's Cloud API hard-rejects any template
 > parameter value containing a literal newline (`\n`) — the whole send fails
 > with `(#100) Invalid parameter`. A Unicode line-separator workaround
@@ -88,20 +93,16 @@ FishTokri – Fresh from the sea to your door
 > joined with " | " on that one line (e.g. `5. Item A x1 - Rs.100 | 6. Item B
 > x2 - Rs.200 | 7. Item C x1 - Rs.150`) — so nothing is dropped, it just
 > stops being one-per-line beyond item 4. See `buildOrderConfirmedItemSlots()`
-> in `artifacts/api-server/src/services/whatsapp.ts`, already implemented
-> and ready to wire in once this template is approved.
+> in `artifacts/api-server/src/services/whatsapp.ts`.
 >
 > This also moves the delivery time onto its own dedicated line below the
 > address (its own variable, not appended to the address text).
->
-> Once approved, tell the agent the exact template name Meta/Admark assigns
-> and it will switch the backend over to use it.
 
-| Field             | Value                            |
-|-------------------|-----------------------------------|
-| **Template Name** | `fishtokri_order_confirmed_v2`    |
-| **Category**      | **Utility**                       |
-| **Language**      | English                           |
+| Field             | Value                       |
+|-------------------|------------------------------|
+| **Template Name** | `fishtokri_confirmed`        |
+| **Category**      | **Utility**                  |
+| **Language**      | English                      |
 
 **Header (Text):**
 ```
@@ -165,17 +166,20 @@ FishTokri – Fresh from the sea to your door
 > single space `" "` for the unused `{{n}}` variables — Meta does not allow
 > an empty string as a variable value. This renders as a blank line at the
 > bottom of the item list; it's a minor, accepted cosmetic trade-off for a
-> fixed-structure template with a variable-length list. With only 5 slots
-> (down from an earlier 10-slot draft), this gap is much smaller for typical
-> orders.
+> fixed-structure template with a variable-length list.
 >
-> **Do not delete Template 1** (`fishtokri_order_confirmed`) until v2 is
-> approved and the backend has been switched over and verified — it is the
-> live fallback.
+> **Template 1** (`fishtokri_order_confirmed`) is retired now that this
+> template is live — it can be deleted from Admark/Meta.
 
 ---
 
-## Template 2 — Out for Delivery (Prepaid / UPI orders)
+## Template 2 — Out for Delivery (all orders — COD and UPI alike)
+
+> **Update:** This single template is now used for every out-for-delivery
+> notification regardless of payment mode. WhatsApp payment links are no
+> longer sent for COD orders — the old "Template 3" (with an embedded
+> Razorpay payment link) has been retired; see the removed section below
+> for history if it's ever needed again.
 
 | Field             | Value                              |
 |-------------------|------------------------------------|
@@ -216,55 +220,16 @@ Thank you for choosing FishTokri! 🐟
 
 ---
 
-## Template 3 — Out for Delivery with Payment Link (COD orders only)
+## (Retired) Template 3 — Out for Delivery with Payment Link (COD orders only)
 
-| Field             | Value                                  |
-|-------------------|----------------------------------------|
-| **Template Name** | `fishtokri_out_for_delivery_cod`       |
-| **Category**      | **Utility**                            |
-| **Language**      | English                                |
-
-> ⚠️ **No dynamic button URL** — Admark's `/api/send/bytemplate` API cannot pass button URL
-> variables separately from body variables. The payment link is included as `{{6}}` in the
-> body text instead. Delete the old template (which had a dynamic "Pay Now" button) and
-> recreate it exactly as shown below.
-
-**Header (Text):**
-```
-Out for Delivery 🚚
-```
-
-**Body:**
-```
-Hello {{1}},
-
-Your FishTokri order *#{{2}}* is now *Out for Delivery!*
-
-*Amount Due:* ₹{{3}}
-
-*Your Delivery Partner:*
-👤 {{4}}
-📞 {{5}}
-
-⏱️ *Save time — pay online before delivery arrives!*
-Pay securely via Razorpay (no cash needed at the door):
-{{6}}
-
-— Team FishTokri
-```
-
-**No button / Interactive Actions** — leave the Interactive Actions section empty. Do NOT add a URL button.
-
-**Sample variable values:**
-
-| Variable | Sample Value                    |
-|----------|---------------------------------|
-| `{{1}}`  | Rahul Sharma                    |
-| `{{2}}`  | ORD-2847                        |
-| `{{3}}`  | 1090                            |
-| `{{4}}`  | Mohammed Arif                   |
-| `{{5}}`  | +91 98765 43210                 |
-| `{{6}}`  | https://rzp.io/l/AbCd1234       |
+> **Removed — no longer used.** This variant (`fishtokri_out_for_delivery_cod` /
+> `fishtokri_out_for_delivery_cod_new`) sent a Razorpay payment link so COD
+> customers could pay online before the delivery partner arrived. Per product
+> decision, WhatsApp order notifications no longer include payment links at
+> all — **Template 2** (`fishtokri_out_for_delivery`) is now sent for every
+> order regardless of payment mode. The old template can be deleted from
+> Admark/Meta; it is kept here only as a historical reference in case the
+> payment-link flow is ever revisited.
 
 ---
 
@@ -318,17 +283,16 @@ We look forward to serving you again! 🐟
 
 ## Submission Checklist
 
-- [ ] All 4 templates use **Utility** category — cheaper per conversation than Marketing, approved faster
+- [ ] All templates use **Utility** category — cheaper per conversation than Marketing, approved faster
 - [ ] Template names are lowercase with underscores, no spaces
 - [ ] Every `{{n}}` variable has a realistic sample value filled in (Meta rejects templates with `{{1}}` left blank)
-- [ ] For Template 3, the Razorpay base domain matches your Razorpay account's configured domain
 - [ ] `welcome_to_fishtokri` has been deleted from Meta dashboard
+- [ ] Retired templates (`fishtokri_order_confirmed`, `fishtokri_out_for_delivery_cod` / `_cod_new`) deleted from Meta dashboard once confirmed unused
 - [ ] Once approved (usually 24–48 hrs), backend integration can be implemented to fire these automatically on order status changes
 
 ---
 
 ## Approval Tips
 
-- **Utility templates** are approved faster and cost less per conversation than Marketing. All four templates qualify as Utility because they are triggered by customer actions, not outbound promotions.
-- **Template 3 (COD payment link):** If Meta asks for clarification, note that the payment link is generated per-order and sent only when the order is already confirmed and out for delivery — it is transactional, not solicited marketing.
+- **Utility templates** are approved faster and cost less per conversation than Marketing. All active templates qualify as Utility because they are triggered by customer actions, not outbound promotions.
 - **Avoid edits after submission.** If a template is rejected, you must create a new one with a different name — you cannot edit a submitted template.

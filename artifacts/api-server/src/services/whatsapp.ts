@@ -382,10 +382,17 @@ async function sendTemplate(
 
 /**
  * Fires when an order is accepted (status → confirmed).
- * Template: fishtokri_order_confirmed
- * Variables: {{1}} name, {{2}} orderId, {{3}} items, {{4}} subtotal,
- *            {{5}} discount, {{6}} delivery, {{7}} total,
- *            {{8}} paymentMode, {{9}} address
+ * Template: fishtokri_confirmed (replaces the old fishtokri_order_confirmed —
+ * see docs/whatsapp-templates.md "Template 1b" for the full body/rationale).
+ *
+ * Variables (14 total):
+ *   {{1}} name, {{2}} orderId,
+ *   {{3}}-{{7}} five item-line slots (one item per line; orders with more
+ *     than 5 items combine everything from item 5 onward into {{7}},
+ *     joined with " | " — see buildOrderConfirmedItemSlots()),
+ *   {{8}} subtotal, {{9}} discount, {{10}} delivery, {{11}} total,
+ *   {{12}} paymentMode, {{13}} address, {{14}} delivery time (own line,
+ *     no longer appended inline to the address).
  */
 export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void> {
   const phone = String(order.phone ?? "").trim();
@@ -402,7 +409,7 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     (String(order.orderId ?? "").trim() ||
      `ORD-${String(order._id).slice(-6).toUpperCase()}`).replace(/^#+/, "");
 
-  const itemsText = buildItemsText(order.items ?? []);
+  const itemSlots = buildOrderConfirmedItemSlots(order.items ?? [], 5);
   const subtotal = String(order.subtotal ?? 0);
   const discount = String(order.discount ?? 0);
   const deliveryCharge = String(order.deliveryCharge ?? 0);
@@ -413,35 +420,30 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     rawMode === "upi" ? "UPI" :
     rawMode === "online" ? "Online" :
     rawMode || "Cash on Delivery";
-  const baseAddress =
+  const address =
     String(order.address ?? order.deliveryArea ?? "").trim() || "—";
-  // Append delivery timing (slot / express / instant) so the customer always
-  // knows when to expect delivery, regardless of order schedule type.
-  // Embedded in the existing {{9}} variable — no template change required.
-  const timingLabel = buildDeliveryTimingLabel(order);
-  // " | " is the only separator that reliably survives the WhatsApp/Admark
-  // pipeline — a literal newline gets rejected outright, and U+2028 comes
-  // through as a broken "�" glyph (both tried and confirmed bad in prod).
-  // A true separate line for the timing requires a template redesign.
-  const address = timingLabel ? `${baseAddress} | ⏰ Delivery Time: ${timingLabel}` : baseAddress;
+  // Delivery timing now has its own dedicated template line/variable — no
+  // longer appended to the address text.
+  const timingLabel = buildDeliveryTimingLabel(order) || "—";
 
   console.log(
     `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} timing="${timingLabel}"`
   );
 
   await sendTemplate(
-    "fishtokri_order_confirmed",
+    "fishtokri_confirmed",
     phone,
     [
       String(order.customerName ?? "Customer"),
       orderId,
-      itemsText,
+      ...itemSlots,
       subtotal,
       discount,
       deliveryCharge,
       total,
       paymentMode,
       address,
+      timingLabel,
     ],
     log
   );
@@ -450,13 +452,13 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
 /**
  * Fires when an order goes out for delivery (status → out_for_delivery).
  *
- * Routing:
- *   UPI / wallet / UPI+wallet (or COD fully paid via wallet, dueAmount = 0)
- *     → fishtokri_out_for_delivery  (4 vars): name, orderId, dp_name, dp_phone
+ * Template: fishtokri_out_for_delivery (4 vars): name, orderId, dp_name, dp_phone
  *
- *   COD / COD+wallet with outstanding due amount (dueAmount > 0)
- *     → fishtokri_out_for_delivery_cod_new (6 vars): name, orderId, amount_due, dp_name, dp_phone, payment_link
- *     Includes a Razorpay "Pay Now" button baked into the template.
+ * Used for ALL orders regardless of payment mode (COD or UPI) — payment
+ * links are no longer sent via WhatsApp for out-for-delivery notifications.
+ * The previous COD-with-payment-link variant
+ * (`fishtokri_out_for_delivery_cod_new`) has been retired; see
+ * docs/whatsapp-templates.md for history.
  */
 export async function sendOutForDelivery(
   order: any,
@@ -478,63 +480,25 @@ export async function sendOutForDelivery(
     "Our delivery partner";
   const dpPhone = deliveryPersonPhone.trim() || "-";
 
-  // Payment-link routing:
-  //   Any order with dueAmount > 0 (whether COD, wallet-partial, or any other mode)
-  //   gets the COD template which embeds a Razorpay payment link so the customer
-  //   can pay the remaining balance digitally before the delivery partner arrives.
-  //   Orders that are fully paid (dueAmount === 0) get the plain delivery template.
-  const rawMode = String(order.paymentMode ?? "").trim().toLowerCase();
-  const dueAmount = Number(order.dueAmount ?? 0);
-  const hasOutstandingDue = dueAmount > 0;
-
-  const templateName = hasOutstandingDue
-    ? "fishtokri_out_for_delivery_cod_new"
-    : "fishtokri_out_for_delivery";
+  const templateName = "fishtokri_out_for_delivery";
 
   console.log(
     `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} ` +
-    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} ` +
-    `paymentMode=${rawMode || "(empty)"} dueAmount=${dueAmount} template=${templateName}`
+    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} template=${templateName}`
   );
 
-  if (hasOutstandingDue) {
-    // COD template variables (body) — 6 body vars, no dynamic button URL:
-    //   {{1}} name, {{2}} orderId, {{3}} amount_due, {{4}} dp_name, {{5}} dp_phone, {{6}} payment_link
-    //
-    // The template body includes the payment link as {{6}} in plain text.
-    // There is NO dynamic button URL component — that caused error #132000 because
-    // Admark's /api/send/bytemplate has no way to pass button URL params separately.
-    // The template was recreated with all 6 values as body variables.
-    const paymentLink = String(order.razorpayPaymentLink ?? "").trim() || "https://fishtokri.com";
-    if (isDuplicate(orderId, templateName)) return;
-    await sendTemplate(
-      templateName,
-      phone,
-      [
-        String(order.customerName ?? "Customer"),
-        orderId,
-        String(dueAmount),
-        dpName,
-        dpPhone,
-        paymentLink,   // body6 → inline payment link in body text
-      ],
-      log
-    );
-  } else {
-    // Non-COD template: {{1}} name, {{2}} orderId, {{3}} dp_name, {{4}} dp_phone
-    if (isDuplicate(orderId, templateName)) return;
-    await sendTemplate(
-      templateName,
-      phone,
-      [
-        String(order.customerName ?? "Customer"),
-        orderId,
-        dpName,
-        dpPhone,
-      ],
-      log
-    );
-  }
+  if (isDuplicate(orderId, templateName)) return;
+  await sendTemplate(
+    templateName,
+    phone,
+    [
+      String(order.customerName ?? "Customer"),
+      orderId,
+      dpName,
+      dpPhone,
+    ],
+    log
+  );
 }
 
 /**
