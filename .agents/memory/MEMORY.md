@@ -1,2 +1,3 @@
 - [API server has no watch mode](api-server-no-watch.md) — always restart `Start API` workflow after editing any `api-server/src/` TypeScript file or changes won't take effect.
+- [Read-only sub-resources in edit forms](product-edit-batch-expiry-bug.md) — never round-trip a read-only nested resource (e.g. batches) back to its own update endpoint from a parent edit form.
 - [WhatsApp template param newlines unreliable](whatsapp-template-param-newlines.md) — `\n` in a template variable can get collapsed (e.g. to " | "); number list entries instead of relying on line breaks.

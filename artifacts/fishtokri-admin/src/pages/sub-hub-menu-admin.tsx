@@ -2672,22 +2672,6 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
 
   const batchesTotal = batches.reduce((s, b) => s + (Number(b.quantity) || 0), 0);
 
-  const saveBatches = async (productId: string) => {
-    const batchPayload = batches.map((b) => ({
-      _id: b._id || undefined,
-      batchNumber: b.batchNumber || "",
-      quantity: Number(b.quantity) || 0,
-      shelfLifeDays: b.shelfLifeDays !== "" ? Number(b.shelfLifeDays) : null,
-      receivedDate: b.receivedDate || null,
-      expiryDate: b.expiryDate || null,
-      notes: b.notes || "",
-    }));
-    await apiFetch(`/api/inventory/products/${productId}/batches?subHubId=${subHubId}`, {
-      method: "PUT",
-      body: JSON.stringify({ batches: batchPayload }),
-    });
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -2709,17 +2693,13 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       couponIds,
     };
     try {
-      let productId: string;
       if (isEditing) {
         await apiFetch(`/api/sub-hubs/${subHubId}/menu/products/${product._id}`, { method: "PUT", body: JSON.stringify(payload) });
-        productId = String(product._id);
         toast({ title: "Product updated" });
       } else {
-        const created = await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) });
-        productId = String(created.product._id);
+        await apiFetch(`/api/sub-hubs/${subHubId}/menu/products`, { method: "POST", body: JSON.stringify(payload) });
         toast({ title: "Product added" });
       }
-      await saveBatches(productId);
       onSaved(); onClose();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
