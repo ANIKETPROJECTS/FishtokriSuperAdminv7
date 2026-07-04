@@ -316,9 +316,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         } md:translate-x-0`}
       >
+        {/* Brand */}
+        {expanded ? (
+          <div className="flex items-center gap-2.5 px-5 pt-5 pb-1">
+            <img src="/logo.png" alt="FishTokri" className="w-7 h-7 object-contain flex-shrink-0" />
+            <span className="text-base font-bold text-white truncate">FishTokri</span>
+          </div>
+        ) : (
+          <div className="flex justify-center pt-5 pb-1">
+            <img src="/logo.png" alt="FishTokri" className="w-7 h-7 object-contain" />
+          </div>
+        )}
+
         {/* Role Label — hidden for delivery */}
         {expanded && !isDelivery && (
-          <div className="px-5 pt-5 pb-2">
+          <div className="px-5 pt-2 pb-2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">{roleLabel}</p>
           </div>
         )}

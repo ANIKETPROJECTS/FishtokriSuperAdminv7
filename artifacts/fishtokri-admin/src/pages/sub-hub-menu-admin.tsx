@@ -2627,7 +2627,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
             quantity: String(b.quantity ?? 0),
             shelfLifeDays: b.shelfLifeDays != null ? String(b.shelfLifeDays) : "",
             receivedDate: b.receivedDate ? new Date(b.receivedDate).toISOString().slice(0, 10) : "",
-            expiryDate: b.expiryDate ? new Date(b.expiryDate).toISOString().slice(0, 10) : "",
+            expiryDate: b.expiryDate ? new Date(b.expiryDate).toISOString() : "",
             notes: b.notes ?? "",
           }));
           setBatches(loaded);
@@ -2961,10 +2961,15 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Expiry Date</label>
                         <Input
                           type="date"
-                          value={b.expiryDate}
+                          value={b.expiryDate ? b.expiryDate.slice(0, 10) : ""}
                           readOnly
                           className="h-8 text-xs bg-gray-100 cursor-not-allowed"
                         />
+                        {b.expiryDate && (
+                          <p className="text-[10px] text-gray-400 pl-0.5">
+                            {new Date(b.expiryDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true })}
+                          </p>
+                        )}
                       </div>
                     </div>
                     {b.notes && (
