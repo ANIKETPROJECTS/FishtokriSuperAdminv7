@@ -301,7 +301,11 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
   const discount = Number(order.discount) || 0;
   const slotCharge = Number(order.slotCharge) || 0;
   const deliveryCharge = Number(order.deliveryCharge) || 0;
-  const grandTotal = effectiveOrderTotal(order);
+  const instantDeliveryCharge = Number(order.instantDeliveryCharge) || 0;
+  // Compute grand total from line-item components rather than the stored `total`
+  // field, which consumer-placed orders sometimes store as subtotal+slot (omitting
+  // the coupon discount), causing the invoice to over-report the amount due.
+  const grandTotal = Math.max(0, subtotal - discount + slotCharge + deliveryCharge + instantDeliveryCharge);
   const extraDiscAmt = Number(order.extraDiscount) || 0;
   const couponAmt = Math.max(0, discount - extraDiscAmt);
   const extraDiscType: string = order.extraDiscountType || "flat";
@@ -4386,15 +4390,14 @@ export default function Orders() {
                     const couponOnlyDiscount = Math.max(0, totalDiscount - extraDiscountAmt);
                     const slot = Number(selectedOrder.slotCharge) || 0;
                     const instant = Number(selectedOrder.instantDeliveryCharge) || 0;
-                    const grand = effectiveOrderTotal(selectedOrder);
-                    // Use stored deliveryCharge when present (even if 0 = free delivery).
-                    // Only fall back to gap-inference for true legacy orders that pre-date
-                    // the deliveryCharge field, to avoid fabricating a phantom charge when
-                    // the coupon discount creates an apparent "gap" in an otherwise-free order.
+                    // Always compute grand total from line-item components rather than
+                    // the stored `total` field, which consumer-placed orders sometimes
+                    // store as subtotal+slot (omitting coupon discount), causing a phantom
+                    // delivery charge equal to the coupon amount to appear via the old
+                    // gap-inference logic. Trust only what is explicitly stored.
                     const storedDelivery = Number(selectedOrder.deliveryCharge) || 0;
-                    const delivery = ('deliveryCharge' in selectedOrder)
-                      ? storedDelivery
-                      : Math.max(0, grand - Math.max(0, subtotal - totalDiscount + slot + instant));
+                    const delivery = storedDelivery; // absent or 0 = free; never infer
+                    const grand = Math.max(0, subtotal - totalDiscount + slot + instant + delivery);
                     const pays: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
                     const walletPay = pays.find((p: any) => String(p?.mode || "").toLowerCase() === "wallet");
                     const walletUsed = walletPay ? Number(walletPay.amount) || 0 : 0;
