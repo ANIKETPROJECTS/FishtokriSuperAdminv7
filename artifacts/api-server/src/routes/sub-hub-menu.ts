@@ -964,6 +964,38 @@ function getISTDayOfWeek(): number {
 }
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
+/** Convert active day indices → full 7-element {day, status} array for DB storage */
+function toDayStatusArray(activeNums: number[]): { day: string; status: "on" | "off" }[] {
+  return DAY_NAMES.map((day, i) => ({ day, status: activeNums.includes(i) ? "on" : "off" }));
+}
+
+/** Convert {day, status}[] → active day index numbers for runtime checks */
+function dayStatusToNumbers(arr: { day: string; status: string }[]): number[] {
+  return arr
+    .filter((item) => item.status === "on")
+    .map((item) => DAY_NAMES.indexOf(item.day as any))
+    .filter((n) => n >= 0)
+    .sort((a, b) => a - b);
+}
+
+/** Normalise activeDays from DB — handles both legacy number[] and new {day,status}[] */
+function normalizeActiveDays(raw: any[]): { numbers: number[]; objects: { day: string; status: "on" | "off" }[] } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { numbers: ALL_DAYS, objects: toDayStatusArray(ALL_DAYS) };
+  }
+  if (typeof raw[0] === "object" && raw[0] !== null && "day" in raw[0]) {
+    // Already new format — respect stored values, including a legitimate all-off state.
+    // Only fall back to ALL_DAYS for truly missing data (handled above).
+    const numbers = dayStatusToNumbers(raw);
+    return { numbers, objects: toDayStatusArray(numbers) };
+  }
+  // Legacy: array of numbers
+  const numbers = (raw as any[]).map(Number).filter((d) => d >= 0 && d <= 6);
+  const resolved = numbers.length > 0 ? numbers : ALL_DAYS;
+  return { numbers: resolved, objects: toDayStatusArray(resolved) };
+}
 
 /** Returns tomorrow's date in YYYY-MM-DD format using IST (UTC+5:30). */
 function getTimeslotTomorrowISO(): string {
@@ -1050,14 +1082,23 @@ router.get("/timeslots", async (req, res) => {
 
     // Compute effectiveIsActive: manualIsActive AND today's day is in activeDays.
     const todayDow = getISTDayOfWeek();
+    const migrationOps: any[] = [];
     for (const slot of timeslots as any[]) {
-      const activeDays: number[] = Array.isArray(slot.activeDays) && slot.activeDays.length > 0
-        ? slot.activeDays
-        : ALL_DAYS;
-      const dayAllowed = activeDays.includes(todayDow);
+      const raw = slot.activeDays;
+      const isLegacy = !Array.isArray(raw) || raw.length === 0 || typeof raw[0] === "number";
+      const { numbers, objects } = normalizeActiveDays(raw);
+      const dayAllowed = numbers.includes(todayDow);
       slot.effectiveIsActive = (slot.isActive !== false) && dayAllowed;
-      // Ensure activeDays is always returned (default all days for old records)
-      slot.activeDays = activeDays;
+      slot.activeDays = objects;
+      // Migrate legacy number-array records to new {day, status} format
+      if (isLegacy) {
+        migrationOps.push({
+          updateOne: { filter: { _id: new mongoose.Types.ObjectId(slot._id) }, update: { $set: { activeDays: objects } } },
+        });
+      }
+    }
+    if (migrationOps.length > 0) {
+      ctx.conn.db.collection("timeslots").bulkWrite(migrationOps, { ordered: false }).catch(() => {});
     }
 
     res.json({ timeslots, total: timeslots.length });
@@ -1074,9 +1115,7 @@ router.post("/timeslots", async (req, res) => {
     const { label, startTime, endTime, isInstant, extraCharge, isActive, sortOrder, orderLimit, activeDays } = req.body;
     if (!startTime || !endTime) { res.status(400).json({ error: "ValidationError", message: "Start time and end time are required" }); return; }
     const resolvedLabel = label && String(label).trim() ? String(label).trim() : `${startTime} - ${endTime}`;
-    const resolvedActiveDays: number[] = Array.isArray(activeDays) && activeDays.length > 0
-      ? activeDays.map(Number).filter((d) => d >= 0 && d <= 6)
-      : ALL_DAYS;
+    const { numbers: resolvedDayNums } = normalizeActiveDays(Array.isArray(activeDays) ? activeDays : []);
     const doc = {
       label: resolvedLabel,
       startTime,
@@ -1086,7 +1125,7 @@ router.post("/timeslots", async (req, res) => {
       isActive: isActive !== false,
       sortOrder: Number(sortOrder) || 0,
       orderLimit: Number(orderLimit) || 0,
-      activeDays: resolvedActiveDays,
+      activeDays: toDayStatusArray(resolvedDayNums),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -1138,9 +1177,8 @@ router.put("/timeslots/:timeslotId", async (req, res) => {
     if (sortOrder !== undefined) update.sortOrder = Number(sortOrder) || 0;
     if (orderLimit !== undefined) update.orderLimit = Number(orderLimit) || 0;
     if (activeDays !== undefined) {
-      update.activeDays = Array.isArray(activeDays) && activeDays.length > 0
-        ? activeDays.map(Number).filter((d: number) => d >= 0 && d <= 6)
-        : ALL_DAYS;
+      const { numbers: dayNums } = normalizeActiveDays(Array.isArray(activeDays) ? activeDays : []);
+      update.activeDays = toDayStatusArray(dayNums);
     }
     const result = await ctx.conn.db.collection("timeslots").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Timeslot not found" }); return; }

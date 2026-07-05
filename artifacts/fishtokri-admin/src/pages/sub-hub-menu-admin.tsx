@@ -4163,8 +4163,7 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                         <div className="flex items-center gap-2 mt-0.5">
                           <div className="flex gap-0.5">
                             {[0,1,2,3,4,5,6].map((d) => {
-                              const days = Array.isArray(s.activeDays) && s.activeDays.length > 0 ? s.activeDays : [0,1,2,3,4,5,6];
-                              const on = days.includes(d);
+                              const on = parseActiveDaysFromApi(s.activeDays).includes(d);
                               return <span key={d} className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold ${on ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-300"}`}>{DAY_LABELS[d]}</span>;
                             })}
                           </div>
@@ -4202,8 +4201,7 @@ function TimeSlotsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: 
                 <div className="flex items-center gap-2 mt-0.5">
                   <div className="flex gap-0.5">
                     {[0,1,2,3,4,5,6].map((d) => {
-                      const days = Array.isArray(s.activeDays) && s.activeDays.length > 0 ? s.activeDays : [0,1,2,3,4,5,6];
-                      const on = days.includes(d);
+                      const on = parseActiveDaysFromApi(s.activeDays).includes(d);
                       return <span key={d} className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold ${on ? "bg-[#1A56DB] text-white" : "bg-gray-100 text-gray-300"}`}>{DAY_LABELS[d]}</span>;
                     })}
                   </div>
@@ -4420,6 +4418,25 @@ function TimePickerField({ label, value, onChange }: { label: string; value: str
 const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 const DAY_FULL_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ALL_WEEK_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const DAY_NAME_TO_NUM: Record<string, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+};
+
+/** Parse activeDays from API response — handles both legacy number[] and new {day,status}[] */
+function parseActiveDaysFromApi(activeDays: any): number[] {
+  if (!Array.isArray(activeDays) || activeDays.length === 0) return ALL_WEEK_DAYS;
+  if (typeof activeDays[0] === "object" && activeDays[0] !== null && "day" in activeDays[0]) {
+    // New format — respect stored values, including a legitimate all-off state.
+    // Only fall back to ALL_WEEK_DAYS for truly missing data (handled above).
+    return (activeDays as { day: string; status: string }[])
+      .filter((d) => d.status === "on")
+      .map((d) => DAY_NAME_TO_NUM[d.day] ?? -1)
+      .filter((n) => n >= 0)
+      .sort((a, b) => a - b);
+  }
+  const nums = (activeDays as any[]).map(Number).filter((d) => d >= 0 && d <= 6);
+  return nums.length > 0 ? nums : ALL_WEEK_DAYS;
+}
 
 function TimeslotModal({ isOpen, onClose, timeslot, subHubId, onSaved, nextOrder = 1, allItems = [] }: any) {
   const { toast } = useToast();
@@ -4440,7 +4457,7 @@ function TimeslotModal({ isOpen, onClose, timeslot, subHubId, onSaved, nextOrder
         setIsActive(timeslot.isActive !== false);
         setSortOrder(String(timeslot.sortOrder ?? 0));
         setOrderLimit(String(timeslot.orderLimit ?? 0));
-        setActiveDays(Array.isArray(timeslot.activeDays) && timeslot.activeDays.length > 0 ? timeslot.activeDays : ALL_WEEK_DAYS);
+        setActiveDays(parseActiveDaysFromApi(timeslot.activeDays));
       } else {
         setStartTime(""); setEndTime(""); setIsActive(true); setSortOrder(String(nextOrder)); setOrderLimit("0"); setActiveDays(ALL_WEEK_DAYS);
       }
