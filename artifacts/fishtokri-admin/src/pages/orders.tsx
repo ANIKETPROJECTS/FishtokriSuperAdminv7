@@ -4308,7 +4308,17 @@ export default function Orders() {
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     <SolidStatusBadge status={selectedOrder.status} deliveryType={selectedOrder.deliveryType} />
                     <span className="text-xl font-extrabold text-[#F05B4E]">
-                      {formatRupees(effectiveOrderTotal(selectedOrder) > 0 ? effectiveOrderTotal(selectedOrder) : orderTotal(selectedOrder.items))}
+                      {formatRupees((() => {
+                        const _s = Number(selectedOrder.subtotal) > 0 ? Number(selectedOrder.subtotal) : orderTotal(selectedOrder.items);
+                        const _g = Math.max(0,
+                          _s
+                          - (Number(selectedOrder.discount) || 0)
+                          + (Number(selectedOrder.slotCharge) || 0)
+                          + (Number(selectedOrder.instantDeliveryCharge) || 0)
+                          + (Number(selectedOrder.deliveryCharge) || 0)
+                        );
+                        return _g > 0 ? _g : _s;
+                      })())}
                     </span>
                   </div>
                 </div>
@@ -4464,8 +4474,23 @@ export default function Orders() {
                 {(() => {
                   const pays: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
                   const status = String(selectedOrder.paymentStatus || "").toLowerCase();
-                  const paid = Number(selectedOrder.paidAmount) || pays.reduce((s, p) => s + (Number(p?.amount) || 0), 0);
-                  const due = status === "paid" ? 0 : (Number(selectedOrder.dueAmount) || 0);
+                  // Recompute grand total from components (same formula as the breakdown
+                  // block above) so both sections agree and neither trusts the stored
+                  // `total` field, which consumer orders sometimes save incorrectly.
+                  const _sub = Number(selectedOrder.subtotal) > 0 ? Number(selectedOrder.subtotal) : orderTotal(selectedOrder.items);
+                  const _grand = Math.max(0,
+                    _sub
+                    - (Number(selectedOrder.discount) || 0)
+                    + (Number(selectedOrder.slotCharge) || 0)
+                    + (Number(selectedOrder.instantDeliveryCharge) || 0)
+                    + (Number(selectedOrder.deliveryCharge) || 0)
+                  );
+                  // For unpaid orders, never fall back to summing the payments[] array —
+                  // those entries represent the intended payment method, not collected cash.
+                  const paid = status === "unpaid"
+                    ? (Number(selectedOrder.paidAmount) || 0)
+                    : (Number(selectedOrder.paidAmount) || pays.reduce((s, p) => s + (Number(p?.amount) || 0), 0));
+                  const due = status === "paid" ? 0 : (Number(selectedOrder.dueAmount) || Math.max(0, _grand - paid));
                   if (!pays.length && !status && !paid) return null;
                   const statusStyle = status === "paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : status === "partial" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-600 border-red-200";
                   const statusLabel = status === "paid" ? "Fully Paid" : status === "partial" ? "Partial" : "Unpaid";
