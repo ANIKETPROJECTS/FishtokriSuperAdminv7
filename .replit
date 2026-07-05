@@ -80,11 +80,8 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-CLOUDINARY_CLOUD_NAME = "dbkmmxnzd"
-CLOUDINARY_API_KEY = "935594792745712"
 PORT = "8080"
 API_PORT = "8080"
-WABA_PHONE_ID = "1103117459561700"
 
 [[ports]]
 localPort = 5000
