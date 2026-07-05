@@ -388,17 +388,22 @@ async function sendTemplate(
 
 /**
  * Fires when an order is accepted (status → confirmed).
- * Template: fishtokri_confirmed (replaces the old fishtokri_order_confirmed —
- * see docs/whatsapp-templates.md "Template 1b" for the full body/rationale).
  *
- * Variables (14 total):
+ * TWO templates are used depending on whether wallet balance was applied:
+ *
+ * A) fishtokri_confirmed  — no wallet (14 vars, unchanged):
  *   {{1}} name, {{2}} orderId,
- *   {{3}}-{{7}} five item-line slots (one item per line; orders with more
- *     than 5 items combine everything from item 5 onward into {{7}},
- *     joined with " | " — see buildOrderConfirmedItemSlots()),
+ *   {{3}}-{{7}} five item-line slots,
  *   {{8}} subtotal, {{9}} discount, {{10}} delivery, {{11}} total,
- *   {{12}} paymentMode, {{13}} address, {{14}} delivery time (own line,
- *     no longer appended inline to the address).
+ *   {{12}} paymentMode, {{13}} address, {{14}} delivery time.
+ *
+ * B) fishtokri_confirmed_wallet — wallet used (16 vars):
+ *   {{1}}-{{11}} same as above,
+ *   {{12}} walletUsed, {{13}} amountDue (cash/UPI left to pay),
+ *   {{14}} paymentMode, {{15}} address, {{16}} delivery time.
+ *
+ * See docs/whatsapp-templates.md for the template bodies to submit to
+ * Admark / Meta for approval.
  */
 export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void> {
   const phone = String(order.phone ?? "").trim();
@@ -428,31 +433,62 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     rawMode || "Cash on Delivery";
   const address =
     String(order.address ?? order.deliveryArea ?? "").trim() || "—";
-  // Delivery timing now has its own dedicated template line/variable — no
-  // longer appended to the address text.
   const timingLabel = buildDeliveryTimingLabel(order) || "—";
 
+  // Calculate wallet used — sum all payments entries with mode === "wallet".
+  const payments: any[] = Array.isArray(order.payments) ? order.payments : [];
+  const walletUsed = payments
+    .filter((p: any) => String(p?.mode ?? "").toLowerCase() === "wallet")
+    .reduce((s: number, p: any) => s + (Number(p?.amount) || 0), 0);
+
   console.log(
-    `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} phone=${phone} timing="${timingLabel}"`
+    `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} ` +
+    `phone=${phone} timing="${timingLabel}" walletUsed=${walletUsed}`
   );
 
-  await sendTemplate(
-    "fishtokri_confirmed",
-    phone,
-    [
-      String(order.customerName ?? "Customer"),
-      orderId,
-      ...itemSlots,
-      subtotal,
-      discount,
-      deliveryCharge,
-      total,
-      paymentMode,
-      address,
-      timingLabel,
-    ],
-    log
-  );
+  if (walletUsed > 0) {
+    // Compute the cash/UPI balance due after wallet deduction.
+    const grandTotal = Number(order.total) || 0;
+    const amountDue = Math.max(0, grandTotal - walletUsed);
+
+    await sendTemplate(
+      "fishtokri_confirmed_wallet",
+      phone,
+      [
+        String(order.customerName ?? "Customer"),
+        orderId,
+        ...itemSlots,            // {{3}}–{{7}}
+        subtotal,                // {{8}}
+        discount,                // {{9}}
+        deliveryCharge,          // {{10}}
+        total,                   // {{11}}
+        String(walletUsed),      // {{12}} Wallet applied
+        String(amountDue),       // {{13}} Amount due (cash/UPI)
+        paymentMode,             // {{14}}
+        address,                 // {{15}}
+        timingLabel,             // {{16}}
+      ],
+      log
+    );
+  } else {
+    await sendTemplate(
+      "fishtokri_confirmed",
+      phone,
+      [
+        String(order.customerName ?? "Customer"),
+        orderId,
+        ...itemSlots,
+        subtotal,
+        discount,
+        deliveryCharge,
+        total,
+        paymentMode,
+        address,
+        timingLabel,
+      ],
+      log
+    );
+  }
 }
 
 /**
