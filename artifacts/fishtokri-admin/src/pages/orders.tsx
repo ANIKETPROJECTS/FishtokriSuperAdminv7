@@ -363,7 +363,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     const walletRow = walletInvAmt > 0 ? `<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:17px;"><span>Wallet Applied:</span><span>− ${walletInvAmt.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;margin:4px 0;font-size:18px;font-weight:700;"><span>Balance Due (Cash/UPI):</span><span>${Math.max(0, grandTotal - walletInvAmt).toFixed(2)}</span></div>` : "";
     const paidDueRow = (order.paidAmount !== undefined || order.dueAmount !== undefined) ? `<div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:17px;"><span>Paid: <strong style="color:#16a34a;">₹${paidAmt.toFixed(2)}</strong></span><span>Due: <strong style="color:${dueAmt > 0 ? "#ef4444" : "#16a34a"};">₹${dueAmt.toFixed(2)}</strong></span></div>` : "";
     const notesRow = order.notes ? `<div style="margin:4px 0;font-size:17px;"><b>Notes : ${order.notes}</b></div>` : "";
-    const slotRow = slotCharge > 0 ? `<tr><td style="padding:4px 2px;border:2px solid #444;" colspan="3">Slot Charge :</td><td style="padding:4px 2px;border:2px solid #444;text-align:right;">+ ${slotCharge.toFixed(2)}</td></tr>` : "";
+    const slotRow = slotCharge > 0 ? `<tr><td style="padding:4px 2px;border:2px solid #444;" colspan="3">Delivery Charge :</td><td style="padding:4px 2px;border:2px solid #444;text-align:right;">+ ${slotCharge.toFixed(2)}</td></tr>` : "";
     const deliveryRow = deliveryCharge > 0 ? `<tr><td style="padding:4px 2px;border:2px solid #444;" colspan="3">${order.isExpress ? "Porter Charge" : "Delivery Charge"} :</td><td style="padding:4px 2px;border:2px solid #444;text-align:right;">+ ${deliveryCharge.toFixed(2)}</td></tr>` : "";
     const discountRows = [
       couponAmt > 0 ? `<tr><td style="padding:4px 2px;border:2px solid #444;" colspan="3">Coupon${order.couponCode ? ` (${order.couponCode})` : ""} :</td><td style="padding:4px 2px;border:2px solid #444;text-align:right;">- ${couponAmt.toFixed(2)}</td></tr>` : "",
@@ -505,7 +505,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
                 )}
                 {slotCharge > 0 && (
                   <tr>
-                    <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} colSpan={3}>Slot Charge :</td>
+                    <td style={{ padding: "5px 4px", border: "1px solid #bbb" }} colSpan={3}>Delivery Charge :</td>
                     <td style={{ padding: "5px 4px", border: "1px solid #bbb", textAlign: "right" }}>+ {slotCharge.toFixed(2)}</td>
                   </tr>
                 )}
@@ -4201,7 +4201,7 @@ export default function Orders() {
                 )}
                 {slotExtraCharge > 0 && (
                   <div className="flex justify-between text-xs text-[#1A56DB] font-medium">
-                    <span>Slot charge</span>
+                    <span>Delivery charge</span>
                     <span>+₹{slotExtraCharge.toLocaleString("en-IN")}</span>
                   </div>
                 )}
@@ -4433,7 +4433,7 @@ export default function Orders() {
                         )}
                         {slot > 0 && (
                           <div className="flex justify-between text-sm font-semibold text-black">
-                            <span>Slot charge</span>
+                            <span>Delivery charge</span>
                             <span>+ {formatRupees(slot)}</span>
                           </div>
                         )}
