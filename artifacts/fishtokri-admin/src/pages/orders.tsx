@@ -253,11 +253,15 @@ function orderTotal(items: any[]) {
 function effectiveOrderTotal(o: any): number {
   const saved = Number(o?.total);
   if (saved > 0) return saved;
+  // Fallback for orders without a stored total: recompute from components.
+  // Must mirror the detail-breakdown math so line items and grand total stay consistent.
   const items = Array.isArray(o?.items) ? o.items : [];
   const subtotal = orderTotal(items);
   const discount = Number(o?.discount) || 0;
   const slot = Number(o?.slotCharge) || 0;
-  return Math.max(0, subtotal - discount + slot);
+  const delivery = Number(o?.deliveryCharge) || 0;
+  const instant = Number(o?.instantDeliveryCharge) || 0;
+  return Math.max(0, subtotal - discount + slot + delivery + instant);
 }
 
 function formatOrderId(o: any, dailySeq?: number): string {
@@ -4383,9 +4387,14 @@ export default function Orders() {
                     const slot = Number(selectedOrder.slotCharge) || 0;
                     const instant = Number(selectedOrder.instantDeliveryCharge) || 0;
                     const grand = effectiveOrderTotal(selectedOrder);
-                    // Use stored deliveryCharge; if absent, infer from the gap in the total
+                    // Use stored deliveryCharge when present (even if 0 = free delivery).
+                    // Only fall back to gap-inference for true legacy orders that pre-date
+                    // the deliveryCharge field, to avoid fabricating a phantom charge when
+                    // the coupon discount creates an apparent "gap" in an otherwise-free order.
                     const storedDelivery = Number(selectedOrder.deliveryCharge) || 0;
-                    const delivery = storedDelivery || Math.max(0, grand - Math.max(0, subtotal - totalDiscount + slot + instant));
+                    const delivery = ('deliveryCharge' in selectedOrder)
+                      ? storedDelivery
+                      : Math.max(0, grand - Math.max(0, subtotal - totalDiscount + slot + instant));
                     const pays: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
                     const walletPay = pays.find((p: any) => String(p?.mode || "").toLowerCase() === "wallet");
                     const walletUsed = walletPay ? Number(walletPay.amount) || 0 : 0;
