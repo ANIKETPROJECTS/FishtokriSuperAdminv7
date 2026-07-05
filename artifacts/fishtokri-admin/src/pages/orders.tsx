@@ -222,6 +222,24 @@ function getTomorrowIST() {
   return `${y}-${mo}-${d}`;
 }
 
+const _DAY_NAMES_DOW = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/**
+ * Returns true if the given day-of-week (0=Sun..6=Sat) is "on" in a timeslot's activeDays.
+ * Handles both new {day,status}[] format and legacy number[] format.
+ * Defaults to true (all days active) when activeDays is missing/empty.
+ */
+function isDayActive(activeDays: any[], dow: number): boolean {
+  if (!Array.isArray(activeDays) || activeDays.length === 0) return true;
+  if (typeof activeDays[0] === "object" && activeDays[0] !== null && "day" in activeDays[0]) {
+    const dayName = _DAY_NAMES_DOW[dow];
+    const entry = (activeDays as { day: string; status: string }[]).find((d) => d.day === dayName);
+    return entry ? entry.status === "on" : true;
+  }
+  // Legacy: number array of active day indices
+  return (activeDays as number[]).includes(dow);
+}
+
 function formatDate(d: any) {
   if (!d) return "—";
   return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -1291,8 +1309,20 @@ export default function Orders() {
   const activeTimeslots = useMemo(() => {
     const todayISO = getTodayIST();
     const isToday = orderDate === todayISO;
+
+    // Compute IST day-of-week (0=Sun..6=Sat) for today and tomorrow once.
+    const now = new Date();
+    const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const todayDow = istNow.getUTCDay();
+    const tomorrowDow = (todayDow + 1) % 7;
+    const targetDow = isToday ? todayDow : tomorrowDow;
+
     return timeslots.filter((t) => {
       if (t.isActive === false) return false;
+
+      // Hide slots whose activeDays marks the target day as "off".
+      if (!isDayActive(t.activeDays, targetDow)) return false;
+
       // Hide slots that have hit their order limit for the selected date.
       // todaysOrderCount / nextDayOrderCount are computed live by the backend —
       // no stale date guard needed.
@@ -1309,8 +1339,6 @@ export default function Orders() {
       if (match[3].toUpperCase() === "PM" && h !== 12) h += 12;
       if (match[3].toUpperCase() === "AM" && h === 12) h = 0;
       const slotStartMins = h * 60 + m;
-      const now = new Date();
-      const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
       const currentMins = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
       return slotStartMins > currentMins + 30;
     });
