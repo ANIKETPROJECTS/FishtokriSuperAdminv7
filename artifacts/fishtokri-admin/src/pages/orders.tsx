@@ -948,6 +948,13 @@ export default function Orders() {
   const [assigningVariantOrderId, setAssigningVariantOrderId] = useState<string | null>(null);
   const [changingPayModeOrderId, setChangingPayModeOrderId] = useState<string | null>(null);
 
+  // Payment Types
+  const [customPaymentTypes, setCustomPaymentTypes] = useState<string[]>([]);
+  const [managingPaymentTypes, setManagingPaymentTypes] = useState(false);
+  const [paymentTypeInput, setPaymentTypeInput] = useState("");
+  const [editingPayType, setEditingPayType] = useState<string | null>(null);
+  const [editPayTypeValue, setEditPayTypeValue] = useState("");
+
   // Pagination
   const [page, setPage] = useState(1);
   const LIMIT = 20;
@@ -1935,10 +1942,13 @@ export default function Orders() {
       .catch(() => {});
   }, []);
 
-  // Load UPI variants list on mount
+  // Load UPI variants + payment types on mount
   useEffect(() => {
     apiFetch("/api/upi-variants")
       .then((d) => setUpiVariants(d.variants ?? []))
+      .catch(() => {});
+    apiFetch("/api/payment-types")
+      .then((d) => setCustomPaymentTypes(d.types ?? []))
       .catch(() => {});
   }, []);
 
@@ -2063,6 +2073,35 @@ export default function Orders() {
     try {
       const d = await apiFetch(`/api/upi-variants/${encodeURIComponent(name)}`, { method: "DELETE" });
       setUpiVariants(d.variants ?? []);
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  // Payment Types management functions
+  const addPaymentType = async () => {
+    const name = paymentTypeInput.trim();
+    if (!name) return;
+    try {
+      const d = await apiFetch("/api/payment-types", { method: "POST", body: JSON.stringify({ name }) });
+      setCustomPaymentTypes(d.types ?? []);
+      setPaymentTypeInput("");
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  const renamePaymentType = async (oldName: string) => {
+    const newName = editPayTypeValue.trim();
+    if (!newName) return;
+    try {
+      const d = await apiFetch(`/api/payment-types/${encodeURIComponent(oldName)}`, { method: "PUT", body: JSON.stringify({ newName }) });
+      setCustomPaymentTypes(d.types ?? []);
+      setEditingPayType(null);
+      setEditPayTypeValue("");
+    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+  };
+
+  const deletePaymentType = async (name: string) => {
+    try {
+      const d = await apiFetch(`/api/payment-types/${encodeURIComponent(name)}`, { method: "DELETE" });
+      setCustomPaymentTypes(d.types ?? []);
     } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
   };
 
@@ -2792,6 +2831,13 @@ export default function Orders() {
             >
               ⚙ UPI Types
             </button>
+            <button
+              onClick={() => setManagingPaymentTypes(true)}
+              className="ml-1 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border border-gray-200 text-gray-500 hover:border-purple-400 hover:text-purple-600 transition-colors"
+              title="Manage payment types"
+            >
+              ⚙ Payment Types
+            </button>
           </div>
         )}
 
@@ -3046,6 +3092,9 @@ export default function Orders() {
                         >
                           {CHANGE_PAYMENT_MODES.map((m) => (
                             <option key={m.value} value={m.value}>{m.label}</option>
+                          ))}
+                          {customPaymentTypes.map((t) => (
+                            <option key={`custom_${t}`} value={`custom_${t}`}>{t}</option>
                           ))}
                         </select>
                         {/* UPI variant sub-dropdown for UPI and Wallet+UPI modes */}
@@ -3443,6 +3492,64 @@ export default function Orders() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setManagingUpiVariants(false); setEditingVariant(null); setUpiVariantInput(""); }} className="h-9">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Types Dialog */}
+      <Dialog open={managingPaymentTypes} onOpenChange={(o) => { if (!o) { setManagingPaymentTypes(false); setEditingPayType(null); setPaymentTypeInput(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">Manage Payment Types</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-xs text-gray-400">Default types (COD, UPI, Wallet, Card, Wallet+COD, Wallet+UPI, Wallet+Card) are always available. Add custom types below.</p>
+            {customPaymentTypes.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-3">No custom payment types yet. Add one below.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {customPaymentTypes.map((t) => (
+                  <li key={t} className="flex items-center gap-2">
+                    {editingPayType === t ? (
+                      <>
+                        <input
+                          autoFocus
+                          value={editPayTypeValue}
+                          onChange={(e) => setEditPayTypeValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") renamePaymentType(t); if (e.key === "Escape") { setEditingPayType(null); setEditPayTypeValue(""); } }}
+                          className="flex-1 border border-purple-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+                        />
+                        <button onClick={() => renamePaymentType(t)} className="text-xs font-semibold text-purple-600 hover:text-purple-800 px-2 py-1 rounded hover:bg-purple-50">Save</button>
+                        <button onClick={() => { setEditingPayType(null); setEditPayTypeValue(""); }} className="text-xs text-gray-400 hover:text-gray-600 px-1 py-1">✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm font-medium text-gray-800">{t}</span>
+                        <button onClick={() => { setEditingPayType(t); setEditPayTypeValue(t); }} className="text-xs text-gray-400 hover:text-purple-600 px-2 py-1 rounded hover:bg-purple-50 transition-colors">Edit</button>
+                        <button onClick={() => deletePaymentType(t)} className="text-xs text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors">Delete</button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+              <input
+                value={paymentTypeInput}
+                onChange={(e) => setPaymentTypeInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addPaymentType(); }}
+                placeholder="e.g. Cheque, Gift Card…"
+                className="flex-1 border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+              />
+              <button
+                onClick={addPaymentType}
+                disabled={!paymentTypeInput.trim()}
+                className="px-3 py-1.5 rounded text-sm font-semibold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >Add</button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setManagingPaymentTypes(false); setEditingPayType(null); setPaymentTypeInput(""); }} className="h-9">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
