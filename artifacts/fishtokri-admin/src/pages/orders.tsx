@@ -1064,6 +1064,13 @@ export default function Orders() {
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [mainPaymentMode, setMainPaymentMode] = useState<"upi" | "cash">("cash");
   const [useWallet, setUseWallet] = useState(false);
+  // Tracks the walletUsed from the order being edited so the wallet UI remains
+  // visible even though the customer's balance was already deducted when the
+  // original order was placed.
+  const [editingOrderWalletUsed, setEditingOrderWalletUsed] = useState(0);
+  // The customer ID of the order being edited — wallet credit is only added
+  // back when the chosen customer still matches the original order's customer.
+  const [editingOrderCustomerId, setEditingOrderCustomerId] = useState("");
   // When populating from an existing order, skip the payment-recompute effect once
   // so the saved payment entries aren't overwritten by the derived logic.
   const skipPaymentRecomputeRef = useRef(false);
@@ -1109,6 +1116,8 @@ export default function Orders() {
     setPaymentEntries([]);
     setMainPaymentMode("cash");
     setUseWallet(false);
+    setEditingOrderWalletUsed(0);
+    setEditingOrderCustomerId("");
     setEditingOrderId("");
   }, []);
 
@@ -1587,7 +1596,11 @@ export default function Orders() {
       skipPaymentRecomputeRef.current = false;
       return;
     }
-    const walletBal = Number(chosenCustomer?.walletBalance) || 0;
+    // In edit mode, add back the wallet amount already used by this order
+    // because the customer's balance was already debited when the order was placed.
+    const rawWalletBal = Number(chosenCustomer?.walletBalance) || 0;
+    const sameCustomerAsOrder = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
+    const walletBal = rawWalletBal + (sameCustomerAsOrder ? editingOrderWalletUsed : 0);
     const walletApplied = useWallet && walletBal > 0 ? Math.min(walletBal, newOrderTotal) : 0;
     const remaining = Math.max(0, newOrderTotal - walletApplied);
 
@@ -1621,7 +1634,7 @@ export default function Orders() {
       setPaymentEntries([{ mode: "cash", amount: "0", reference: "" }]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainPaymentMode, useWallet, newOrderTotal, chosenCustomer?.walletBalance]);
+  }, [mainPaymentMode, useWallet, newOrderTotal, chosenCustomer?.walletBalance, editingOrderId, editingOrderWalletUsed]);
 
   const toggleCoupon = (id: string) => {
     setAppliedCouponIds((ids) => (ids.includes(id) ? [] : [id]));
@@ -2586,6 +2599,13 @@ export default function Orders() {
       const nonWalletMode = nonWalletEntry ? String(nonWalletEntry.mode || "").toLowerCase() : "cash";
       setMainPaymentMode((nonWalletMode === "upi" ? "upi" : "cash") as "upi" | "cash");
     }
+    // Remember the wallet amount from the original order. The customer's balance
+    // is already deducted, so we add this back when computing the effective
+    // balance for the edit UI so the wallet checkbox stays visible.
+    // Also record the original customer ID — the credit is only valid while the
+    // same customer is selected; switching customers resets the effective balance.
+    setEditingOrderWalletUsed(Number(o.walletUsed) || (walletEntry ? Number(walletEntry.amount) || 0 : 0));
+    setEditingOrderCustomerId(o.customerId ? String(o.customerId) : "");
     // Set the skip-ref BEFORE setUseWallet so the effect that fires won't overwrite entries
     skipPaymentRecomputeRef.current = true;
     setUseWallet(hadWallet);
@@ -3787,12 +3807,15 @@ export default function Orders() {
                       </div>
                       <button onClick={() => { setChosenCustomer(null); setSelectedAddressIdx(null); setCustomerSearch(""); setNewCustomer({ name: "", phone: "", email: "", dateOfBirth: "" }); }} className="text-gray-300 hover:text-red-400 flex-shrink-0 p-0.5"><X className="w-3.5 h-3.5" /></button>
                     </div>
-                    {Number(chosenCustomer.walletBalance) > 0 && (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-100 bg-blue-50">
-                        <Wallet className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                        <span className="text-xs font-semibold text-blue-700">FishTokri Wallet: ₹{Number(chosenCustomer.walletBalance).toLocaleString("en-IN")}</span>
-                      </div>
-                    )}
+                    {(() => {
+                      const effBal = (Number(chosenCustomer.walletBalance) || 0) + (editingOrderId && editingOrderCustomerId && String(chosenCustomer.id) === editingOrderCustomerId ? editingOrderWalletUsed : 0);
+                      return effBal > 0 ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-100 bg-blue-50">
+                          <Wallet className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-blue-700">FishTokri Wallet: ₹{effBal.toLocaleString("en-IN")}</span>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
 
                 ) : (() => {
@@ -4376,9 +4399,14 @@ export default function Orders() {
                     Cash
                   </button>
                 </div>
-                {/* Wallet checkbox — only shown when customer has balance */}
-                {Number(chosenCustomer?.walletBalance) > 0 && (() => {
-                  const walletBal = Number(chosenCustomer!.walletBalance);
+                {/* Wallet checkbox — shown when customer has balance OR edit mode already used wallet (same customer) */}
+                {(() => {
+                  const sameCustomer = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
+                  const effBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
+                  return effBal > 0;
+                })() && (() => {
+                  const sameCustomer = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
+                  const walletBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
                   const walletApplied = Math.min(walletBal, newOrderTotal);
                   const remaining = Math.max(0, newOrderTotal - walletApplied);
                   return (
@@ -4497,8 +4525,10 @@ export default function Orders() {
                     </div>
                   </div>
                 )}
-                {useWallet && Number(chosenCustomer?.walletBalance) > 0 && (() => {
-                  const walletApplied = Math.min(Number(chosenCustomer!.walletBalance), newOrderTotal);
+                {useWallet && (() => { const sc = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId; return (Number(chosenCustomer?.walletBalance) || 0) + (sc ? editingOrderWalletUsed : 0); })() > 0 && (() => {
+                  const sameCustomer = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
+                  const effBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
+                  const walletApplied = Math.min(effBal, newOrderTotal);
                   return (
                     <div className="flex justify-between text-xs text-[#364F9F] font-medium">
                       <span>Wallet applied</span>
@@ -4508,8 +4538,10 @@ export default function Orders() {
                 })()}
                 <div className="flex justify-between items-center pt-1 border-t border-gray-100">
                   <span className="text-sm font-bold text-[#162B4D]">Total</span>
-                  {useWallet && Number(chosenCustomer?.walletBalance) > 0 ? (() => {
-                    const walletApplied = Math.min(Number(chosenCustomer!.walletBalance), newOrderTotal);
+                  {useWallet && (() => { const sc = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId; return (Number(chosenCustomer?.walletBalance) || 0) + (sc ? editingOrderWalletUsed : 0); })() > 0 ? (() => {
+                    const sameCustomer = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
+                    const effBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
+                    const walletApplied = Math.min(effBal, newOrderTotal);
                     const finalAmt = Math.max(0, newOrderTotal - walletApplied);
                     return (
                       <div className="text-right">
