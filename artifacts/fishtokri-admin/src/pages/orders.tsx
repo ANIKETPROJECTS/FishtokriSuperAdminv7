@@ -2517,6 +2517,11 @@ export default function Orders() {
         email: o.email ?? "",
         addresses: Array.isArray(o.customerAddresses) ? o.customerAddresses : [],
       });
+      // Always fetch fresh customer data so the wallet balance shown in the edit
+      // form reflects the current balance (e.g. after a prior wallet refund).
+      apiFetch(`/api/customers/${o.customerId}`)
+        .then((d) => { if (d?.customer) setChosenCustomer(d.customer); })
+        .catch(() => {});
     } else {
       setCustomerMode("new");
       setNewCustomer({
