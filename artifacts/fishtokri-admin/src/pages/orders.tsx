@@ -154,20 +154,33 @@ function SolidStatusBadge({ status, deliveryType }: { status: string; deliveryTy
   );
 }
 
+function modeDisplayLabel(mode: string, upiVariant?: string): string {
+  const m = String(mode).toLowerCase().trim();
+  if (m === "upi" && upiVariant) return String(upiVariant).trim();
+  if (m === "upi") return "UPI";
+  if (m === "card") return "Card";
+  if (m === "wallet") return "Wallet";
+  if (m === "cash" || m === "cod" || m === "") return "COD";
+  return m.toUpperCase();
+}
+
+function combinedPaymentLabel(order: any): string {
+  const pays: any[] = Array.isArray(order?.payments) ? order.payments : [];
+  const modes = pays.map((p: any) => String(p?.mode || "").toLowerCase().trim()).filter(Boolean);
+  const hasWallet = modes.includes("wallet");
+  const nonWallet = [...new Set(modes.filter(m => m !== "wallet"))];
+
+  if (hasWallet && nonWallet.length > 0) {
+    const otherLabels = nonWallet.map(m => modeDisplayLabel(m, order?.upiVariant));
+    return "Wallet + " + otherLabels.join(" + ");
+  }
+  // Fall back to paymentMode field
+  const rawMode = String(order?.paymentMode || modes[0] || "").toLowerCase().trim();
+  return modeDisplayLabel(rawMode, order?.upiVariant);
+}
+
 function PaymentBadge({ order }: { order: any }) {
-  const rawMode = String(
-    order?.paymentMode ||
-    (Array.isArray(order?.payments) && order.payments[0]?.mode) ||
-    ""
-  ).toLowerCase().trim();
-  const label = rawMode === "upi" && order?.upiVariant
-    ? order.upiVariant
-    : rawMode === "upi" ? "UPI"
-    : rawMode === "card" ? "Card"
-    : rawMode === "wallet" ? "Wallet"
-    : (rawMode === "cash" || rawMode === "cod" || rawMode === "") ? "COD"
-    : rawMode.toUpperCase();
-  return <span className="text-xs font-medium text-black">{label}</span>;
+  return <span className="text-xs font-medium text-black">{combinedPaymentLabel(order)}</span>;
 }
 
 function formatTime12(t: string): string {
@@ -352,14 +365,7 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
     return orderDateStr;
   })();
   const timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const payMode = (() => {
-    const rawMode = order.paymentMode ||
-      (Array.isArray(order.payments) && order.payments.length > 0
-        ? [...new Set(order.payments.map((p: any) => p.mode || p.method).filter(Boolean))].join(", ")
-        : "Cash");
-    if (String(rawMode).toLowerCase() === "upi" && order.upiVariant) return String(order.upiVariant).trim();
-    return rawMode;
-  })();
+  const payMode = combinedPaymentLabel(order);
   const payLabel =
     order.paymentStatus === "paid" ? "Paid" :
     order.paymentStatus === "partial" ? "Partial" : "Unpaid";
