@@ -513,16 +513,18 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       const isUnpaid = statusLower === "unpaid";
       const isPartial = statusLower === "partial";
 
-      // Unpaid dues — accumulated for ALL orders including cancelled
-      if (isUnpaid) {
-        unpaid += total;
-      } else if (isPartial) {
-        if (o.dueAmount != null && Number(o.dueAmount) > 0) {
-          unpaid += Number(o.dueAmount);
-        } else if (o.paidAmount != null) {
-          unpaid += Math.max(0, total - Number(o.paidAmount));
-        } else {
+      // Unpaid dues — only for non-cancelled orders
+      if (!isCancelled) {
+        if (isUnpaid) {
           unpaid += total;
+        } else if (isPartial) {
+          if (o.dueAmount != null && Number(o.dueAmount) > 0) {
+            unpaid += Number(o.dueAmount);
+          } else if (o.paidAmount != null) {
+            unpaid += Math.max(0, total - Number(o.paidAmount));
+          } else {
+            unpaid += total;
+          }
         }
       }
 
