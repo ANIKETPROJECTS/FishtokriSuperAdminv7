@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createSign } from "node:crypto";
+import { requireAuth, requireMasterAdmin } from "../middlewares/auth.js";
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get("/qz-certificate", (_req, res) => {
   res.type("text/plain").send(firstCert);
 });
 
-router.post("/sign-message", async (req, res) => {
+router.post("/sign-message", requireAuth as any, requireMasterAdmin as any, async (req, res) => {
   const privateKey = process.env.QZ_PRIVATE_KEY;
   if (!privateKey) {
     res.status(503).json({ error: "QZ_PRIVATE_KEY not configured" });

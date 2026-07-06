@@ -8,12 +8,15 @@ import { requireAuth, requireMasterAdmin, type AuthenticatedRequest } from "../m
 
 const router: IRouter = Router();
 
-const ADMIN_EMAIL = "admin@fishtokri.com";
-const ADMIN_PASSWORD = "FishTokri@Admin2024";
+const ADMIN_EMAIL = process.env.MASTER_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.MASTER_ADMIN_PASSWORD;
 const JWT_SECRET = process.env.SESSION_SECRET;
 
 if (!JWT_SECRET) {
   throw new Error("SESSION_SECRET must be set.");
+}
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error("MASTER_ADMIN_EMAIL and MASTER_ADMIN_PASSWORD must be set.");
 }
 
 const loginSchema = z.object({
