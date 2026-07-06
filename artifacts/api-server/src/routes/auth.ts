@@ -8,8 +8,8 @@ import { requireAuth, requireMasterAdmin, type AuthenticatedRequest } from "../m
 
 const router: IRouter = Router();
 
-const ADMIN_EMAIL = process.env.MASTER_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.MASTER_ADMIN_PASSWORD;
+const ADMIN_EMAIL = "admin@fishtokri.com";
+const ADMIN_PASSWORD = "FishTokri@Admin2024";
 const JWT_SECRET = process.env.SESSION_SECRET;
 
 if (!JWT_SECRET) {
