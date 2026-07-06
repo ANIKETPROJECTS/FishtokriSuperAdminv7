@@ -15,9 +15,6 @@ const JWT_SECRET = process.env.SESSION_SECRET;
 if (!JWT_SECRET) {
   throw new Error("SESSION_SECRET must be set.");
 }
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error("MASTER_ADMIN_EMAIL and MASTER_ADMIN_PASSWORD must be set.");
-}
 
 const loginSchema = z.object({
   email: z.string().min(1),
@@ -34,8 +31,12 @@ router.post("/login", async (req, res) => {
 
   const { email, password, loginRole } = parsed.data;
 
-  // Master Admin portal: only accepts hardcoded credentials, never DB users
+  // Master Admin portal: credentials come from environment secrets.
   if (loginRole === "master_admin") {
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+      res.status(503).json({ error: "NotConfigured", message: "Master admin credentials are not configured. Set MASTER_ADMIN_EMAIL and MASTER_ADMIN_PASSWORD." });
+      return;
+    }
     if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
       res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
       return;

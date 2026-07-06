@@ -1540,8 +1540,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       }
     }
 
-    // Handle wallet payment entries: when "wallet" mode payments change, apply the delta to customer wallet.
-    // Positive delta = credit (overpayment going to wallet). Negative delta = debit (not typical on update).
+    // Handle wallet payment entries: when "wallet" mode payments change, apply the inverse delta to
+    // customer wallet balance. walletDelta represents change in wallet *used*:
+    //   positive delta (more wallet used)  → deduct from balance  → $inc: -walletDelta
+    //   negative delta (less wallet used)  → refund to balance    → $inc: -walletDelta (becomes positive)
     if (Array.isArray(payments) && (result as any).customerId) {
       try {
         const prevWalletTotal = ((prev as any).payments ?? [])
@@ -1555,9 +1557,9 @@ router.put("/:id", async (req: ScopedRequest, res) => {
           const cCol = await getCustomersCollection();
           await cCol.updateOne(
             { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
-            { $inc: { walletBalance: walletDelta } }
+            { $inc: { walletBalance: -walletDelta } }
           );
-          req.log.info({ customerId: (result as any).customerId, delta: walletDelta }, "Wallet updated from delivery payment");
+          req.log.info({ customerId: (result as any).customerId, walletUsedDelta: walletDelta, balanceDelta: -walletDelta }, "Wallet balance updated from order payment change");
         }
       } catch (e) {
         req.log.error({ err: e }, "Failed to update wallet from delivery payment");
