@@ -73,7 +73,8 @@ export function useNewOrderPopup(): NewOrderPopupState {
     return () => { ch.close(); channelRef.current = null; };
   }, []);
 
-  // Polling
+  // Polling — fetches pending (delivery) orders AND takeaway orders each cycle.
+  // Takeaway orders use status="takeaway" rather than "pending", so we need two fetches.
   useEffect(() => {
     const poll = async () => {
       try {
@@ -84,14 +85,28 @@ export function useNewOrderPopup(): NewOrderPopupState {
         const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
         const today  = istNow.toISOString().slice(0, 10);
 
-        const params = new URLSearchParams({ status: "pending", date: today, limit: "200" });
+        const baseParams = new URLSearchParams({ date: today, limit: "200" });
         if (scope.role !== "master_admin") {
-          if (scope.subHubIds.length > 0)   params.set("subHubId",   scope.subHubIds[0]);
-          else if (scope.superHubIds.length > 0) params.set("superHubId", scope.superHubIds[0]);
+          if (scope.subHubIds.length > 0)        baseParams.set("subHubId",   scope.subHubIds[0]);
+          else if (scope.superHubIds.length > 0) baseParams.set("superHubId", scope.superHubIds[0]);
         }
 
-        const data   = await apiFetch(`/api/orders?${params}`);
-        const orders: any[] = data.orders ?? [];
+        // Fetch pending (delivery) and takeaway orders in parallel
+        const pendingParams  = new URLSearchParams(baseParams); pendingParams.set("status", "pending");
+        const takeawayParams = new URLSearchParams(baseParams); takeawayParams.set("deliveryType", "takeaway");
+
+        const [pendingData, takeawayData] = await Promise.all([
+          apiFetch(`/api/orders?${pendingParams}`),
+          apiFetch(`/api/orders?${takeawayParams}`),
+        ]);
+
+        // Merge, deduplicating by ID (a takeaway order that is still "pending" could appear in both)
+        const seen = new Set<string>();
+        const orders: any[] = [];
+        for (const o of [...(pendingData.orders ?? []), ...(takeawayData.orders ?? [])]) {
+          const id = String(o._id);
+          if (!seen.has(id)) { seen.add(id); orders.push(o); }
+        }
 
         if (!initializedRef.current) {
           for (const o of orders) knownIdsRef.current.add(String(o._id));
@@ -122,7 +137,8 @@ export function useNewOrderPopup(): NewOrderPopupState {
           "Notification" in window &&
           Notification.permission === "granted"
         ) {
-          new Notification("🔔 New Order!", {
+          const isTakeawayOnly = newOrders.every(o => String(o.deliveryType ?? "").toLowerCase() === "takeaway");
+          new Notification(isTakeawayOnly ? "🛍️ New Takeaway Order!" : "🔔 New Order!", {
             body: newOrders.length === 1
               ? `New order from ${newOrders[0].customerName ?? "a customer"}`
               : `${newOrders.length} new orders arrived`,
