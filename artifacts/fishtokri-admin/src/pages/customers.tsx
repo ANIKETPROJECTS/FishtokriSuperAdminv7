@@ -206,12 +206,22 @@ function normalize(value: any) {
 
 function getCustomerLocation(customer: Customer) {
   const addr = customer.addresses?.[0];
-  if (!addr) return { pincode: null, city: null, name: null };
-  return {
-    pincode: addr.pincode || addr.zipCode || null,
-    city: addr.city || null,
-    name: addr.name || null,
-  };
+  if (!addr) return null;
+  const houseNo = addr.houseNo || addr.flatNo || addr.house || addr.apartment || "";
+  const building = addr.building || addr.buildingName || addr.society || "";
+  const street = addr.street || addr.streetName || addr.road || addr.addressLine1 || "";
+  const area = addr.area || addr.locality || addr.neighbourhood || "";
+  const landmark = addr.landmark || "";
+  const city = addr.city || "";
+  const state = addr.state || "";
+  const pincode = addr.pincode || addr.zipCode || addr.zip || "";
+  const lines = [
+    [houseNo, building].filter(Boolean).join(", "),
+    [street, area].filter(Boolean).join(", "),
+    landmark,
+    [city, state, pincode].filter(Boolean).join(", "),
+  ].filter(Boolean);
+  return lines.length ? lines : null;
 }
 
 function getCustomerTotalSpend(customer: Customer) {
@@ -565,12 +575,12 @@ export default function Customers() {
                         <p className="text-xs text-black mt-0.5">{c.dateOfBirth || "N.A"}</p>
                       </td>
                       <td className="px-3 py-4">
-                        {loc.pincode || loc.city || loc.name ? (
-                          <>
-                            {loc.pincode && <p className="text-sm font-medium text-black">{loc.pincode}</p>}
-                            {loc.city && <p className="text-xs text-black mt-0.5">{loc.city}</p>}
-                            {loc.name && <p className="text-xs text-black mt-0.5">{loc.name}</p>}
-                          </>
+                        {loc ? (
+                          <div>
+                            {loc.map((line: string, i: number) => (
+                              <p key={i} className={i === 0 ? "text-sm font-medium text-black" : "text-xs text-black mt-0.5"}>{line}</p>
+                            ))}
+                          </div>
                         ) : (
                           <span className="text-sm text-black">—</span>
                         )}
