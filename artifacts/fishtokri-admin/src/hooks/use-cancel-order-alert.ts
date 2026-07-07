@@ -76,6 +76,16 @@ export function useCancelOrderAlert(): CancelOrderAlertState {
           return;
         }
 
+        // Build set of IDs currently cancelled.
+        const currentlyCancelledIds = new Set(orders.map(o => String(o._id)));
+
+        // Evict IDs that are no longer cancelled so a re-cancellation is detected fresh.
+        for (const id of knownIdsRef.current) {
+          if (!currentlyCancelledIds.has(id)) {
+            knownIdsRef.current.delete(id);
+          }
+        }
+
         const newCancelled: any[] = [];
         for (const o of orders) {
           const id = String(o._id);
