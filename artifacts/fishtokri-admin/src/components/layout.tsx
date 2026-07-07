@@ -3,7 +3,9 @@ import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, Use
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 import { useNewOrderPopup } from "@/hooks/use-new-order-popup";
+import { useCancelOrderAlert } from "@/hooks/use-cancel-order-alert";
 import { NewOrderPopup } from "@/components/NewOrderPopup";
+import { CancelOrderPopup } from "@/components/CancelOrderPopup";
 import { createPortal } from "react-dom";
 
 const masterAdminNavItems = [
@@ -156,6 +158,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   // New-order popup — runs on every page, replaces the old one-shot alert
   const { queue: popupQueue, acceptOrder, rejectOrder, dismissOrder } = useNewOrderPopup();
+  const { queue: cancelQueue, dismiss: dismissCancel } = useCancelOrderAlert();
   const adminName = admin?.name || (role === "master_admin" ? "Master Admin" : "Super Hub");
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -558,6 +561,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         onAccept={acceptOrder}
         onReject={rejectOrder}
         onDismiss={dismissOrder}
+      />
+      <CancelOrderPopup
+        queue={cancelQueue}
+        onDismiss={dismissCancel}
       />
     </div>
   );
