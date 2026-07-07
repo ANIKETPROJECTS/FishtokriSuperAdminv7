@@ -7,6 +7,7 @@ import {
   MapPin, ShoppingBag, ChevronLeft, ChevronRight, Users,
   Home, Clock, CheckCircle2, ClipboardList, Package,
   CreditCard, Truck, UserRound, ChevronDown, ChevronUp, Tag, Wallet, RefreshCw,
+  TrendingUp, TrendingDown, History,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -1036,6 +1037,18 @@ function CustomerDetailPage({
             <OrderList orders={history} empty="No completed or past orders found for this customer." />
           </CollapsibleDetailSection>
 
+          {/* Wallet Tracker */}
+          <CollapsibleDetailSection
+            title={`Customer Wallet Tracker (${(fullCustomer.walletTransactions ?? []).length})`}
+            icon={History}
+            defaultOpen={(fullCustomer.walletTransactions ?? []).length > 0 && (fullCustomer.walletTransactions ?? []).length <= 10}
+          >
+            <WalletTrackerSection
+              transactions={fullCustomer.walletTransactions ?? []}
+              currentBalance={Number(fullCustomer.walletBalance) || 0}
+            />
+          </CollapsibleDetailSection>
+
           {/* Active Coupons — locked in pending/in-progress orders */}
           <CollapsibleDetailSection title={`Active Coupons (${fullCustomer.activeCoupons?.length ?? 0})`} icon={Tag} defaultOpen={!!fullCustomer.activeCoupons?.length}>
             <ActiveCouponsList coupons={fullCustomer.activeCoupons ?? []} />
@@ -1265,6 +1278,132 @@ function AddressCard({ address, index }: { address: any; index: number }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Wallet Tracker Section
+// ---------------------------------------------------------------------------
+function WalletTrackerSection({ transactions, currentBalance }: {
+  transactions: any[];
+  currentBalance: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "credit" | "debit">("all");
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
+
+  const filtered = useMemo(() => {
+    let result = [...transactions];
+    if (typeFilter !== "all") result = result.filter(t => t.type === typeFilter);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(t =>
+        (t.reason || "").toLowerCase().includes(q) ||
+        (t.orderId || "").toLowerCase().includes(q)
+      );
+    }
+    result.sort((a, b) => {
+      const ta = new Date(a.createdAt || 0).getTime();
+      const tb = new Date(b.createdAt || 0).getTime();
+      return sort === "newest" ? tb - ta : ta - tb;
+    });
+    return result;
+  }, [transactions, typeFilter, search, sort]);
+
+  const totalCredit = transactions.filter(t => t.type === "credit").reduce((s, t) => s + Math.abs(Number(t.amount || 0)), 0);
+  const totalDebit  = transactions.filter(t => t.type === "debit").reduce((s, t) => s + Math.abs(Number(t.amount || 0)), 0);
+
+  if (!transactions.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-200 bg-white py-8 text-center text-sm text-gray-400">
+        No wallet transactions yet. Transactions will appear here when wallet balance is added, deducted, or adjusted.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Summary strip */}
+      <div className="grid grid-cols-3 divide-x divide-gray-100 rounded-xl border border-gray-100 bg-gray-50 overflow-hidden">
+        <div className="px-4 py-3 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Current Balance</p>
+          <p className="text-base font-bold text-[#1A56DB]">₹{Number(currentBalance).toLocaleString("en-IN")}</p>
+        </div>
+        <div className="px-4 py-3 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Total Credited</p>
+          <p className="text-base font-bold text-emerald-600">₹{totalCredit.toLocaleString("en-IN")}</p>
+        </div>
+        <div className="px-4 py-3 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Total Deducted</p>
+          <p className="text-base font-bold text-red-500">₹{totalDebit.toLocaleString("en-IN")}</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[150px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search reason or order ID…"
+            className="w-full pl-8 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:ring-1 focus:ring-[#1A56DB] text-black"
+          />
+          {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-3 h-3" /></button>}
+        </div>
+        <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden text-xs">
+          {(["all", "credit", "debit"] as const).map(t => (
+            <button key={t} onClick={() => setTypeFilter(t)}
+              className={`px-3 h-7 font-medium capitalize transition-colors ${typeFilter === t ? "bg-[#162B4D] text-white" : "text-black hover:bg-gray-50"}`}>
+              {t === "all" ? "All" : t === "credit" ? "Credits" : "Debits"}
+            </button>
+          ))}
+        </div>
+        <select value={sort} onChange={(e) => setSort(e.target.value as any)}
+          className="h-7 px-2 text-xs border border-gray-200 rounded-lg bg-white text-black outline-none focus:ring-1 focus:ring-[#1A56DB]">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+      </div>
+
+      {/* Transaction list */}
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-xs text-gray-400">No transactions match your filter.</div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((tx: any, i: number) => {
+            const isCredit = tx.type === "credit";
+            const amt = Math.abs(Number(tx.amount || 0));
+            const when = tx.createdAt ? new Date(tx.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "";
+            return (
+              <div key={i} className="flex items-start gap-3 rounded-xl border border-gray-100 bg-white p-3.5">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${isCredit ? "bg-emerald-50" : "bg-red-50"}`}>
+                  {isCredit
+                    ? <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                    : <TrendingDown className="w-3.5 h-3.5 text-red-500" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-[#162B4D] leading-tight">{tx.reason || (isCredit ? "Wallet credited" : "Wallet deducted")}</p>
+                    <span className={`text-sm font-bold flex-shrink-0 ${isCredit ? "text-emerald-600" : "text-red-500"}`}>
+                      {isCredit ? "+" : "−"}₹{amt.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-[11px] text-gray-400">
+                    {when && <span>{when}</span>}
+                    {tx.orderId && (
+                      <span className="font-mono text-[#364F9F]">#{String(tx.orderId).replace(/^#+/, "")}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {filtered.length < transactions.length && (
+        <p className="text-xs text-gray-400 text-center">Showing {filtered.length} of {transactions.length} transactions</p>
+      )}
+    </div>
+  );
+}
+
 const ORDER_SORT_OPTIONS = [
   { value: "date_desc", label: "Newest first" },
   { value: "date_asc", label: "Oldest first" },
@@ -1347,8 +1486,10 @@ function OrderList({ orders, empty }: { orders: any[]; empty: string }) {
 }
 
 function shortOrderRef(order: any, index: number) {
-  const id = getOrderId(order);
+  // Prefer the FTS order ID (e.g. #FTS202607079) stored in order.orderId
+  if (order.orderId) return `#${String(order.orderId).replace(/^#+/, "")}`;
   if (order.orderNumber) return `#${order.orderNumber}`;
+  const id = getOrderId(order);
   if (id && id.length >= 8) return `#${id.slice(-8).toUpperCase()}`;
   return `Order ${index + 1}`;
 }

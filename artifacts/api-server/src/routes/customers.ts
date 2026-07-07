@@ -85,6 +85,7 @@ const customerSchema = new mongoose.Schema(
     phone: String,
     dateOfBirth: String,
     walletBalance: { type: Number, default: 0 },
+    walletTransactions: { type: Array, default: [] },
     addresses: { type: Array, default: [] },
     orders: { type: Array, default: [] },
     usedCoupons: { type: Array, default: [] },
@@ -107,6 +108,7 @@ function serializeCustomer(doc: any) {
     phone: doc.phone ?? "",
     dateOfBirth: doc.dateOfBirth ?? "",
     walletBalance: Number(doc.walletBalance) || 0,
+    walletTransactions: doc.walletTransactions ?? [],
     addresses: doc.addresses ?? [],
     orders: doc.orders ?? [],
     usedCoupons: doc.usedCoupons ?? [],
@@ -511,6 +513,13 @@ router.patch("/:id/wallet", async (req: ScopedRequest, res) => {
     const current = Number(customer.walletBalance) || 0;
     const newBalance = Math.max(0, current + amount);
     customer.walletBalance = newBalance;
+    const txEntry = {
+      amount,
+      type: amount > 0 ? "credit" : "debit",
+      reason: reason?.trim() || (amount > 0 ? "Manual credit" : "Manual debit"),
+      createdAt: new Date(),
+    };
+    customer.walletTransactions = [...(customer.walletTransactions || []), txEntry];
     await customer.save();
     req.log?.info({ customerId: req.params.id, delta: amount, newBalance, reason }, "Wallet adjusted");
     res.json({ walletBalance: newBalance });

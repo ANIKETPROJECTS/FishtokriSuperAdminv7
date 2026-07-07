@@ -74,6 +74,34 @@ async function getOrdersDb() {
   return getSubHubDbConnection(ORDERS_DB);
 }
 
+/**
+ * Atomically adjusts a customer's walletBalance and appends a transaction record.
+ * Use this instead of bare `$inc: { walletBalance }` so the wallet tracker has full history.
+ */
+async function pushWalletTx(
+  cCol: any,
+  customerId: string | mongoose.Types.ObjectId,
+  balanceDelta: number,
+  reason: string,
+  opts?: { orderId?: string; orderRef?: string }
+): Promise<void> {
+  if (!balanceDelta) return;
+  const custOid = customerId instanceof mongoose.Types.ObjectId
+    ? customerId
+    : new mongoose.Types.ObjectId(String(customerId));
+  const txEntry: Record<string, any> = {
+    amount: balanceDelta,
+    type: balanceDelta > 0 ? "credit" : "debit",
+    reason,
+    createdAt: new Date(),
+  };
+  if (opts?.orderId) txEntry.orderId = opts.orderId;
+  if (opts?.orderRef) txEntry.orderRef = opts.orderRef;
+  await cCol.updateOne(
+    { _id: custOid },
+    { $inc: { walletBalance: balanceDelta }, $push: { walletTransactions: txEntry } }
+  );
+}
 
 function toId(id: string): mongoose.mongo.BSON.ObjectId | null {
   try { return new mongoose.mongo.ObjectId(id); } catch { return null; }
@@ -1269,10 +1297,10 @@ router.post("/", async (req: ScopedRequest, res) => {
     if (walletUsed > 0 && resolvedCustomerId) {
       try {
         const cCol = await getCustomersCollection();
-        await cCol.updateOne(
-          { _id: toId(resolvedCustomerId) },
-          { $inc: { walletBalance: -walletUsed } }
-        );
+        await pushWalletTx(cCol, String(resolvedCustomerId), -walletUsed, "Order placed — wallet deducted", {
+          orderId: String(orderDoc.orderId || ""),
+          orderRef: String(result.insertedId),
+        });
         req.log.info({ customerId: resolvedCustomerId, deducted: walletUsed }, "Wallet deducted on order create");
       } catch (e) {
         req.log.error({ err: e }, "Failed to deduct wallet on order create");
@@ -1529,9 +1557,9 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       if (adj !== 0) {
         try {
           const cCol = await getCustomersCollection();
-          await cCol.updateOne(
-            { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
-            { $inc: { walletBalance: adj } }
+          await pushWalletTx(cCol, String((result as any).customerId), adj,
+            adj > 0 ? "Extra amount credited — delivery payment difference" : "Order payment adjustment",
+            { orderId: String((result as any).orderId || ""), orderRef: String(oid) }
           );
           req.log.info({ customerId: (result as any).customerId, walletAdjustment: adj }, "Wallet adjusted from delivery payment difference");
         } catch (e) {
@@ -1555,9 +1583,9 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         const walletDelta = newWalletTotal - prevWalletTotal;
         if (walletDelta !== 0) {
           const cCol = await getCustomersCollection();
-          await cCol.updateOne(
-            { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
-            { $inc: { walletBalance: -walletDelta } }
+          await pushWalletTx(cCol, String((result as any).customerId), -walletDelta,
+            walletDelta > 0 ? "Order edited — additional wallet deducted" : "Order edited — wallet refunded",
+            { orderId: String((result as any).orderId || ""), orderRef: String(oid) }
           );
           req.log.info({ customerId: (result as any).customerId, walletUsedDelta: walletDelta, balanceDelta: -walletDelta }, "Wallet balance updated from order payment change");
         }
@@ -1583,9 +1611,9 @@ router.put("/:id", async (req: ScopedRequest, res) => {
             .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
           if (walletToRefund > 0) {
             const cCol = await getCustomersCollection();
-            await cCol.updateOne(
-              { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
-              { $inc: { walletBalance: walletToRefund } }
+            await pushWalletTx(cCol, String((result as any).customerId), walletToRefund,
+              "Order cancelled — wallet refunded",
+              { orderId: String((result as any).orderId || ""), orderRef: String(oid) }
             );
             req.log.info({ customerId: (result as any).customerId, refunded: walletToRefund }, "Wallet refunded on order cancellation");
           }
@@ -1599,9 +1627,9 @@ router.put("/:id", async (req: ScopedRequest, res) => {
             .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
           if (walletToDeduct > 0) {
             const cCol = await getCustomersCollection();
-            await cCol.updateOne(
-              { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
-              { $inc: { walletBalance: -walletToDeduct } }
+            await pushWalletTx(cCol, String((result as any).customerId), -walletToDeduct,
+              "Order re-activated — wallet re-deducted",
+              { orderId: String((result as any).orderId || ""), orderRef: String(oid) }
             );
             req.log.info({ customerId: (result as any).customerId, deducted: walletToDeduct }, "Wallet re-deducted on order re-activation from cancelled");
           }
@@ -1615,9 +1643,9 @@ router.put("/:id", async (req: ScopedRequest, res) => {
             .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
           if (walletToRefund > 0) {
             const cCol = await getCustomersCollection();
-            await cCol.updateOne(
-              { _id: new mongoose.Types.ObjectId(String((result as any).customerId)) },
-              { $inc: { walletBalance: walletToRefund } }
+            await pushWalletTx(cCol, String((result as any).customerId), walletToRefund,
+              "Order payments cleared — wallet refunded",
+              { orderId: String((result as any).orderId || ""), orderRef: String(oid) }
             );
             req.log.info({ customerId: (result as any).customerId, refunded: walletToRefund }, "Wallet refunded when order moved out of delivered status");
           }
@@ -1789,9 +1817,9 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
           .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
         if (walletToRefund > 0) {
           const cCol = await getCustomersCollection();
-          await cCol.updateOne(
-            { _id: new mongoose.Types.ObjectId(String((existing as any).customerId)) },
-            { $inc: { walletBalance: walletToRefund } }
+          await pushWalletTx(cCol, String((existing as any).customerId), walletToRefund,
+            "Order deleted — wallet refunded",
+            { orderId: String((existing as any).orderId || ""), orderRef: req.params.id }
           );
           req.log.info({ customerId: (existing as any).customerId, refunded: walletToRefund }, "Wallet refunded on order delete");
         }
