@@ -313,6 +313,7 @@ export default function Customers() {
   const { data, isLoading } = useQuery({
     queryKey,
     queryFn: () => fetchCustomers({ search: debouncedSearch, sort, page, limit: LIMIT }),
+    refetchInterval: 1000,
   });
 
   const customers = data?.customers ?? [];
@@ -543,6 +544,7 @@ export default function Customers() {
                   <th className="px-3 py-4 text-left">Location</th>
                   <th className="px-3 py-4 text-right">Total Spend</th>
                   <th className="px-3 py-4 text-center">Total Orders</th>
+                  <th className="px-3 py-4 text-right">Wallet</th>
                   <th className="px-3 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -578,6 +580,13 @@ export default function Customers() {
                       </td>
                       <td className="px-3 py-4 text-center">
                         <span className="text-sm text-black">{totalOrders}</span>
+                      </td>
+                      <td className="px-3 py-4 text-right">
+                        {(Number(c.walletBalance) || 0) > 0 ? (
+                          <span className="text-sm font-semibold text-[#1A56DB]">{formatRupees(Number(c.walletBalance))}</span>
+                        ) : (
+                          <span className="text-sm text-black">₹0</span>
+                        )}
                       </td>
                       <td className="px-3 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -886,13 +895,8 @@ function CustomerDetailPage({
     queryKey: ["customer", customerId],
     queryFn: () => fetchCustomer(customerId),
     enabled: !!customerId,
+    refetchInterval: 1000,
   });
-
-  // Auto-refresh every 30 seconds, same cadence as orders page.
-  useEffect(() => {
-    const id = setInterval(() => { refetch(); }, 30000);
-    return () => clearInterval(id);
-  }, [refetch]);
 
   const fullCustomer = data ?? null;
   const { current, history, all } = useMemo(
