@@ -1829,22 +1829,27 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
     }
 
     // Release coupon locks when an order is deleted.
-    // Decrement usedCount in activeCoupons (removes entry if count reaches 0).
-    // If the order was already delivered, usedCoupons history is preserved.
+    // Decrement usedCount in activeCoupons and ALWAYS remove from usedCoupons —
+    // physical deletion wipes the order entirely, so no coupon history should remain.
     if ((existing as any).customerId) {
       try {
         const deletedCoupons = extractOrderCoupons(existing);
-        if (deletedCoupons.length > 0) {
-          const cCol = await getCustomersCollection();
-          const orderId = req.params.id;
-          const wasDelivered = (existing as any).status === "delivered";
-          if (!wasDelivered) {
-            for (const c of deletedCoupons) {
-              await decrementActiveCoupon(cCol, String((existing as any).customerId), c.couponId, orderId, req.log);
-            }
-            req.log.info({ customerId: (existing as any).customerId, orderId }, "Coupon lifecycle: activeCoupons decremented on order delete");
-          }
+        const cCol = await getCustomersCollection();
+        const orderId = req.params.id;
+        const custOid = new mongoose.Types.ObjectId(String((existing as any).customerId));
+
+        // Decrement activeCoupons (safe no-op if the entry was already moved out on delivery)
+        for (const c of deletedCoupons) {
+          await decrementActiveCoupon(cCol, String((existing as any).customerId), c.couponId, orderId, req.log);
         }
+
+        // Remove from usedCoupons — applies to delivered orders where the coupon was finalised
+        await cCol.updateOne(
+          { _id: custOid },
+          { $pull: { usedCoupons: { orderId } } as any }
+        );
+
+        req.log.info({ customerId: (existing as any).customerId, orderId }, "Coupon lifecycle: activeCoupons decremented + usedCoupons cleared on order delete");
       } catch (e) {
         req.log.error({ err: e }, "Failed to clean up coupon on order delete");
       }
