@@ -1,0 +1,50 @@
+You can use the following prompt:
+
+---
+
+I am facing an issue with **QZ Tray printing** in my application.
+
+### Problem
+
+When I click **Print Invoice**, the print process fails before reaching the printer. In the browser console, I repeatedly get the following errors:
+
+```text
+POST https://admin.fishtokri.in/api/sign-message 401 (Unauthorized)
+
+Signing failed Error: Signing failed: 401
+```
+
+The request to `/api/sign-message` returns **HTTP 401 Unauthorized**, causing QZ Tray to fail during the signing process.
+
+### Current Status
+
+* QZ Tray is installed and running.
+* The browser successfully connects to QZ Tray.
+* The printer is detected.
+* The failure occurs specifically during the **digital signing** step before the print job is sent.
+* The endpoint returning the error is:
+
+  ```
+  POST /api/sign-message
+  ```
+* Because this endpoint returns **401 Unauthorized**, QZ Tray throws:
+
+  ```
+  Signing failed: 401
+  ```
+
+### What needs to be investigated
+
+1. Why is the `/api/sign-message` endpoint returning **401 Unauthorized**?
+2. Is the request missing the required authentication (JWT token, session cookie, or Authorization header)?
+3. Is an authentication middleware protecting this endpoint and rejecting the request?
+4. Is the frontend sending the required authentication credentials when calling `/api/sign-message`?
+5. Is the user's session or access token expired?
+6. Check the backend logs to determine the exact reason for the 401 response.
+7. Verify whether this endpoint should even require authentication, or if it should allow authenticated users to obtain the QZ Tray signature.
+
+### Expected Behavior
+
+When the user clicks **Print Invoice**, the frontend should successfully call `/api/sign-message`, receive the signed data from the backend, pass it to QZ Tray, and the invoice should print without any authentication errors.
+
+Please identify the root cause of the **401 Unauthorized** response and provide the necessary frontend and backend changes to resolve it.
