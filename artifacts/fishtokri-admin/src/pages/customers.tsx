@@ -1552,7 +1552,14 @@ function OrderCard({ order, index }: { order: any; index: number }) {
   const deliveryFee = order.deliveryFee ?? order.deliveryCharge ?? null;
   const slotCharge = order.slotCharge ?? order.timeslotCharge ?? null;
   const instantDelivery = order.instantDeliveryCharge ?? order.instantDelivery ?? null;
-  const couponDiscount = Number(order.couponDiscount ?? order.discount ?? 0);
+
+  // Split total discount into coupon portion + extra discount portion (mirrors orders page logic)
+  const totalDiscount = Number(order.couponDiscount ?? order.discount ?? 0);
+  const extraDiscAmt = Number(order.extraDiscount) || 0;
+  const extraDiscType: string = order.extraDiscountType || "flat";
+  // couponAmt = whatever discount isn't accounted for by extraDiscount
+  const couponAmt = Math.max(0, totalDiscount - extraDiscAmt);
+
   const couponCode = (
     order.couponCode
     ?? (Array.isArray(order.couponCodes) && order.couponCodes.length ? order.couponCodes.join(", ") : null)
@@ -1564,7 +1571,6 @@ function OrderCard({ order, index }: { order: any; index: number }) {
   const billName = order.customerName ?? order.name ?? "";
   const billPhone = order.phone ?? order.customerPhone ?? order.mobile ?? "";
   const billAddr = getOrderBillAddress(order);
-  const paymentMethod = order.paymentMethod ?? order.paymentMode ?? order.payment ?? "";
   const paymentStatus = order.paymentStatus ?? "";
   const paidAmount = Number(order.paidAmount ?? order.paid ?? 0);
   const totalAmt = Number(grandTotal ?? getOrderTotal(order));
@@ -1572,6 +1578,13 @@ function OrderCard({ order, index }: { order: any; index: number }) {
   const subHubName = order.subHubName ?? order.subHub ?? order.location ?? "";
   const isPaid = paymentStatus && normalize(paymentStatus) === "paid";
   const isUnpaid = paymentStatus && ["unpaid", "pending", "due"].includes(normalize(paymentStatus));
+
+  // Wallet applied — prefer payments[] array entry, fall back to walletUsed field
+  const paymentsArr: any[] = Array.isArray(order.payments) ? order.payments : [];
+  const walletEntry = paymentsArr.find((p: any) => String(p?.mode ?? "").toLowerCase() === "wallet");
+  const walletApplied = walletEntry ? Number(walletEntry.amount) || 0 : Number(order.walletUsed) || 0;
+  // Non-wallet payment lines
+  const nonWalletPayments = paymentsArr.filter((p: any) => String(p?.mode ?? "").toLowerCase() !== "wallet");
 
   const computedSubtotal = subtotal != null
     ? Number(subtotal)
@@ -1640,26 +1653,41 @@ function OrderCard({ order, index }: { order: any; index: number }) {
         </div>
         {deliveryFee != null && (
           <div className="flex justify-between text-gray-600">
-            <span>Delivery Fee</span>
-            <span className={Number(deliveryFee) === 0 ? "text-emerald-600 font-medium" : ""}>{Number(deliveryFee) === 0 ? "FREE" : formatRupees(deliveryFee)}</span>
+            <span>Delivery Charge</span>
+            <span className={Number(deliveryFee) === 0 ? "text-emerald-600 font-medium" : "text-[#F05B4E]"}>
+              {Number(deliveryFee) === 0 ? "FREE" : `+ ${formatRupees(deliveryFee)}`}
+            </span>
           </div>
         )}
         {slotCharge != null && Number(slotCharge) > 0 && (
           <div className="flex justify-between text-gray-600">
             <span>Slot Charge</span>
-            <span>+ {formatRupees(slotCharge)}</span>
+            <span className="text-[#F05B4E]">+ {formatRupees(slotCharge)}</span>
           </div>
         )}
         {instantDelivery != null && Number(instantDelivery) > 0 && (
           <div className="flex justify-between text-gray-600">
             <span>Instant Delivery</span>
-            <span>+ {formatRupees(instantDelivery)}</span>
+            <span className="text-[#F05B4E]">+ {formatRupees(instantDelivery)}</span>
           </div>
         )}
-        {couponDiscount > 0 && (
+        {couponAmt > 0 && (
           <div className="flex justify-between text-emerald-600 font-medium">
-            <span>Coupon Discount{couponCode ? ` (${couponCode})` : ""}</span>
-            <span>−{formatRupees(couponDiscount)}</span>
+            <span>Coupon{couponCode ? ` (${couponCode})` : " Discount"}</span>
+            <span>− {formatRupees(couponAmt)}</span>
+          </div>
+        )}
+        {extraDiscAmt > 0 && (
+          <div className="flex justify-between text-emerald-600 font-medium">
+            <span>Extra discount{extraDiscType === "percentage" ? " (%)" : ""}</span>
+            <span>− {formatRupees(extraDiscAmt)}</span>
+          </div>
+        )}
+        {/* Fallback: show single discount row only if we couldn't split it */}
+        {couponAmt === 0 && extraDiscAmt === 0 && totalDiscount > 0 && (
+          <div className="flex justify-between text-emerald-600 font-medium">
+            <span>Discount</span>
+            <span>− {formatRupees(totalDiscount)}</span>
           </div>
         )}
         {tax != null && (
@@ -1672,10 +1700,22 @@ function OrderCard({ order, index }: { order: any; index: number }) {
           <span>Grand Total</span>
           <span className="text-[#F05B4E]">{formatRupees(totalAmt)}</span>
         </div>
+        {walletApplied > 0 && (
+          <div className="flex justify-between text-[#1A56DB] font-medium">
+            <span>Wallet applied</span>
+            <span>− {formatRupees(walletApplied)}</span>
+          </div>
+        )}
+        {walletApplied > 0 && (
+          <div className="flex justify-between font-semibold text-[#162B4D]">
+            <span>Amount due (cash/UPI)</span>
+            <span>{formatRupees(Math.max(0, totalAmt - walletApplied))}</span>
+          </div>
+        )}
       </div>
 
       {/* ── Payment ── */}
-      {(paymentMethod || paymentStatus) && (
+      {(paymentsArr.length > 0 || paymentStatus || paidAmount > 0) && (
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Payment</p>
@@ -1683,7 +1723,21 @@ function OrderCard({ order, index }: { order: any; index: number }) {
               <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${isPaid ? "bg-emerald-50 text-emerald-700 border-emerald-200" : isUnpaid ? "bg-red-50 text-red-600 border-red-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>{paymentStatus}</span>
             )}
           </div>
-          {paymentMethod && <p className="text-xs text-gray-500 mb-3">{paymentMethod}</p>}
+          {/* Per-mode payment lines */}
+          {paymentsArr.length > 0 && (
+            <div className="space-y-1 mb-3">
+              {paymentsArr.map((p: any, i: number) => {
+                const mode = String(p?.mode ?? "").toLowerCase();
+                const amt = Number(p?.amount) || 0;
+                return (
+                  <div key={i} className="flex justify-between text-sm text-gray-600 capitalize">
+                    <span>{mode === "cod" ? "Cash on Delivery" : mode || "Payment"}</span>
+                    <span className="font-medium text-[#162B4D]">{formatRupees(amt)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
               <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Paid</p>
