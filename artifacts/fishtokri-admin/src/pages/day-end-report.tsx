@@ -465,7 +465,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   const [ordSearch, setOrdSearch] = useState("");
   const [ordPayFilter, setOrdPayFilter] = useState<Set<"paid" | "partial" | "unpaid">>(new Set());
   const [ordPayModeFilter, setOrdPayModeFilter] = useState<Set<"cash" | "upi" | "card" | "wallet">>(new Set());
-  const [ordStatusFilter, setOrdStatusFilter] = useState<Set<"confirmed" | "out_for_delivery" | "delivered" | "cancelled">>(new Set());
+  const [ordStatusFilter, setOrdStatusFilter] = useState<Set<"confirmed" | "out_for_delivery" | "delivered" | "takeaway" | "cancelled">>(new Set());
 
   function toggleInSet<T>(set: Set<T>, setter: (s: Set<T>) => void, value: T) {
     const next = new Set(set);
@@ -749,6 +749,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
               ["confirmed", "Confirmed"],
               ["out_for_delivery", "Out for Delivery"],
               ["delivered", "Delivered"],
+              ["takeaway", "Takeaway"],
               ["cancelled", "Cancelled"],
             ]}
             onToggle={(v) => toggleInSet(ordStatusFilter, setOrdStatusFilter, v as any)}
@@ -869,7 +870,11 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
               {(() => {
                 const gtTotal    = filteredOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
                 const gtWallet   = filteredOrders.reduce((s, o) => s + orderWalletUsed(o), 0);
-                const gtNetCol   = filteredOrders.filter(o => orderWalletUsed(o) > 0).reduce((s, o) => s + Math.max(0, (Number(o.total) || 0) - orderWalletUsed(o)), 0);
+                // True grand total of "Total − Wallet Used" across ALL filtered rows (not just the
+                // ones with a non-zero wallet contribution) — this is the actual cash/UPI/card amount
+                // physically collected, and should reconcile with the Cash/UPI/Card stat cards above
+                // when a Pay Mode filter is applied.
+                const gtNetCol   = filteredOrders.reduce((s, o) => s + Math.max(0, (Number(o.total) || 0) - orderWalletUsed(o)), 0);
                 const gtDue      = filteredOrders.reduce((s, o) => s + orderDueAmount(o), 0);
                 const cellBase   = { padding: "10px 14px", fontWeight: 700, whiteSpace: "nowrap" as const, fontSize: 13 };
                 const numCell    = { ...cellBase, textAlign: "right" as const };
