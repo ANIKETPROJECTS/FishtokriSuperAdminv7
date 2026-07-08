@@ -7,6 +7,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 import * as XLSX from "xlsx";
 import { printHtmlWithQZ } from "@/lib/qz-print";
 import { useToast } from "@/hooks/use-toast";
@@ -299,6 +302,60 @@ function InvoiceModal({ order, onClose }: { order: any; onClose: () => void }) {
 }
 
 // ── Custom drag scrollbar (always-visible, works regardless of OS/browser) ────
+// ── Multi-select checkbox filter dropdown ────────────────────────────────────
+function MultiFilterDropdown<T extends string>({
+  label, selected, options, onToggle, onClear,
+}: {
+  label: string;
+  selected: Set<T>;
+  options: [T, string][];
+  onToggle: (value: T) => void;
+  onClear: () => void;
+}) {
+  const count = selected.size;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button style={{
+          height: 32, padding: "0 12px", borderRadius: 20, border: "1px solid",
+          fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Poppins, sans-serif", whiteSpace: "nowrap",
+          display: "flex", alignItems: "center", gap: 5,
+          background: count > 0 ? "#364F9F" : "#f3f4f6",
+          color: count > 0 ? "#fff" : "#555",
+          borderColor: count > 0 ? "transparent" : "#e5e7eb",
+        }}>
+          {label}{count > 0 ? ` (${count})` : ""}
+          <ChevronDown style={{ width: 12, height: 12 }} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" style={{ fontFamily: "Poppins, sans-serif", minWidth: 180 }}>
+        {options.map(([val, optLabel]) => (
+          <DropdownMenuCheckboxItem
+            key={val}
+            checked={selected.has(val)}
+            onSelect={(e) => e.preventDefault()}
+            onCheckedChange={() => onToggle(val)}
+            className="text-sm"
+          >
+            {optLabel}
+          </DropdownMenuCheckboxItem>
+        ))}
+        {count > 0 && (
+          <>
+            <div style={{ borderTop: "1px solid #e5e7eb", margin: "4px 0" }} />
+            <button
+              onClick={onClear}
+              style={{ width: "100%", textAlign: "left", padding: "6px 8px", fontSize: 12, color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontFamily: "Poppins, sans-serif" }}
+            >
+              Clear all
+            </button>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function DragScrollbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
@@ -406,9 +463,15 @@ function DragScrollbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElemen
 function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to: string; onDownload: (fn: () => void) => void; downloadRef: any }) {
   const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
   const [ordSearch, setOrdSearch] = useState("");
-  const [ordPayFilter, setOrdPayFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
-  const [ordPayModeFilter, setOrdPayModeFilter] = useState<"all" | "cash" | "upi" | "card" | "wallet">("all");
-  const [ordStatusFilter, setOrdStatusFilter] = useState<"all" | "confirmed" | "out_for_delivery" | "delivered" | "cancelled">("all");
+  const [ordPayFilter, setOrdPayFilter] = useState<Set<"paid" | "partial" | "unpaid">>(new Set());
+  const [ordPayModeFilter, setOrdPayModeFilter] = useState<Set<"cash" | "upi" | "card" | "wallet">>(new Set());
+  const [ordStatusFilter, setOrdStatusFilter] = useState<Set<"confirmed" | "out_for_delivery" | "delivered" | "cancelled">>(new Set());
+
+  function toggleInSet<T>(set: Set<T>, setter: (s: Set<T>) => void, value: T) {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    setter(next);
+  }
   const [ordSort, setOrdSort] = useState<"default" | "total_desc" | "total_asc" | "customer_az" | "invoice_az">("default");
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -493,9 +556,9 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         return words.every(word => haystack.includes(word));
       });
     }
-    if (ordPayFilter !== "all") list = list.filter(o => String(o.paymentStatus || "").toLowerCase() === ordPayFilter);
-    if (ordPayModeFilter !== "all") list = list.filter(o => orderMatchesPayMode(o, ordPayModeFilter));
-    if (ordStatusFilter !== "all") list = list.filter(o => String(o.status || "").toLowerCase() === ordStatusFilter);
+    if (ordPayFilter.size > 0) list = list.filter(o => ordPayFilter.has(String(o.paymentStatus || "").toLowerCase() as any));
+    if (ordPayModeFilter.size > 0) list = list.filter(o => Array.from(ordPayModeFilter).some(m => orderMatchesPayMode(o, m)));
+    if (ordStatusFilter.size > 0) list = list.filter(o => ordStatusFilter.has(String(o.status || "").toLowerCase() as any));
     if (ordSort === "total_desc") list.sort((a, b) => (b.total || 0) - (a.total || 0));
     else if (ordSort === "total_asc") list.sort((a, b) => (a.total || 0) - (b.total || 0));
     else if (ordSort === "customer_az") list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
@@ -561,12 +624,13 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
 
     const r2 = (n: number) => Math.round(n * 100) / 100;
     return {
-      cash:     r2(cash),
-      upi:      r2(upi),
-      card:     r2(card),
-      wallet:   r2(wallet),
-      totalRev: r2(totalRev + wallet),
-      unpaid:   r2(unpaid),
+      cash:       r2(cash),
+      upi:        r2(upi),
+      card:       r2(card),
+      wallet:     r2(wallet),
+      totalRev:   r2(totalRev + wallet),
+      unpaid:     r2(unpaid),
+      todaySales: r2(cash + upi + card + unpaid),
     };
   }, [orders]);
 
@@ -591,6 +655,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     rows.push(["Grand Total (Cash+UPI+Card)", stats.totalRev]);
     rows.push(["Wallet Collected (Extra)", stats.wallet]);
     rows.push(["Unpaid Dues", stats.unpaid]);
+    rows.push(["Today's Sales (Cash+UPI+Card+Unpaid)", stats.todaySales]);
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws["!cols"] = [{wch:20},{wch:22},{wch:14},{wch:48},{wch:14},{wch:22},{wch:14},{wch:14},{wch:20},{wch:14},{wch:16},{wch:16},{wch:16},{wch:18}];
     const wb = XLSX.utils.book_new();
@@ -612,6 +677,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
           { label: "Grand Total", value: formatRupees(stats.totalRev), color: "#000" },
           { label: "Wallet Collected", value: formatRupees(stats.wallet), color: "#2563eb" },
           { label: "Unpaid Dues", value: formatRupees(stats.unpaid), color: "#dc2626" },
+          { label: "Today's Sales", value: formatRupees(stats.todaySales), color: "#0f766e" },
         ].map((s, i, arr) => (
           <div key={s.label} style={{ flex: 1, padding: "16px 14px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
             <p style={{ fontSize: 9, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
@@ -644,61 +710,46 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
             />
           </div>
 
-          {/* Payment status pills */}
-          <div style={{ display: "flex", gap: 4 }}>
-            {([
-              ["all", "All Pay"],
+          {/* Payment status multi-select */}
+          <MultiFilterDropdown
+            label="Pay Status"
+            selected={ordPayFilter}
+            options={[
               ["paid", "Paid"],
               ["partial", "Partial"],
               ["unpaid", "Unpaid"],
-            ] as [typeof ordPayFilter, string][]).map(([val, label]) => (
-              <button key={val} onClick={() => setOrdPayFilter(val)} style={{
-                height: 32, padding: "0 12px", borderRadius: 20, border: "1px solid",
-                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Poppins, sans-serif", whiteSpace: "nowrap",
-                background: ordPayFilter === val ? (val === "paid" ? "#16a34a" : val === "partial" ? "#d97706" : val === "unpaid" ? "#dc2626" : "#364F9F") : "#f3f4f6",
-                color: ordPayFilter === val ? "#fff" : "#555",
-                borderColor: ordPayFilter === val ? "transparent" : "#e5e7eb",
-              }}>{label}</button>
-            ))}
-          </div>
+            ]}
+            onToggle={(v) => toggleInSet(ordPayFilter, setOrdPayFilter, v as any)}
+            onClear={() => setOrdPayFilter(new Set())}
+          />
 
-          {/* Payment mode pills */}
-          <div style={{ display: "flex", gap: 4 }}>
-            {([
-              ["all", "All Modes"],
+          {/* Payment mode multi-select */}
+          <MultiFilterDropdown
+            label="Pay Mode"
+            selected={ordPayModeFilter}
+            options={[
               ["cash", "Cash"],
               ["upi", "UPI"],
               ["card", "Card"],
               ["wallet", "Wallet"],
-            ] as [typeof ordPayModeFilter, string][]).map(([val, label]) => (
-              <button key={val} onClick={() => setOrdPayModeFilter(val)} style={{
-                height: 32, padding: "0 12px", borderRadius: 20, border: "1px solid",
-                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Poppins, sans-serif", whiteSpace: "nowrap",
-                background: ordPayModeFilter === val ? (val === "cash" ? "#16a34a" : val === "upi" ? "#7c3aed" : val === "card" ? "#ea580c" : val === "wallet" ? "#2563eb" : "#364F9F") : "#f3f4f6",
-                color: ordPayModeFilter === val ? "#fff" : "#555",
-                borderColor: ordPayModeFilter === val ? "transparent" : "#e5e7eb",
-              }}>{label}</button>
-            ))}
-          </div>
+            ]}
+            onToggle={(v) => toggleInSet(ordPayModeFilter, setOrdPayModeFilter, v as any)}
+            onClear={() => setOrdPayModeFilter(new Set())}
+          />
 
-          {/* Order status pills */}
-          <div style={{ display: "flex", gap: 4 }}>
-            {([
-              ["all", "All Status"],
+          {/* Order status multi-select */}
+          <MultiFilterDropdown
+            label="Order Status"
+            selected={ordStatusFilter}
+            options={[
               ["confirmed", "Confirmed"],
               ["out_for_delivery", "Out for Delivery"],
               ["delivered", "Delivered"],
               ["cancelled", "Cancelled"],
-            ] as [typeof ordStatusFilter, string][]).map(([val, label]) => (
-              <button key={val} onClick={() => setOrdStatusFilter(val)} style={{
-                height: 32, padding: "0 12px", borderRadius: 20, border: "1px solid",
-                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Poppins, sans-serif", whiteSpace: "nowrap",
-                background: ordStatusFilter === val ? (val === "delivered" ? "#16a34a" : val === "cancelled" ? "#dc2626" : val === "out_for_delivery" ? "#2563eb" : val === "confirmed" ? "#7c3aed" : "#364F9F") : "#f3f4f6",
-                color: ordStatusFilter === val ? "#fff" : "#555",
-                borderColor: ordStatusFilter === val ? "transparent" : "#e5e7eb",
-              }}>{label}</button>
-            ))}
-          </div>
+            ]}
+            onToggle={(v) => toggleInSet(ordStatusFilter, setOrdStatusFilter, v as any)}
+            onClear={() => setOrdStatusFilter(new Set())}
+          />
 
           {/* Sort */}
           <div style={{ position: "relative", flexShrink: 0 }}>
