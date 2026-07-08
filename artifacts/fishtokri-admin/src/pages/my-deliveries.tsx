@@ -491,7 +491,7 @@ function OrdersList({ mode, refreshKey, silentRefreshKey, onCountChange }: { mod
       const due = Math.max(0, total - alreadyPaid);
       setDeliverPayStatus("paid");
       setDeliverPayEntries([
-        { mode: "cash", amount: String(due > 0 ? due : total), reference: "" },
+        { mode: "cash", amount: String(due), reference: "" },
       ]);
       setPendingDeliverOrder(selectedOrder);
       setSelectedOrder(null);
@@ -522,6 +522,24 @@ function OrdersList({ mode, refreshKey, silentRefreshKey, onCountChange }: { mod
     const existingPaid = Number(orderForPayment.paidAmount) || 0;
     const existingPayments: any[] = Array.isArray(orderForPayment.payments) ? orderForPayment.payments : [];
     const remainingDue = Math.max(0, orderTotalAmount - existingPaid);
+
+    // This order is already fully settled — don't allow collecting (and duplicating) another payment.
+    if (remainingDue <= 0 && deliverPayStatus !== "unpaid") {
+      setSaving(true);
+      try {
+        await apiFetch(`/api/orders/${orderForPayment._id}`, { method: "PUT", body: JSON.stringify({ status: "delivered" }) });
+        toast({ title: "Marked as delivered", description: "Order was already fully paid — no new payment recorded." });
+        setDeliverPayOpen(false);
+        setPendingDeliverOrder(null);
+        setSelectedOrder(null);
+        loadOrders();
+      } catch (err: any) {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     if (deliverPayStatus !== "unpaid") {
       const validEntries = deliverPayEntries.filter((p) => p.mode && Number(p.amount) > 0);

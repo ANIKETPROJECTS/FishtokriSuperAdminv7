@@ -630,7 +630,11 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       wallet:     r2(wallet),
       totalRev:   r2(totalRev + wallet),
       unpaid:     r2(unpaid),
-      todaySales: r2(cash + upi + card + unpaid),
+      // Cash/UPI/Card buckets can double-count a single order that paid via multiple
+      // modes (e.g. cash + card split) — see comment above. `totalRev` here (before the
+      // wallet bonus is added) is the actual non-wallet amount collected, counted once
+      // per order, so it's the correct base for a true "money in + still owed" figure.
+      todaySales: r2(totalRev + unpaid),
     };
   }, [orders]);
 
