@@ -1957,7 +1957,13 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
         { $set: { isDeleted: true, inventoryDeducted: false, deletedAt: (existing as any).deletedAt ?? new Date() } }
       );
       req.log.error({ err: e }, "Failed to re-deduct inventory on order restore — rolling back");
-      res.status(500).json({ error: "InventoryError", message: "Could not restore order: insufficient stock. No changes were made." });
+      const isStockError = (e as any)?.name === "InsufficientStockError";
+      res.status(isStockError ? 400 : 500).json({
+        error: isStockError ? "InsufficientStock" : "InventoryError",
+        message: isStockError
+          ? `Could not restore order: ${(e as Error).message}. No changes were made.`
+          : "Could not restore order: insufficient stock. No changes were made.",
+      });
       return;
     }
 
