@@ -465,7 +465,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   const [ordSearch, setOrdSearch] = useState("");
   const [ordPayFilter, setOrdPayFilter] = useState<Set<"paid" | "partial" | "unpaid">>(new Set());
   const [ordPayModeFilter, setOrdPayModeFilter] = useState<Set<"cash" | "upi" | "card" | "wallet">>(new Set());
-  const [ordStatusFilter, setOrdStatusFilter] = useState<Set<"confirmed" | "out_for_delivery" | "delivered" | "takeaway" | "cancelled">>(new Set());
+  const [ordStatusFilter, setOrdStatusFilter] = useState<Set<"confirmed" | "out_for_delivery" | "delivered" | "takeaway" | "pending" | "cancelled">>(new Set());
   const [openInfoCard, setOpenInfoCard] = useState<string | null>(null);
 
   function toggleInSet<T>(set: Set<T>, setter: (s: Set<T>) => void, value: T) {
@@ -936,6 +936,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
               ["out_for_delivery", "Out for Delivery"],
               ["delivered", "Delivered"],
               ["takeaway", "Takeaway"],
+              ["pending", "Pending"],
               ["cancelled", "Cancelled"],
             ]}
             onToggle={(v) => toggleInSet(ordStatusFilter, setOrdStatusFilter, v as any)}
