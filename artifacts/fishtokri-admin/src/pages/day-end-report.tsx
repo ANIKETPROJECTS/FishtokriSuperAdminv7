@@ -466,6 +466,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   const [ordPayFilter, setOrdPayFilter] = useState<Set<"paid" | "partial" | "unpaid">>(new Set());
   const [ordPayModeFilter, setOrdPayModeFilter] = useState<Set<"cash" | "upi" | "card" | "wallet">>(new Set());
   const [ordStatusFilter, setOrdStatusFilter] = useState<Set<"confirmed" | "out_for_delivery" | "delivered" | "takeaway" | "cancelled">>(new Set());
+  const [openInfoCard, setOpenInfoCard] = useState<string | null>(null);
 
   function toggleInSet<T>(set: Set<T>, setter: (s: Set<T>) => void, value: T) {
     const next = new Set(set);
@@ -675,41 +676,203 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       {(() => {
         const cancelledCount = orders.filter(o => String(o.orderStatus || o.status || "").toLowerCase() === "cancelled").length;
         const regularCount   = orders.length - cancelledCount;
+
+        type InfoLine = { label: string; color: string; value?: string };
+        type StatCard = {
+          label: string;
+          value: string;
+          color: string;
+          sub?: { text: string; color: string }[];
+          info?: { lines: InfoLine[]; note?: string };
+        };
+
+        const cards: StatCard[] = [
+          {
+            label: "Total Orders",
+            value: String(orders.length),
+            color: "#000",
+            sub: [
+              { text: `${regularCount} regular`, color: "#16a34a" },
+              { text: `${cancelledCount} cancelled`, color: "#dc2626" },
+            ],
+          },
+          { label: "Cash Payment",     value: formatRupees(stats.cash),       color: "#16a34a" },
+          { label: "UPI Payment",      value: formatRupees(stats.upi),        color: "#7c3aed" },
+          { label: "Card Payment",     value: formatRupees(stats.card),       color: "#ea580c" },
+          {
+            label: "Grand Total",
+            value: formatRupees(stats.totalRev),
+            color: "#000",
+            info: {
+              lines: [
+                { label: "Cash Payment",     color: "#16a34a", value: formatRupees(stats.cash) },
+                { label: "UPI Payment",      color: "#7c3aed", value: formatRupees(stats.upi) },
+                { label: "Card Payment",     color: "#ea580c", value: formatRupees(stats.card) },
+                { label: "Wallet Bonuses",   color: "#2563eb", value: formatRupees(stats.wallet) },
+              ],
+              note: "Net collected per order (order total minus any wallet portion used), plus excess wallet bonuses received.",
+            },
+          },
+          { label: "Wallet Collected", value: formatRupees(stats.wallet),     color: "#2563eb" },
+          { label: "Unpaid Dues",      value: formatRupees(stats.unpaid),     color: "#dc2626" },
+          {
+            label: "Today's Sales",
+            value: formatRupees(stats.todaySales),
+            color: "#0f766e",
+            info: {
+              lines: [
+                { label: "Grand Total",  color: "#000",    value: formatRupees(stats.totalRev) },
+                { label: "Unpaid Dues",  color: "#dc2626", value: formatRupees(stats.unpaid) },
+              ],
+              note: "Total business volume — money already collected plus amounts still owed by customers.",
+            },
+          },
+        ];
+
         return (
-          <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
-            {[
-              {
-                label: "Total Orders",
-                value: String(orders.length),
-                color: "#000",
-                sub: [
-                  { text: `${regularCount} regular`, color: "#16a34a" },
-                  { text: `${cancelledCount} cancelled`, color: "#dc2626" },
-                ],
-              },
-              { label: "Cash Payment",    value: formatRupees(stats.cash),       color: "#16a34a" },
-              { label: "UPI Payment",     value: formatRupees(stats.upi),        color: "#7c3aed" },
-              { label: "Card Payment",    value: formatRupees(stats.card),       color: "#ea580c" },
-              { label: "Grand Total",     value: formatRupees(stats.totalRev),   color: "#000"    },
-              { label: "Wallet Collected",value: formatRupees(stats.wallet),     color: "#2563eb" },
-              { label: "Unpaid Dues",     value: formatRupees(stats.unpaid),     color: "#dc2626" },
-              { label: "Today's Sales",   value: formatRupees(stats.todaySales), color: "#0f766e" },
-            ].map((s, i, arr) => (
-              <div key={s.label} style={{ flex: 1, padding: "16px 14px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
-                <p style={{ fontSize: 9, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
-                <p style={{ fontSize: 17, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>{s.value}</p>
-                {"sub" in s && s.sub && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
-                    {s.sub.map(line => (
-                      <span key={line.text} style={{ fontSize: 10, fontWeight: 600, color: line.color }}>
-                        {line.text}
-                      </span>
-                    ))}
+          <>
+            {/* Click-outside backdrop to close any open info popover */}
+            {openInfoCard && (
+              <div
+                onClick={() => setOpenInfoCard(null)}
+                style={{ position: "fixed", inset: 0, zIndex: 99 }}
+              />
+            )}
+            <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "visible" }}>
+              {cards.map((s, i, arr) => {
+                const isOpen = openInfoCard === s.label;
+                return (
+                  <div
+                    key={s.label}
+                    style={{
+                      flex: 1,
+                      padding: "16px 14px",
+                      borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none",
+                      position: "relative",
+                      borderRadius: i === 0 ? "14px 0 0 14px" : i === arr.length - 1 ? "0 14px 14px 0" : undefined,
+                    }}
+                  >
+                    {/* Header row: label + optional (i) button */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                      <p style={{ fontSize: 9, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>{s.label}</p>
+                      {s.info && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenInfoCard(isOpen ? null : s.label); }}
+                          title="How is this calculated?"
+                          style={{
+                            background: isOpen ? "#e0e7ff" : "none",
+                            border: "1px solid",
+                            borderColor: isOpen ? "#818cf8" : "#cbd5e1",
+                            color: isOpen ? "#4338ca" : "#94a3b8",
+                            borderRadius: "50%",
+                            width: 16,
+                            height: 16,
+                            fontSize: 9,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            lineHeight: 1,
+                            flexShrink: 0,
+                            padding: 0,
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          i
+                        </button>
+                      )}
+                    </div>
+
+                    <p style={{ fontSize: 17, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>{s.value}</p>
+
+                    {s.sub && (
+                      <div style={{ display: "flex", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+                        {s.sub.map(line => (
+                          <span key={line.text} style={{ fontSize: 10, fontWeight: 600, color: line.color }}>{line.text}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Info popover */}
+                    {s.info && isOpen && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          position: "absolute",
+                          top: "calc(100% + 8px)",
+                          right: 0,
+                          zIndex: 100,
+                          background: "#fff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 12,
+                          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                          padding: "14px 16px",
+                          minWidth: 230,
+                          maxWidth: 280,
+                        }}
+                      >
+                        {/* Arrow */}
+                        <div style={{
+                          position: "absolute",
+                          top: -6,
+                          right: 12,
+                          width: 10,
+                          height: 10,
+                          background: "#fff",
+                          border: "1px solid #e2e8f0",
+                          borderRight: "none",
+                          borderBottom: "none",
+                          transform: "rotate(45deg)",
+                        }} />
+
+                        <p style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+                          How it's calculated
+                        </p>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                          {s.info.lines.map((line, li) => (
+                            <div key={line.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              {li > 0 && (
+                                <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, width: 10, flexShrink: 0, textAlign: "center" }}>+</span>
+                              )}
+                              {li === 0 && <span style={{ width: 10, flexShrink: 0 }} />}
+                              <span style={{
+                                flex: 1,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: line.color === "#000" ? "#1e293b" : line.color,
+                                background: line.color === "#000" ? "#f1f5f9" : `${line.color}15`,
+                                borderRadius: 6,
+                                padding: "3px 8px",
+                              }}>
+                                {line.label}
+                              </span>
+                              {line.value && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", flexShrink: 0 }}>{line.value}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Divider + total */}
+                        <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 10, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#1e293b" }}>{s.label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: s.color === "#000" ? "#1e293b" : s.color }}>{s.value}</span>
+                        </div>
+
+                        {s.info.note && (
+                          <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 8, lineHeight: 1.5, borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
+                            {s.info.note}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          </>
         );
       })()}
 
