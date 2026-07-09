@@ -1,57 +1,51 @@
 # FishTokri Admin
 
-Operations console for the FishTokri seafood distribution network. Manages hubs, vendors, inventory, orders and deliveries across the distribution network.
+Operations console for the FishTokri seafood distribution network.
 
 ## Stack
+- **Frontend:** React 19, Vite 7, TailwindCSS 4, TanStack Query v5, Wouter routing, shadcn/ui (Radix UI)
+- **Backend:** Express 5, MongoDB (Mongoose), Zod validation, Pino logging
+- **Monorepo:** pnpm workspaces (`pnpm-workspace.yaml`)
+- **Shared packages:** `lib/api-client-react`, `lib/api-zod`, `lib/db`
 
-- **Frontend**: React 19 + Vite 7 + TailwindCSS 4 → port 5000
-- **Backend**: Express 5 + Mongoose 9 → port 8080
-- **Database**: MongoDB Atlas (`fishtokri_admin` DB)
-- **Monorepo**: pnpm workspaces
+## How to run on Replit
 
-```
-pnpm monorepo
-├── artifacts/
-│   ├── api-server/        Express 5 API  →  port 8080
-│   └── fishtokri-admin/   React + Vite   →  port 5000 (preview)
-├── lib/
-│   ├── api-client-react/  React Query hooks used by frontend
-│   ├── api-zod/           Zod schemas used by API server
-│   └── db/                (unused template package)
-└── scripts/
-    └── dev.sh             Unified startup script
-```
+Two workflows must both be running:
 
-Vite proxies all `/api/*` requests to `localhost:8080`.
+| Workflow | Command | Port |
+|---|---|---|
+| **Start API** | `pnpm install && cd artifacts/api-server && pnpm run build && PORT=8080 node --enable-source-maps ./dist/index.mjs` | 8080 |
+| **Start Frontend** | `pnpm install && cd artifacts/fishtokri-admin && PORT=5000 BASE_PATH=/ pnpm run dev` | 5000 |
 
-## How to Run
+The frontend proxies `/api` requests to the API at port 8080 (configured in `vite.config.ts`).
 
-Two workflows must be running simultaneously:
-
-1. **Start API** — builds and starts the Express server on port 8080
-2. **Start Frontend** — starts Vite dev server on port 5000
-
-Or use the unified **`artifacts/fishtokri-admin: web`** workflow (runs `scripts/dev.sh`) which waits for the API then starts Vite.
-
-## Environment Variables (set in Replit Secrets / Env Vars)
-
-| Key | Purpose |
-|-----|---------|
+## Required secrets
+| Secret | Purpose |
+|---|---|
 | `MONGODB_URI` | MongoDB Atlas connection string |
-| `SESSION_SECRET` | JWT/session signing secret |
-| `CLOUDINARY_CLOUD_NAME` | Cloudinary image hosting |
-| `CLOUDINARY_API_KEY` | Cloudinary API key |
-| `CLOUDINARY_API_SECRET` | Cloudinary API secret |
-| `QZ_PRIVATE_KEY` | QZ Tray print station private key |
-| `QZ_CERTIFICATE` | QZ Tray print station certificate |
+| `SESSION_SECRET` | Express session signing |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary image uploads |
+| `CLOUDINARY_API_KEY` | Cloudinary image uploads |
+| `CLOUDINARY_API_SECRET` | Cloudinary image uploads |
+| `QZ_CERTIFICATE` | QZ Tray print certificate |
+| `QZ_PRIVATE_KEY` | QZ Tray print signing key |
 
-All values are sourced from `ecosystem.config.cjs` (PM2 production config).
+## Project structure
+```
+artifacts/
+  api-server/       # Express API (build → dist/index.mjs)
+  fishtokri-admin/  # React + Vite admin dashboard
+  mockup-sandbox/   # Component prototyping (design only)
+lib/
+  api-client-react/ # Shared React Query hooks
+  api-zod/          # Shared Zod schemas
+  db/               # DB utilities
+scripts/
+  dev.sh            # Waits for API health before starting frontend
+```
 
-## Default Login
+## Notes
+- The API has **no watch mode** — after editing `api-server/src/`, restart the `Start API` workflow to rebuild and reload.
+- Login requires user accounts seeded in MongoDB (`hub_users` collection).
 
-Use the Master Admin credentials stored in your password manager or internal documentation.
-Select **Master Admin** on the role screen, then enter the admin email and password.
-
-> ⚠️ Default credentials are not stored in this file. See Task #3 in the project tasks for credential hygiene follow-up.
-
-## User Preferences
+## User preferences
