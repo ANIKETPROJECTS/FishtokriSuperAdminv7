@@ -5,7 +5,7 @@ import {
   Truck, Package, ChevronLeft, ChevronRight, Eye, MapPin,
   Phone, User, UserPlus, SlidersHorizontal, ArrowUpDown, UserCheck,
   ShoppingBag, Building2, AlertCircle, ChevronDown, Check,
-  Pencil, Trash2, Plus, Store, Home, Trash, Mail, Calendar, Tag, Ticket, Zap,
+  Pencil, Trash2, Plus, Store, Home, Trash, Mail, Calendar, Tag, Ticket, Zap, RotateCcw,
   Wallet, CreditCard, Banknote, Smartphone, Landmark, FileText, Printer, MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -918,7 +918,7 @@ export default function Orders() {
   const editIdFromUrl = isEditPage ? location.replace("/orders/edit/", "") : "";
   const isCreatePage = location === "/orders/new" || location.endsWith("/orders/new") || isEditPage;
 
-  const [activeTab, setActiveTab] = useState<"current" | "otherday" | "history" | "all" | "invoices">("current");
+  const [activeTab, setActiveTab] = useState<"current" | "otherday" | "history" | "all" | "invoices" | "deleted">("current");
   const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
 
   // Filters
@@ -965,7 +965,7 @@ export default function Orders() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [statsData, setStatsData] = useState<Record<string, number>>({});
-  const [statsTotals, setStatsTotals] = useState<{ total?: number; currentTotal?: number; historyTotal?: number; todayTotal?: number; otherDayTotal?: number }>({});
+  const [statsTotals, setStatsTotals] = useState<{ total?: number; currentTotal?: number; historyTotal?: number; todayTotal?: number; otherDayTotal?: number; deletedTotal?: number }>({});
 
   // Order alert is now handled globally in Layout (useGlobalOrderAlert)
 
@@ -993,9 +993,16 @@ export default function Orders() {
   const [editForm, setEditForm] = useState({ customerName: "", phone: "", address: "", deliveryArea: "", notes: "", status: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Delete order
+  // Delete order (soft-delete → Deleted tab)
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Permanent delete (from Deleted tab)
+  const [permanentDeletingOrder, setPermanentDeletingOrder] = useState<any>(null);
+  const [confirmingPermanentDelete, setConfirmingPermanentDelete] = useState(false);
+
+  // Restore order (from Deleted tab)
+  const [restoringOrderId, setRestoringOrderId] = useState<string | null>(null);
 
   // Accept / Reject order
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -2154,6 +2161,7 @@ export default function Orders() {
   }, [selectedOrder, deliveryPersons]);
 
   const effectiveStatus = useMemo(() => {
+    if (activeTab === "deleted") return "";
     if (statusFilter) return statusFilter;
     if (activeTab === "current" || activeTab === "otherday") return ACTIVE_STATUSES.join(",");
     if (activeTab === "history") return HISTORY_STATUSES.join(",");
@@ -2171,7 +2179,9 @@ export default function Orders() {
         page: String(page),
         limit: String(LIMIT),
       });
-      if (activeTab === "current" || activeTab === "otherday" || activeTab === "history" || activeTab === "invoices") {
+      if (activeTab === "deleted") {
+        params.set("tab", "deleted");
+      } else if (activeTab === "current" || activeTab === "otherday" || activeTab === "history" || activeTab === "invoices") {
         params.set("tab",
           activeTab === "invoices" ? "history" :
           activeTab === "otherday" ? "current" :
@@ -2180,7 +2190,7 @@ export default function Orders() {
       }
       if (activeTab === "current") params.set("deliveryDateFilter", "today");
       else if (activeTab === "otherday") params.set("deliveryDateFilter", "tomorrow");
-      if (statusFilter) {
+      if (statusFilter && activeTab !== "deleted") {
         params.set("status", statusFilter);
       }
       if (deliveryTypeFilter) params.set("deliveryType", deliveryTypeFilter);
@@ -2219,6 +2229,7 @@ export default function Orders() {
         historyTotal: data.historyTotal,
         todayTotal: data.todayTotal,
         otherDayTotal: data.otherDayTotal,
+        deletedTotal: data.deletedTotal ?? 0,
       });
     } catch { }
   }, []);
@@ -2707,7 +2718,7 @@ export default function Orders() {
     setConfirmingDelete(true);
     try {
       await apiFetch(`/api/orders/${deletingOrder._id}`, { method: "DELETE" });
-      toast({ title: "Order deleted" });
+      toast({ title: "Order moved to Deleted", description: "You can restore it from the Deleted tab." });
       setOrders((prev) => prev.filter((o) => String(o._id) !== String(deletingOrder._id)));
       setTotal((t) => t - 1);
       if (selectedOrder && String(selectedOrder._id) === String(deletingOrder._id)) setSelectedOrder(null);
@@ -2716,6 +2727,34 @@ export default function Orders() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setConfirmingDelete(false); }
+  };
+
+  const handlePermanentDeleteOrder = async () => {
+    if (!permanentDeletingOrder) return;
+    setConfirmingPermanentDelete(true);
+    try {
+      await apiFetch(`/api/orders/${permanentDeletingOrder._id}/permanent`, { method: "DELETE" });
+      toast({ title: "Order permanently deleted" });
+      setOrders((prev) => prev.filter((o) => String(o._id) !== String(permanentDeletingOrder._id)));
+      setTotal((t) => Math.max(0, t - 1));
+      setPermanentDeletingOrder(null);
+      loadStats();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setConfirmingPermanentDelete(false); }
+  };
+
+  const handleRestoreOrder = async (order: any) => {
+    setRestoringOrderId(String(order._id));
+    try {
+      await apiFetch(`/api/orders/${order._id}/restore`, { method: "POST" });
+      toast({ title: "Order restored", description: "Inventory and wallet have been adjusted accordingly." });
+      setOrders((prev) => prev.filter((o) => String(o._id) !== String(order._id)));
+      setTotal((t) => Math.max(0, t - 1));
+      loadStats();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally { setRestoringOrderId(null); }
   };
 
   const clearFilters = () => {
@@ -2737,12 +2776,14 @@ export default function Orders() {
   const invoiceCount = (statsData["delivered"] ?? 0) + (statsData["takeaway"] ?? 0);
   const totalToday = statsTotals.todayTotal ?? totalActive;
   const totalOtherDay = statsTotals.otherDayTotal ?? 0;
+  const totalDeleted = statsTotals.deletedTotal ?? 0;
   const TABS = [
     { key: "current" as const, label: "Current Orders", count: totalToday, icon: Clock, color: "text-blue-600" },
     { key: "otherday" as const, label: "Next Day Orders", count: totalOtherDay, icon: Calendar, color: "text-orange-600" },
     { key: "history" as const, label: "History", count: totalHistory, icon: CheckCircle2, color: "text-green-600" },
     { key: "all" as const, label: "All Orders", count: totalAll, icon: ClipboardList, color: "text-gray-600" },
     { key: "invoices" as const, label: "Order Invoices", count: invoiceCount, icon: FileText, color: "text-violet-600" },
+    { key: "deleted" as const, label: "Deleted", count: totalDeleted, icon: Trash2, color: "text-red-600" },
   ];
 
   // Inject title + subtitle + Refresh into the global top bar via a portal.
@@ -3176,7 +3217,9 @@ export default function Orders() {
                       </td>
                       <td className="px-4 py-4"><SolidStatusBadge status={o.status} deliveryType={o.deliveryType} /></td>
                       <td className="px-4 py-4">
-                        {o.status === "pending" ? (
+                        {activeTab === "deleted" ? (
+                          <span className="text-sm text-gray-400 italic">Deleted</span>
+                        ) : o.status === "pending" ? (
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
@@ -3234,27 +3277,49 @@ export default function Orders() {
                           >
                             <MaskIcon src={iconView} color="#1A56DB" className="w-[18px] h-[18px]" />
                           </button>
-                          <button
-                            title="Edit"
-                            onClick={() => openEditOrder(o)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-blue-50 transition-colors"
-                          >
-                            <MaskIcon src={iconEdit} color="#1A56DB" className="w-[18px] h-[18px]" />
-                          </button>
-                          <button
-                            title="Invoice"
-                            onClick={() => setInvoiceOrder(o)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-violet-50 transition-colors"
-                          >
-                            <FileText className="w-[18px] h-[18px] text-violet-600" />
-                          </button>
-                          <button
-                            title="Delete"
-                            onClick={() => setDeletingOrder(o)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-red-50 transition-colors"
-                          >
-                            <MaskIcon src={iconDelete} color="#1A56DB" className="w-[18px] h-[18px]" />
-                          </button>
+                          {activeTab === "deleted" ? (
+                            <>
+                              <button
+                                title="Restore Order"
+                                onClick={() => handleRestoreOrder(o)}
+                                disabled={restoringOrderId === String(o._id)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                              >
+                                <RotateCcw className="w-[18px] h-[18px] text-emerald-600" />
+                              </button>
+                              <button
+                                title="Delete Permanently"
+                                onClick={() => setPermanentDeletingOrder(o)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-[18px] h-[18px] text-red-600" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                title="Edit"
+                                onClick={() => openEditOrder(o)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-blue-50 transition-colors"
+                              >
+                                <MaskIcon src={iconEdit} color="#1A56DB" className="w-[18px] h-[18px]" />
+                              </button>
+                              <button
+                                title="Invoice"
+                                onClick={() => setInvoiceOrder(o)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-violet-50 transition-colors"
+                              >
+                                <FileText className="w-[18px] h-[18px] text-violet-600" />
+                              </button>
+                              <button
+                                title="Move to Deleted"
+                                onClick={() => setDeletingOrder(o)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-red-50 transition-colors"
+                              >
+                                <MaskIcon src={iconDelete} color="#1A56DB" className="w-[18px] h-[18px]" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -3386,7 +3451,7 @@ export default function Orders() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation Dialog (soft-delete → Deleted tab) */}
       <Dialog open={!!deletingOrder} onOpenChange={(o) => { if (!o && !confirmingDelete) setDeletingOrder(null); }}>
         <DialogContent className="sm:max-w-[400px]">
           {deletingOrder && (
@@ -3394,18 +3459,19 @@ export default function Orders() {
               <DialogHeader>
                 <DialogTitle className="text-red-600 flex items-center gap-2">
                   <Trash2 className="w-4 h-4" />
-                  Delete Order
+                  Move to Deleted
                 </DialogTitle>
               </DialogHeader>
               <div className="py-2 space-y-3">
                 <p className="text-sm text-gray-600">
-                  Are you sure you want to delete the order for{" "}
-                  <span className="font-semibold text-[#162B4D]">{deletingOrder.customerName}</span>?
+                  Move this order for{" "}
+                  <span className="font-semibold text-[#162B4D]">{deletingOrder.customerName}</span>{" "}
+                  to the Deleted section?
                 </p>
-                <div className="bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
-                  <p className="text-xs text-red-600 font-medium flex items-center gap-1.5">
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 space-y-1">
+                  <p className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
                     <AlertCircle className="w-3.5 h-3.5" />
-                    This action cannot be undone.
+                    Inventory and wallet will be released. You can restore it later from the Deleted tab.
                   </p>
                   <p className="text-xs text-gray-500">
                     {Array.isArray(deletingOrder.items) ? deletingOrder.items.length : 0} item(s) ·{" "}
@@ -3421,7 +3487,50 @@ export default function Orders() {
                   disabled={confirmingDelete}
                   className="bg-red-600 hover:bg-red-700 h-9 text-white"
                 >
-                  {confirmingDelete ? "Deleting..." : "Delete Order"}
+                  {confirmingDelete ? "Moving..." : "Move to Deleted"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Permanent Delete Confirmation Dialog */}
+      <Dialog open={!!permanentDeletingOrder} onOpenChange={(o) => { if (!o && !confirmingPermanentDelete) setPermanentDeletingOrder(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          {permanentDeletingOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-red-600 flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Permanently Delete Order
+                </DialogTitle>
+              </DialogHeader>
+              <div className="py-2 space-y-3">
+                <p className="text-sm text-gray-600">
+                  Permanently delete the order for{" "}
+                  <span className="font-semibold text-[#162B4D]">{permanentDeletingOrder.customerName}</span>?
+                </p>
+                <div className="bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
+                  <p className="text-xs text-red-600 font-medium flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    This cannot be undone. The order will be erased permanently.
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {Array.isArray(permanentDeletingOrder.items) ? permanentDeletingOrder.items.length : 0} item(s) ·{" "}
+                    {formatRupees(effectiveOrderTotal(permanentDeletingOrder))} ·{" "}
+                    <StatusBadge status={permanentDeletingOrder.status} deliveryType={permanentDeletingOrder.deliveryType} />
+                  </p>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setPermanentDeletingOrder(null)} disabled={confirmingPermanentDelete} className="h-9">Cancel</Button>
+                <Button
+                  onClick={handlePermanentDeleteOrder}
+                  disabled={confirmingPermanentDelete}
+                  className="bg-red-700 hover:bg-red-800 h-9 text-white"
+                >
+                  {confirmingPermanentDelete ? "Deleting..." : "Delete Permanently"}
                 </Button>
               </DialogFooter>
             </>

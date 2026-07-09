@@ -419,6 +419,10 @@ router.get("/", async (req: ScopedRequest, res) => {
 
     const filter: any = {};
 
+    // Deleted tab: show only soft-deleted orders. All other tabs exclude them.
+    const isDeletedTab = tab === "deleted";
+    filter.isDeleted = isDeletedTab ? true : { $ne: true };
+
     if (q) {
       const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const words = q.trim().split(/\s+/).filter(Boolean);
@@ -481,72 +485,74 @@ router.get("/", async (req: ScopedRequest, res) => {
       }
     }
 
-    // Tab semantics: takeaway-deliveryType orders are always treated as completed (History).
-    // - "current": active statuses AND deliveryType != takeaway
-    // - "history": history statuses OR deliveryType == takeaway
-    const ACTIVE = ["pending", "confirmed", "out_for_delivery"];
-    const HISTORY = ["delivered", "cancelled"];
+    if (!isDeletedTab) {
+      // Tab semantics: takeaway-deliveryType orders are always treated as completed (History).
+      // - "current": active statuses AND deliveryType != takeaway
+      // - "history": history statuses OR deliveryType == takeaway
+      const ACTIVE = ["pending", "confirmed", "out_for_delivery"];
+      const HISTORY = ["delivered", "cancelled"];
 
-    const statusList = status
-      ? status.split(",").map((s: string) => s.trim()).filter(Boolean)
-      : [];
+      const statusList = status
+        ? status.split(",").map((s: string) => s.trim()).filter(Boolean)
+        : [];
 
-    if (tab === "current") {
-      const list = statusList.length ? statusList.filter((s) => ACTIVE.includes(s)) : ACTIVE;
-      filter.status = { $in: list };
-      filter.deliveryType = { $ne: "takeaway" };
-    } else if (tab === "history") {
-      const list = statusList.length ? statusList.filter((s) => HISTORY.includes(s)) : HISTORY;
-      filter.$or = [
-        ...(filter.$or ?? []).map((c: any) => ({ ...c })),
-      ];
-      const historyClause = { $or: [{ status: { $in: list } }, { deliveryType: "takeaway" }] };
-      if (filter.$or && filter.$or.length) {
-        filter.$and = [{ $or: filter.$or }, historyClause];
-        delete filter.$or;
-      } else {
-        Object.assign(filter, historyClause);
-      }
-    } else if (statusList.length) {
-      filter.status = statusList.length === 1 ? statusList[0] : { $in: statusList };
-    }
-    if (deliveryType) filter.deliveryType = deliveryType;
-    if (assignedTo) filter.assignedDeliveryPersonId = assignedTo;
-
-    // Date range filter — matches on deliveryDate (YYYY-MM-DD string).
-    // Orders with no deliveryDate set are excluded when a range is active,
-    // since they have no scheduled delivery date to match against.
-    if (from || to) {
-      const dateRangeClause: any = {};
-      if (from) dateRangeClause.$gte = from; // string comparison works for YYYY-MM-DD
-      if (to) dateRangeClause.$lte = to;
-      filter.deliveryDate = dateRangeClause;
-    }
-
-    // deliveryDateFilter: "today"    = today, past, or no date set (Current Orders)
-    //                     "tomorrow" = only tomorrow's date (Next Day Orders)
-    if (deliveryDateFilter === "today" || deliveryDateFilter === "tomorrow" || deliveryDateFilter === "other") {
-      const todayISO = getTodayISODate();
-      const tomorrowISO = getTomorrowISODate();
-      if (deliveryDateFilter === "today") {
-        // Current Orders: no date, empty, today, or any past date (deliveryDate <= today)
-        const todayClause = {
-          $or: [
-            { deliveryDate: null },
-            { deliveryDate: "" },
-            { deliveryDate: { $exists: false } },
-            { deliveryDate: { $lte: todayISO } },
-          ],
-        };
-        if (!filter.$and) filter.$and = [];
-        if (filter.$or) {
-          filter.$and.unshift({ $or: filter.$or });
+      if (tab === "current") {
+        const list = statusList.length ? statusList.filter((s) => ACTIVE.includes(s)) : ACTIVE;
+        filter.status = { $in: list };
+        filter.deliveryType = { $ne: "takeaway" };
+      } else if (tab === "history") {
+        const list = statusList.length ? statusList.filter((s) => HISTORY.includes(s)) : HISTORY;
+        filter.$or = [
+          ...(filter.$or ?? []).map((c: any) => ({ ...c })),
+        ];
+        const historyClause = { $or: [{ status: { $in: list } }, { deliveryType: "takeaway" }] };
+        if (filter.$or && filter.$or.length) {
+          filter.$and = [{ $or: filter.$or }, historyClause];
           delete filter.$or;
+        } else {
+          Object.assign(filter, historyClause);
         }
-        filter.$and.push(todayClause);
-      } else {
-        // "tomorrow" / "other": exactly tomorrow's date only
-        filter.deliveryDate = tomorrowISO;
+      } else if (statusList.length) {
+        filter.status = statusList.length === 1 ? statusList[0] : { $in: statusList };
+      }
+      if (deliveryType) filter.deliveryType = deliveryType;
+      if (assignedTo) filter.assignedDeliveryPersonId = assignedTo;
+
+      // Date range filter — matches on deliveryDate (YYYY-MM-DD string).
+      // Orders with no deliveryDate set are excluded when a range is active,
+      // since they have no scheduled delivery date to match against.
+      if (from || to) {
+        const dateRangeClause: any = {};
+        if (from) dateRangeClause.$gte = from; // string comparison works for YYYY-MM-DD
+        if (to) dateRangeClause.$lte = to;
+        filter.deliveryDate = dateRangeClause;
+      }
+
+      // deliveryDateFilter: "today"    = today, past, or no date set (Current Orders)
+      //                     "tomorrow" = only tomorrow's date (Next Day Orders)
+      if (deliveryDateFilter === "today" || deliveryDateFilter === "tomorrow" || deliveryDateFilter === "other") {
+        const todayISO = getTodayISODate();
+        const tomorrowISO = getTomorrowISODate();
+        if (deliveryDateFilter === "today") {
+          // Current Orders: no date, empty, today, or any past date (deliveryDate <= today)
+          const todayClause = {
+            $or: [
+              { deliveryDate: null },
+              { deliveryDate: "" },
+              { deliveryDate: { $exists: false } },
+              { deliveryDate: { $lte: todayISO } },
+            ],
+          };
+          if (!filter.$and) filter.$and = [];
+          if (filter.$or) {
+            filter.$and.unshift({ $or: filter.$or });
+            delete filter.$or;
+          }
+          filter.$and.push(todayClause);
+        } else {
+          // "tomorrow" / "other": exactly tomorrow's date only
+          filter.deliveryDate = tomorrowISO;
+        }
       }
     }
 
@@ -593,7 +599,8 @@ router.get("/stats", async (req: ScopedRequest, res) => {
       return;
     }
     const pipeline: any[] = [];
-    if (Object.keys(scopeClause).length > 0) pipeline.push({ $match: scopeClause });
+    // Always exclude soft-deleted orders from normal stats.
+    pipeline.push({ $match: { ...scopeClause, isDeleted: { $ne: true } } });
     pipeline.push({ $group: { _id: { status: "$status", deliveryType: "$deliveryType" }, count: { $sum: 1 } } });
     const agg = await conn.db.collection(COLLECTION).aggregate(pipeline).toArray();
 
@@ -639,6 +646,7 @@ router.get("/stats", async (req: ScopedRequest, res) => {
     const tomorrowISO = getTomorrowISODate();
     const activeNonTakeaway = {
       ...scopeClause,
+      isDeleted: { $ne: true },
       status: { $in: ACTIVE },
       deliveryType: { $ne: "takeaway" },
     };
@@ -658,7 +666,10 @@ router.get("/stats", async (req: ScopedRequest, res) => {
       }),
     ]);
 
-    res.json({ stats, rawStats, total, currentTotal, historyTotal, todayTotal, otherDayTotal });
+    // Count soft-deleted orders for the Deleted tab badge.
+    const deletedTotal = await conn.db.collection(COLLECTION).countDocuments({ ...scopeClause, isDeleted: true });
+
+    res.json({ stats, rawStats, total, currentTotal, historyTotal, todayTotal, otherDayTotal, deletedTotal });
   } catch (err) {
     req.log.error({ err }, "Failed to get order stats");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch order stats" });
@@ -1791,9 +1802,15 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
     if (!existing || !isOrderInScope(req.scope, existing, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
     }
-    const result = await conn.db.collection(COLLECTION).deleteOne({ _id: oid });
-    req.log.info({ deletedCount: result.deletedCount }, "Delete result");
-    if (result.deletedCount === 0) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+    // Soft-delete: mark as deleted so it can be restored later.
+    // The order stays in the DB; inventory/wallet/coupons are released exactly
+    // as they were before (same side-effects as hard-delete).
+    const result = await conn.db.collection(COLLECTION).updateOne(
+      { _id: oid },
+      { $set: { isDeleted: true, deletedAt: new Date(), inventoryDeducted: false } }
+    );
+    req.log.info({ modifiedCount: result.modifiedCount }, "Soft-delete result");
+    if (result.modifiedCount === 0) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
 
     // Restore inventory for any deducted items.
     try {
@@ -1881,6 +1898,155 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to delete order");
     res.status(500).json({ error: "InternalError", message: "Failed to delete order" });
+  }
+});
+
+// DELETE /api/orders/:id/permanent — permanently destroy a soft-deleted order
+router.delete("/:id/permanent", async (req: ScopedRequest, res) => {
+  try {
+    const oid = toId(req.params.id);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
+    const conn = await getOrdersDb();
+    const existing = await conn.db.collection(COLLECTION).findOne({ _id: oid, isDeleted: true });
+    if (!existing || !isOrderInScope(req.scope, existing, req)) {
+      res.status(404).json({ error: "NotFound", message: "Order not found or not in deleted state" }); return;
+    }
+    await conn.db.collection(COLLECTION).deleteOne({ _id: oid });
+    req.log.info({ id: req.params.id }, "Order permanently deleted");
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to permanently delete order");
+    res.status(500).json({ error: "InternalError", message: "Failed to permanently delete order" });
+  }
+});
+
+// POST /api/orders/:id/restore — restore a soft-deleted order
+// Re-deducts inventory, re-applies wallet charge, re-applies coupon locks.
+router.post("/:id/restore", async (req: ScopedRequest, res) => {
+  try {
+    const oid = toId(req.params.id);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
+    const conn = await getOrdersDb();
+    const existing = await conn.db.collection(COLLECTION).findOne({ _id: oid, isDeleted: true });
+    if (!existing || !isOrderInScope(req.scope, existing, req)) {
+      res.status(404).json({ error: "NotFound", message: "Order not found or not in deleted state" }); return;
+    }
+
+    // Mark as restored optimistically before touching inventory so concurrent
+    // auto-deduction doesn't double-deduct.
+    await conn.db.collection(COLLECTION).updateOne(
+      { _id: oid },
+      { $set: { isDeleted: false, inventoryDeducted: true }, $unset: { deletedAt: "" } }
+    );
+
+    // Re-deduct inventory. If this fails we must roll back isDeleted so the
+    // order doesn't appear in normal tabs with no inventory deducted.
+    try {
+      await applyOrderInventoryOnCreate(existing as any);
+    } catch (e) {
+      // Full rollback: return order to deleted state so it doesn't appear in
+      // normal tabs with inconsistent inventory.
+      await conn.db.collection(COLLECTION).updateOne(
+        { _id: oid },
+        { $set: { isDeleted: true, inventoryDeducted: false, deletedAt: (existing as any).deletedAt ?? new Date() } }
+      );
+      req.log.error({ err: e }, "Failed to re-deduct inventory on order restore — rolling back");
+      res.status(500).json({ error: "InventoryError", message: "Could not restore order: insufficient stock. No changes were made." });
+      return;
+    }
+
+    // Re-sync banking payments.
+    try {
+      await syncOrderBankPayments({ orderId: req.params.id, payments: (existing as any).payments ?? [] });
+    } catch (e) {
+      req.log.error({ err: e }, "Failed to re-sync banking on order restore");
+    }
+
+    // Re-deduct wallet (only if the original order was not cancelled — cancelled
+    // orders already had their wallet refunded at cancellation time, and the soft-
+    // delete did not refund again for them).
+    if ((existing as any).customerId && (existing as any).status !== "cancelled") {
+      try {
+        const walletToDeduct = ((existing as any).payments ?? [])
+          .filter((p: any) => p.mode === "wallet")
+          .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        if (walletToDeduct > 0) {
+          const cCol = await getCustomersCollection();
+          await pushWalletTx(cCol, String((existing as any).customerId), -walletToDeduct,
+            "Order restored — wallet re-deducted",
+            { orderId: String((existing as any).orderId || ""), orderRef: req.params.id }
+          );
+          req.log.info({ customerId: (existing as any).customerId, deducted: walletToDeduct }, "Wallet re-deducted on order restore");
+        }
+      } catch (e) {
+        req.log.error({ err: e }, "Failed to re-deduct wallet on order restore");
+      }
+    }
+
+    // Re-apply coupon state according to the order's status.
+    //
+    // Symmetry with the delete path (which always decrements activeCoupons
+    // and always pulls from usedCoupons):
+    //   - active status  → the coupon was in activeCoupons → re-upsert activeCoupons
+    //   - delivered      → coupon was moved to usedCoupons at delivery, then
+    //                       activeCoupons.decrement was a no-op → only restore usedCoupons
+    //   - cancelled      → coupon was already released at cancel time, delete's
+    //                       decrement was a no-op → no restoration needed
+    if ((existing as any).customerId) {
+      try {
+        const restoredCoupons = extractOrderCoupons(existing);
+        const orderStatus: string = (existing as any).status ?? "";
+        const cCol = await getCustomersCollection();
+        const orderId = req.params.id;
+        const custOid = new mongoose.Types.ObjectId(String((existing as any).customerId));
+        const ACTIVE_STATUSES_SET = new Set(["pending", "confirmed", "out_for_delivery", "takeaway"]);
+
+        if (ACTIVE_STATUSES_SET.has(orderStatus)) {
+          // Active order: restore activeCoupons count (exactly reverses the decrement on delete).
+          for (const c of restoredCoupons) {
+            await upsertActiveCoupon(
+              cCol,
+              String((existing as any).customerId),
+              c,
+              orderId,
+              String((existing as any).subHubId ?? ""),
+              req.log,
+            );
+          }
+        } else if (orderStatus === "delivered") {
+          // Delivered order: restore only usedCoupons (activeCoupons decrement on delete
+          // was a no-op since it was already cleared at delivery time).
+          for (const c of restoredCoupons) {
+            await cCol.updateOne(
+              { _id: custOid },
+              {
+                $addToSet: {
+                  usedCoupons: {
+                    couponId: c.couponId,
+                    couponCode: c.couponCode,
+                    orderId,
+                    usedAt: (existing as any).updatedAt ?? new Date(),
+                  },
+                },
+              } as any
+            );
+          }
+        }
+        // cancelled: no coupon restore needed — coupons were already released at cancellation.
+
+        req.log.info(
+          { customerId: (existing as any).customerId, orderId, orderStatus },
+          "Coupon lifecycle: coupons re-applied on order restore"
+        );
+      } catch (e) {
+        req.log.error({ err: e }, "Failed to re-apply coupons on order restore");
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to restore order");
+    res.status(500).json({ error: "InternalError", message: "Failed to restore order" });
   }
 });
 
