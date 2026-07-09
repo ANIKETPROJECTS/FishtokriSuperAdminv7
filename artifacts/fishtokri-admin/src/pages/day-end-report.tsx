@@ -630,11 +630,11 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       card:       r2(card),
       wallet:     r2(wallet),
       totalRev:   r2(totalRev + wallet),
+      // netRev = physically collected via cash/UPI/card (wallet bonuses excluded).
+      // This is the correct base for Today's Sales — wallet overpayments are excess
+      // amounts credited back to customer wallets, not business revenue.
+      netRev:     r2(totalRev),
       unpaid:     r2(unpaid),
-      // Cash/UPI/Card buckets can double-count a single order that paid via multiple
-      // modes (e.g. cash + card split) — see comment above. `totalRev` here (before the
-      // wallet bonus is added) is the actual non-wallet amount collected, counted once
-      // per order, so it's the correct base for a true "money in + still owed" figure.
       todaySales: r2(totalRev + unpaid),
     };
   }, [orders]);
@@ -721,10 +721,10 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
             color: "#0f766e",
             info: {
               lines: [
-                { label: "Grand Total",  color: "#000",    value: formatRupees(stats.totalRev) },
-                { label: "Unpaid Dues",  color: "#dc2626", value: formatRupees(stats.unpaid) },
+                { label: "Net Collected (Cash + UPI + Card)", color: "#0f766e", value: formatRupees(stats.netRev) },
+                { label: "Unpaid Dues",                       color: "#dc2626", value: formatRupees(stats.unpaid) },
               ],
-              note: "Total business volume — money already collected plus amounts still owed by customers.",
+              note: "Wallet Collected is excluded — it's excess payment credited back to customer wallets, not business revenue.",
             },
           },
         ];
