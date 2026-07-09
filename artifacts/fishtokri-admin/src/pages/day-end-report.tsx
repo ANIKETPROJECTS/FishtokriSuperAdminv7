@@ -672,23 +672,46 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   return (
     <div style={POPPINS}>
       {/* Stats strip */}
-      <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
-        {[
-          { label: "Total Orders", value: String(orders.length), color: "#000" },
-          { label: "Cash Payment", value: formatRupees(stats.cash), color: "#16a34a" },
-          { label: "UPI Payment", value: formatRupees(stats.upi), color: "#7c3aed" },
-          { label: "Card Payment", value: formatRupees(stats.card), color: "#ea580c" },
-          { label: "Grand Total", value: formatRupees(stats.totalRev), color: "#000" },
-          { label: "Wallet Collected", value: formatRupees(stats.wallet), color: "#2563eb" },
-          { label: "Unpaid Dues", value: formatRupees(stats.unpaid), color: "#dc2626" },
-          { label: "Today's Sales", value: formatRupees(stats.todaySales), color: "#0f766e" },
-        ].map((s, i, arr) => (
-          <div key={s.label} style={{ flex: 1, padding: "16px 14px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
-            <p style={{ fontSize: 9, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
-            <p style={{ fontSize: 17, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>{s.value}</p>
+      {(() => {
+        const cancelledCount = orders.filter(o => String(o.orderStatus || o.status || "").toLowerCase() === "cancelled").length;
+        const regularCount   = orders.length - cancelledCount;
+        return (
+          <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 14, border: "1px solid #ebebeb", marginBottom: 20, overflow: "hidden" }}>
+            {[
+              {
+                label: "Total Orders",
+                value: String(orders.length),
+                color: "#000",
+                sub: [
+                  { text: `${regularCount} regular`, color: "#16a34a" },
+                  { text: `${cancelledCount} cancelled`, color: "#dc2626" },
+                ],
+              },
+              { label: "Cash Payment",    value: formatRupees(stats.cash),       color: "#16a34a" },
+              { label: "UPI Payment",     value: formatRupees(stats.upi),        color: "#7c3aed" },
+              { label: "Card Payment",    value: formatRupees(stats.card),       color: "#ea580c" },
+              { label: "Grand Total",     value: formatRupees(stats.totalRev),   color: "#000"    },
+              { label: "Wallet Collected",value: formatRupees(stats.wallet),     color: "#2563eb" },
+              { label: "Unpaid Dues",     value: formatRupees(stats.unpaid),     color: "#dc2626" },
+              { label: "Today's Sales",   value: formatRupees(stats.todaySales), color: "#0f766e" },
+            ].map((s, i, arr) => (
+              <div key={s.label} style={{ flex: 1, padding: "16px 14px", borderRight: i < arr.length - 1 ? "1px solid #ebebeb" : "none" }}>
+                <p style={{ fontSize: 9, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{s.label}</p>
+                <p style={{ fontSize: 17, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>{s.value}</p>
+                {"sub" in s && s.sub && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+                    {s.sub.map(line => (
+                      <span key={line.text} style={{ fontSize: 10, fontWeight: 600, color: line.color }}>
+                        {line.text}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {isLoading && <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontSize: 14 }}>Loading orders…</div>}
       {isError && <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontSize: 14 }}>Failed to load. Please try again.</div>}
