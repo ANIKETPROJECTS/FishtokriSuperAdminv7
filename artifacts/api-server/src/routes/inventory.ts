@@ -1137,7 +1137,7 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
  */
 export async function autoDeductUndedcutedOrders(
   ordersDb: any,
-  orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean }>
+  orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
 ): Promise<void> {
   // Log a sample of raw order structure so we can see what customer-app orders look like
   if (orders.length > 0) {
@@ -1169,7 +1169,7 @@ export async function autoDeductUndedcutedOrders(
   }
 
   const candidates = orders.filter(
-    (o) => ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) && o.inventoryDeducted !== true
+    (o) => ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) && o.inventoryDeducted !== true && (o as any).isDeleted !== true
   );
   logger.info(
     { candidateCount: candidates.length, skippedCount: orders.length - candidates.length },
@@ -1221,9 +1221,9 @@ export async function autoDeductUndedcutedOrders(
   }
 }
 
-export async function applyOrderInventoryOnCreate(order: OrderForSync) {
+export async function applyOrderInventoryOnCreate(order: OrderForSync, subReason: string = "order_placed") {
   if (!orderShouldDeduct(order)) return false;
-  const deducted = await withDeductionLock(() => applyDelta(order, "deduct", "order_placed"));
+  const deducted = await withDeductionLock(() => applyDelta(order, "deduct", subReason));
   return deducted > 0;
 }
 
@@ -1238,7 +1238,7 @@ export async function runInventoryBackgroundDeduction(): Promise<void> {
     // Fetch ALL non-deducted orders regardless of status case — autoDeductUndedcutedOrders
     // re-filters using .toLowerCase() so it handles "Pending", "pending", etc.
     const candidates = await conn.db.collection("orders")
-      .find({ inventoryDeducted: { $ne: true } })
+      .find({ inventoryDeducted: { $ne: true }, isDeleted: { $ne: true } })
       .sort({ createdAt: -1 })
       .limit(200)
       .toArray();

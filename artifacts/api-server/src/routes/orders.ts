@@ -1932,17 +1932,23 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
       res.status(404).json({ error: "NotFound", message: "Order not found or not in deleted state" }); return;
     }
 
-    // Mark as restored optimistically before touching inventory so concurrent
-    // auto-deduction doesn't double-deduct.
-    await conn.db.collection(COLLECTION).updateOne(
-      { _id: oid },
-      { $set: { isDeleted: false, inventoryDeducted: true }, $unset: { deletedAt: "" } }
+    // Atomically claim the restore: the filter requires isDeleted: true, so if two
+    // requests race (e.g. a double-click) only the first one's update matches —
+    // the second gets null back and is rejected instead of re-deducting inventory.
+    const claimed = await conn.db.collection(COLLECTION).findOneAndUpdate(
+      { _id: oid, isDeleted: true },
+      { $set: { isDeleted: false, inventoryDeducted: true }, $unset: { deletedAt: "" } },
+      { returnDocument: "before" }
     );
+    if (!claimed) {
+      res.status(409).json({ error: "AlreadyRestored", message: "Order was already restored" });
+      return;
+    }
 
     // Re-deduct inventory. If this fails we must roll back isDeleted so the
     // order doesn't appear in normal tabs with no inventory deducted.
     try {
-      await applyOrderInventoryOnCreate(existing as any);
+      await applyOrderInventoryOnCreate(existing as any, "order_restored");
     } catch (e) {
       // Full rollback: return order to deleted state so it doesn't appear in
       // normal tabs with inconsistent inventory.

@@ -52,6 +52,7 @@ function getSubReasonMeta(m: Movement): SubReasonMeta | null {
       case "order_placed":   return { label: "Order Deduction", tone: "bg-red-50 text-red-700" };
       case "order_cancelled": return { label: "Order Cancelled", tone: "bg-emerald-50 text-emerald-700" };
       case "order_deleted":  return { label: "Order Deleted", tone: "bg-orange-50 text-orange-700" };
+      case "order_restored": return { label: "Deleted Order Restored", tone: "bg-emerald-50 text-emerald-700" };
       case "items_changed":  return m.type === "order_restore"
         ? { label: "Items Changed", tone: "bg-emerald-50 text-emerald-700" }
         : { label: "Items Changed", tone: "bg-amber-50 text-amber-700" };
