@@ -1303,16 +1303,39 @@ router.post("/", async (req: ScopedRequest, res) => {
     }
 
     // Deduct wallet balance if customer paid (partially or fully) using wallet.
+    // Guarded atomically against the live balance so a stale client-computed amount
+    // (e.g. balance changed by another order between page load and submit) can never
+    // push walletBalance negative — the update only applies if balance >= walletUsed.
     const walletPayments = (orderDoc.payments ?? []).filter((p: any) => p.mode === "wallet");
     const walletUsed = walletPayments.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
     if (walletUsed > 0 && resolvedCustomerId) {
       try {
         const cCol = await getCustomersCollection();
-        await pushWalletTx(cCol, String(resolvedCustomerId), -walletUsed, "Order placed — wallet deducted", {
-          orderId: String(orderDoc.orderId || ""),
-          orderRef: String(result.insertedId),
-        });
-        req.log.info({ customerId: resolvedCustomerId, deducted: walletUsed }, "Wallet deducted on order create");
+        const custOid = new mongoose.Types.ObjectId(String(resolvedCustomerId));
+        const claim = await cCol.updateOne(
+          { _id: custOid, walletBalance: { $gte: walletUsed } },
+          {
+            $inc: { walletBalance: -walletUsed },
+            $push: {
+              walletTransactions: {
+                amount: -walletUsed,
+                type: "debit",
+                reason: "Order placed — wallet deducted",
+                createdAt: new Date(),
+                orderId: String(orderDoc.orderId || ""),
+                orderRef: String(result.insertedId),
+              },
+            },
+          }
+        );
+        if (claim.matchedCount === 0) {
+          req.log.error(
+            { customerId: resolvedCustomerId, walletUsed },
+            "Wallet deduction on order create rejected — insufficient live balance (stale client amount)"
+          );
+        } else {
+          req.log.info({ customerId: resolvedCustomerId, deducted: walletUsed }, "Wallet deducted on order create");
+        }
       } catch (e) {
         req.log.error({ err: e }, "Failed to deduct wallet on order create");
       }

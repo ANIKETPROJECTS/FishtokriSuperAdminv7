@@ -1842,6 +1842,9 @@ export default function Orders() {
 
     setCreatingSaving(true);
     try {
+      const takeawayWalletEntry = paymentEntries.find((p) => p.mode === "wallet");
+      const takeawayWalletAmount = Math.min(Number(takeawayWalletEntry?.amount) || 0, newOrderTotal);
+      const takeawayRemaining = Math.max(0, newOrderTotal - takeawayWalletAmount);
       const payload: any = {
         customerId,
         customerName, phone, email,
@@ -1882,15 +1885,22 @@ export default function Orders() {
           discountValue: Number(c.discountValue) || 0,
           minOrderAmount: Number(c.minOrderAmount) || 0,
         })),
-        // Payment — takeaway orders are always collected at pickup so force paid
+        // Payment — takeaway orders are always collected in full at pickup, so we force
+        // "paid" and cover the whole total. Any wallet amount already allocated by the
+        // payment-entries effect (based on the "Use FishTokri Wallet" toggle) is honored
+        // first, and only the remainder is charged to the main payment mode — the wallet
+        // portion must never be silently dropped in favor of cash/UPI for the full amount.
         paymentStatus: orderDeliveryType === "takeaway" ? "paid" : paymentStatus,
         paidAmount: orderDeliveryType === "takeaway" ? newOrderTotal : paidTotal,
         dueAmount: orderDeliveryType === "takeaway" ? 0 : undefined,
         paymentMode: orderDeliveryType === "takeaway"
-          ? (mainPaymentMode || "cash")
+          ? (takeawayWalletAmount >= newOrderTotal && newOrderTotal > 0 ? "wallet" : (mainPaymentMode || "cash"))
           : paymentEntries[0]?.mode,
         payments: orderDeliveryType === "takeaway"
-          ? [{ mode: mainPaymentMode || "cash", amount: newOrderTotal, reference: "" }]
+          ? [
+              ...(takeawayWalletAmount > 0 ? [{ mode: "wallet", amount: takeawayWalletAmount, reference: "" }] : []),
+              ...(takeawayRemaining > 0 ? [{ mode: mainPaymentMode || "cash", amount: takeawayRemaining, reference: "" }] : []),
+            ]
           : paymentEntries
               .filter((p) => p.mode && Number(p.amount) > 0)
               .map((p) => ({
