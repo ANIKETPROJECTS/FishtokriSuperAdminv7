@@ -1,0 +1,79 @@
+BUG: Delivery charge silently defaults to ₹0 for some website orders instead of the correct
+pincode-based charge. Admin-panel-created orders are unaffected because that flow has a manual
+override; the customer-facing website has none.
+
+ROOT CAUSE: Delivery charge is resolved by matching the customer's saved address pincode against
+`selectedSubHub.pincodes` (array of {pincode, charge, timeDelay}). When no match is found, the
+code falls back to 0 instead of blocking checkout. This happens when:
+(a) an address's pincode was later removed/edited out of the hub's pincode table by an admin, or
+(b) HubContext's background sub-hub refetch hasn't completed yet when checkout happens.
+
+FIX 1 — client/src/components/storefront/CartDrawer.tsx:
+Add a new memoized value near the existing `pincodeConfig` memo (~line 425):
+
+  const pincodeUnresolved = useMemo(() => {
+    const selected = savedAddresses.find(a => a.id === activeAddressId);
+    if (!selected?.pincode || selected.pincode.length !== 6) return false;
+    if (!selectedSubHub?.pincodes?.length) return true;
+    return !selectedSubHub.pincodes.find(p => p.pincode === selected.pincode);
+  }, [activeAddressId, savedAddresses, selectedSubHub]);
+
+In `placeOrder()` (~line 702), immediately after the `if (!selected) return;` check, add:
+
+  if (pincodeUnresolved) {
+    setUnserviceablePincode(selected.pincode);
+    setShowUnserviceablePopup(true);
+    toast({ title: "Couldn't confirm delivery charge for this address", description: "Please re-select or re-add your delivery address.", variant: "destructive" });
+    return;
+  }
+
+On the "Place Order" button (~line 1770), add `|| pincodeUnresolved` to the existing `disabled` prop.
+
+FIX 2 — server/routes.ts, inside the order-creation handler (~line 754-798), the existing
+"authoritative delivery-charge recomputation" block already looks up pincodeConfig from the DB but
+silently keeps clientSlotCharge (which is also 0 in this exact case) when no match is found.
+Change it to reject instead of silently defaulting:
+
+  let slotCharge = clientSlotCharge;
+  let pincodeChargeResolved = true;
+  if (input.hubDbName && (input.deliveryType ?? "delivery") === "delivery") {
+    try {
+      const pincode = input.deliveryAddressDetail?.pincode;
+      const subHubForCharge = await SubHubModel.findOne({ dbName: input.hubDbName }).lean() as any;
+      const pincodeConfig = pincode
+        ? (subHubForCharge?.pincodes ?? []).find((p: any) => String(p.pincode).trim() === String(pincode).trim())
+        : null;
+      if (pincodeConfig) {
+        // ...keep existing baseCharge/extraCharge/authoritativeCharge logic unchanged...
+        slotCharge = authoritativeCharge;
+      } else {
+        pincodeChargeResolved = false;
+      }
+    } catch (chargeLookupErr) {
+      console.error("Delivery charge validation error:", chargeLookupErr);
+      pincodeChargeResolved = false;
+    }
+  }
+
+  if (!pincodeChargeResolved) {
+    return res.status(422).json({
+      message: "We couldn't confirm the delivery charge for this address. Please re-select your delivery address and try again.",
+      code: "PINCODE_CHARGE_UNRESOLVED",
+    });
+  }
+
+Keep the rest of the order-creation logic (total calculation, etc.) exactly as-is, using this
+same `slotCharge`.
+
+FIX 3 (secondary, optional) — client/src/context/HubContext.tsx: the sub-hub background refetch
+(~line 95-105) currently only runs once on mount. Add a `setInterval` that re-runs the same
+refetch every 3 minutes while the app is open, clearing it on unmount. This narrows the race
+window in FIX 1 case (b) but does NOT replace FIX 1/2 — do not skip those.
+
+ACCEPTANCE CRITERIA:
+- Placing an order with an address whose pincode is not in the current hub's pincode table is
+  blocked client-side with a clear toast, and if it somehow reaches the API anyway, the API
+  returns 422 and creates no order.
+- Placing an order with a valid, currently-configured pincode still works exactly as before,
+  with unchanged pricing behavior.
+- No changes to admin-panel order creation flow (out of scope for this repo).
