@@ -3167,7 +3167,8 @@ export default function Orders() {
                       </td>
                       <td className="px-3 py-4">
                         <span className="font-bold text-black text-sm">{formatRupees(total)}</span>
-                        {(Number(o.deliveryCharge) > 0) && <p className="text-xs text-orange-600">+{formatRupees(Number(o.deliveryCharge))} delivery</p>}
+                        {(Number(o.slotCharge) > 0) && <p className="text-xs text-orange-600">+{formatRupees(Number(o.slotCharge))} delivery</p>}
+                        {(Number(o.deliveryCharge) > 0) && <p className="text-xs text-orange-600">+{formatRupees(Number(o.deliveryCharge))} {o.isExpress ? "porter" : "delivery"}</p>}
                         {(Number(o.instantDeliveryCharge) > 0) && <p className="text-xs text-orange-600">+{formatRupees(Number(o.instantDeliveryCharge))} instant</p>}
                         {(() => {
                           const pays: any[] = Array.isArray(o.payments) ? o.payments : [];

@@ -2,3 +2,4 @@
 - [Read-only sub-resources in edit forms](product-edit-batch-expiry-bug.md) — never round-trip a read-only nested resource (e.g. batches) back to its own update endpoint from a parent edit form.
 - [WhatsApp template param newlines unreliable](whatsapp-template-param-newlines.md) — `\n` in a template variable can get collapsed (e.g. to " | "); number list entries instead of relying on line breaks.
 - [Wallet deduction per order-type payment path](wallet-deduction-per-order-type.md) — per-order-type payment overrides must derive from wallet-aware `paymentEntries`, not rebuild from `mainPaymentMode` alone.
+- [Two delivery-charge fields on orders](order-delivery-charge-fields.md) — admin orders use `deliveryCharge`, storefront/FTW orders use `slotCharge`; UI must check both, not just one.
