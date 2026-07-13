@@ -1647,19 +1647,10 @@ export default function Orders() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainPaymentMode, useWallet, newOrderTotal, chosenCustomer?.walletBalance, editingOrderId, editingOrderWalletUsed]);
 
-  // Takeaway "Unpaid" + wallet: if the wallet balance fully covers the total, the
-  // order is no longer unpaid by definition — auto-switch back to a normal paid mode.
-  useEffect(() => {
-    if (orderDeliveryType !== "takeaway" || !takeawayUnpaid || !useWallet) return;
-    const rawWalletBal = Number(chosenCustomer?.walletBalance) || 0;
-    const sameCustomerAsOrder = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
-    const walletBal = rawWalletBal + (sameCustomerAsOrder ? editingOrderWalletUsed : 0);
-    const walletApplied = Math.min(walletBal, newOrderTotal);
-    if (newOrderTotal > 0 && walletApplied >= newOrderTotal) {
-      setTakeawayUnpaid(false);
-      setMainPaymentMode("cash");
-    }
-  }, [orderDeliveryType, takeawayUnpaid, useWallet, chosenCustomer?.walletBalance, newOrderTotal, editingOrderId, editingOrderCustomerId, editingOrderWalletUsed]);
+  // Takeaway "Unpaid" + wallet: if the wallet balance fully covers the total while
+  // "Unpaid" is still selected, the order is no longer actually unpaid — it stays on
+  // the Unpaid selector (grey/disabled in the UI) but is recorded as fully paid via
+  // wallet in the payload builder below, instead of silently switching to Cash.
 
   const toggleCoupon = (id: string) => {
     setAppliedCouponIds((ids) => (ids.includes(id) ? [] : [id]));
@@ -1910,10 +1901,12 @@ export default function Orders() {
         // portion must never be silently dropped in favor of cash/UPI for the full amount.
         // If the cashier explicitly marks the takeaway order as unpaid, nothing is charged
         // to cash/UPI — only a wallet amount already applied is collected (if any), and the
-        // rest is left due. (Wallet fully covering the total auto-clears the unpaid flag
-        // via an effect, so takeawayWalletAmount here is always a partial amount at most.)
+        // rest is left due. If the wallet balance happens to fully cover the total while
+        // Unpaid is still selected, the order is recorded as fully paid via wallet instead
+        // (the Unpaid button is greyed out in the UI in that case, but the cashier may not
+        // have switched off it yet, so the payload still reflects the true payment state).
         paymentStatus: orderDeliveryType === "takeaway"
-          ? (takeawayUnpaid ? (takeawayWalletAmount > 0 ? "partial" : "unpaid") : "paid")
+          ? (takeawayUnpaid ? (takeawayWalletAmount >= newOrderTotal && newOrderTotal > 0 ? "paid" : takeawayWalletAmount > 0 ? "partial" : "unpaid") : "paid")
           : paymentStatus,
         paidAmount: orderDeliveryType === "takeaway" ? (takeawayUnpaid ? takeawayWalletAmount : newOrderTotal) : paidTotal,
         dueAmount: orderDeliveryType === "takeaway" ? (takeawayUnpaid ? Math.max(0, newOrderTotal - takeawayWalletAmount) : 0) : undefined,
@@ -4570,26 +4563,37 @@ export default function Orders() {
                     <Banknote className="w-4 h-4" />
                     Cash
                   </button>
-                  {orderDeliveryType === "takeaway" && (
-                    <button type="button"
-                      onClick={() => { setTakeawayUnpaid(true); setUseWallet(false); }}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${takeawayUnpaid ? "border-red-400 bg-red-50 text-red-700 shadow-sm" : "border-gray-200 text-gray-500 hover:bg-red-50 hover:border-red-300"}`}
-                    >
-                      <Tag className="w-4 h-4" />
-                      Unpaid
-                    </button>
-                  )}
+                  {orderDeliveryType === "takeaway" && (() => {
+                    const sameCustomer = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
+                    const walletBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
+                    const walletApplied = useWallet ? Math.min(walletBal, newOrderTotal) : 0;
+                    const walletFullyCovers = newOrderTotal > 0 && walletApplied >= newOrderTotal;
+                    return (
+                      <button type="button"
+                        disabled={walletFullyCovers}
+                        onClick={() => setTakeawayUnpaid(true)}
+                        title={walletFullyCovers ? "Wallet balance covers the full order — this order is fully paid" : undefined}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${walletFullyCovers ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed" : takeawayUnpaid ? "border-red-400 bg-red-50 text-red-700 shadow-sm" : "border-gray-200 text-gray-500 hover:bg-red-50 hover:border-red-300"}`}
+                      >
+                        <Tag className="w-4 h-4" />
+                        Unpaid
+                      </button>
+                    );
+                  })()}
                 </div>
                 {takeawayUnpaid && orderDeliveryType === "takeaway" && (() => {
                   const sameCustomer = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
                   const walletBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
                   const walletApplied = useWallet ? Math.min(walletBal, newOrderTotal) : 0;
                   const remaining = Math.max(0, newOrderTotal - walletApplied);
+                  const walletFullyCovers = newOrderTotal > 0 && walletApplied >= newOrderTotal;
                   return (
-                    <p className="text-[11px] text-red-500 mb-2">
-                      {walletApplied > 0
-                        ? `₹${walletApplied.toLocaleString("en-IN")} from wallet · ₹${remaining.toLocaleString("en-IN")} stays due until collected.`
-                        : "Order will be recorded as unpaid — full amount stays due until collected."}
+                    <p className={`text-[11px] mb-2 ${walletFullyCovers ? "text-emerald-600 font-medium" : "text-red-500"}`}>
+                      {walletFullyCovers
+                        ? `₹${walletApplied.toLocaleString("en-IN")} from wallet · This order will count as fully paid via wallet.`
+                        : walletApplied > 0
+                          ? `₹${walletApplied.toLocaleString("en-IN")} from wallet · ₹${remaining.toLocaleString("en-IN")} stays due until collected.`
+                          : "Order will be recorded as unpaid — full amount stays due until collected."}
                     </p>
                   );
                 })()}
@@ -4763,6 +4767,9 @@ export default function Orders() {
                       const effBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
                       const walletApplied = useWallet ? Math.min(effBal, newOrderTotal) : 0;
                       const dueAmt = Math.max(0, newOrderTotal - walletApplied);
+                      if (newOrderTotal > 0 && walletApplied >= newOrderTotal) {
+                        return <><Zap className="w-4 h-4" />Checkout (Wallet — Fully Paid)</>;
+                      }
                       return walletApplied > 0
                         ? <><ShoppingBag className="w-4 h-4" />Place Order · ₹{dueAmt.toLocaleString("en-IN")} due</>
                         : <><ShoppingBag className="w-4 h-4" />Place Order (Unpaid)</>;
