@@ -5045,6 +5045,12 @@ export default function Orders() {
                           })}
                         </div>
                       )}
+                      {selectedOrder.upiTransactionId && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <p className="text-xs font-bold tracking-wider text-[#364F9F] mb-1">UPI TRANSACTION ID</p>
+                          <p className="text-sm font-mono font-semibold text-black break-all">{selectedOrder.upiTransactionId}</p>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
