@@ -1071,6 +1071,9 @@ export default function Orders() {
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [mainPaymentMode, setMainPaymentMode] = useState<"upi" | "cash">("cash");
   const [useWallet, setUseWallet] = useState(false);
+  // Takeaway orders default to "paid at pickup" — this flag lets the cashier mark
+  // a takeaway order as unpaid when the customer didn't pay at the counter.
+  const [takeawayUnpaid, setTakeawayUnpaid] = useState(false);
   // Tracks the walletUsed from the order being edited so the wallet UI remains
   // visible even though the customer's balance was already deducted when the
   // original order was placed.
@@ -1123,6 +1126,7 @@ export default function Orders() {
     setPaymentEntries([]);
     setMainPaymentMode("cash");
     setUseWallet(false);
+    setTakeawayUnpaid(false);
     setEditingOrderWalletUsed(0);
     setEditingOrderCustomerId("");
     setEditingOrderId("");
@@ -1885,22 +1889,26 @@ export default function Orders() {
           discountValue: Number(c.discountValue) || 0,
           minOrderAmount: Number(c.minOrderAmount) || 0,
         })),
-        // Payment — takeaway orders are always collected in full at pickup, so we force
+        // Payment — takeaway orders default to fully collected at pickup, so we force
         // "paid" and cover the whole total. Any wallet amount already allocated by the
         // payment-entries effect (based on the "Use FishTokri Wallet" toggle) is honored
         // first, and only the remainder is charged to the main payment mode — the wallet
         // portion must never be silently dropped in favor of cash/UPI for the full amount.
-        paymentStatus: orderDeliveryType === "takeaway" ? "paid" : paymentStatus,
-        paidAmount: orderDeliveryType === "takeaway" ? newOrderTotal : paidTotal,
-        dueAmount: orderDeliveryType === "takeaway" ? 0 : undefined,
+        // If the cashier explicitly marks the takeaway order as unpaid, none of that applies —
+        // the order is saved with nothing collected and the full total left due.
+        paymentStatus: orderDeliveryType === "takeaway" ? (takeawayUnpaid ? "unpaid" : "paid") : paymentStatus,
+        paidAmount: orderDeliveryType === "takeaway" ? (takeawayUnpaid ? 0 : newOrderTotal) : paidTotal,
+        dueAmount: orderDeliveryType === "takeaway" ? (takeawayUnpaid ? newOrderTotal : 0) : undefined,
         paymentMode: orderDeliveryType === "takeaway"
-          ? (takeawayWalletAmount >= newOrderTotal && newOrderTotal > 0 ? "wallet" : (mainPaymentMode || "cash"))
+          ? (takeawayUnpaid ? (mainPaymentMode || "cash") : (takeawayWalletAmount >= newOrderTotal && newOrderTotal > 0 ? "wallet" : (mainPaymentMode || "cash")))
           : paymentEntries[0]?.mode,
         payments: orderDeliveryType === "takeaway"
-          ? [
-              ...(takeawayWalletAmount > 0 ? [{ mode: "wallet", amount: takeawayWalletAmount, reference: "" }] : []),
-              ...(takeawayRemaining > 0 ? [{ mode: mainPaymentMode || "cash", amount: takeawayRemaining, reference: "" }] : []),
-            ]
+          ? (takeawayUnpaid
+              ? []
+              : [
+                  ...(takeawayWalletAmount > 0 ? [{ mode: "wallet", amount: takeawayWalletAmount, reference: "" }] : []),
+                  ...(takeawayRemaining > 0 ? [{ mode: mainPaymentMode || "cash", amount: takeawayRemaining, reference: "" }] : []),
+                ])
           : paymentEntries
               .filter((p) => p.mode && Number(p.amount) > 0)
               .map((p) => ({
@@ -2653,6 +2661,7 @@ export default function Orders() {
     // Set the skip-ref BEFORE setUseWallet so the effect that fires won't overwrite entries
     skipPaymentRecomputeRef.current = true;
     setUseWallet(hadWallet);
+    setTakeawayUnpaid(dt === "takeaway" && ps === "unpaid");
     // Schedule
     setOrderScheduleType("slot");
     setIsExpressOrder(!!o.isExpress || o.scheduleType === "express");
@@ -4525,25 +4534,37 @@ export default function Orders() {
               {/* ── Payment ── */}
               <div className="flex-shrink-0 border-t border-gray-100 px-3 py-2">
                 <p className="text-sm font-normal text-gray-900 flex items-center gap-1.5 mb-2"><img src="/icon-payment.png" className="w-4 h-4 object-contain" alt="" />Payment</p>
-                {/* Main mode: UPI or Cash */}
+                {/* Main mode: UPI or Cash (+ Unpaid for takeaway) */}
                 <div className="flex items-center gap-2 mb-2">
                   <button type="button"
-                    onClick={() => setMainPaymentMode("upi")}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${mainPaymentMode === "upi" ? "border-[#1A56DB] bg-[#1A56DB] text-white shadow-sm" : "border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300"}`}
+                    onClick={() => { setMainPaymentMode("upi"); setTakeawayUnpaid(false); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${mainPaymentMode === "upi" && !takeawayUnpaid ? "border-[#1A56DB] bg-[#1A56DB] text-white shadow-sm" : "border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300"}`}
                   >
                     <Smartphone className="w-4 h-4" />
                     UPI
                   </button>
                   <button type="button"
-                    onClick={() => setMainPaymentMode("cash")}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${mainPaymentMode === "cash" ? "border-amber-400 bg-amber-50 text-amber-700 shadow-sm" : "border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-300"}`}
+                    onClick={() => { setMainPaymentMode("cash"); setTakeawayUnpaid(false); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${mainPaymentMode === "cash" && !takeawayUnpaid ? "border-amber-400 bg-amber-50 text-amber-700 shadow-sm" : "border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-300"}`}
                   >
                     <Banknote className="w-4 h-4" />
                     Cash
                   </button>
+                  {orderDeliveryType === "takeaway" && (
+                    <button type="button"
+                      onClick={() => { setTakeawayUnpaid(true); setUseWallet(false); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${takeawayUnpaid ? "border-red-400 bg-red-50 text-red-700 shadow-sm" : "border-gray-200 text-gray-500 hover:bg-red-50 hover:border-red-300"}`}
+                    >
+                      <Tag className="w-4 h-4" />
+                      Unpaid
+                    </button>
+                  )}
                 </div>
+                {takeawayUnpaid && orderDeliveryType === "takeaway" && (
+                  <p className="text-[11px] text-red-500 mb-2">Order will be recorded as unpaid — full amount stays due until collected.</p>
+                )}
                 {/* Wallet checkbox — shown when customer has balance OR edit mode already used wallet (same customer) */}
-                {(() => {
+                {!(orderDeliveryType === "takeaway" && takeawayUnpaid) && (() => {
                   const sameCustomer = editingOrderId && editingOrderCustomerId && String(chosenCustomer?.id) === editingOrderCustomerId;
                   const effBal = (Number(chosenCustomer?.walletBalance) || 0) + (sameCustomer ? editingOrderWalletUsed : 0);
                   return effBal > 0;
@@ -4704,6 +4725,9 @@ export default function Orders() {
                   {(() => {
                     if (creatingSaving) return editingOrderId ? "Saving..." : "Creating...";
                     if (editingOrderId) return <><Pencil className="w-4 h-4" />Save Changes</>;
+                    if (orderDeliveryType === "takeaway" && takeawayUnpaid) {
+                      return <><ShoppingBag className="w-4 h-4" />Place Order (Unpaid)</>;
+                    }
                     const walletApplied = useWallet ? Math.min(Number(chosenCustomer?.walletBalance) || 0, newOrderTotal) : 0;
                     const nonWalletAmt = Math.max(0, newOrderTotal - walletApplied);
                     if (paymentStatus === "paid") {
