@@ -43,7 +43,7 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
       return;
     }
 
-    const filter: any = { ...scopeClause };
+    const filter: any = { ...scopeClause, isDeleted: { $ne: true } };
 
     if (from || to) {
       const dateClause: any = {};
