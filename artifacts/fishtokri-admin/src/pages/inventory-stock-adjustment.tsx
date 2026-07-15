@@ -590,7 +590,7 @@ function BatchSelector({
   onSelect: (batchId: string) => void;
   mode?: "remove" | "add_existing";
 }) {
-  const activeBatches = batches.filter((b) => {
+  const allActiveBatches = batches.filter((b) => {
     if (b.quantity <= 0) return false;
     if (b.expiryDate) {
       const exp = new Date(b.expiryDate);
@@ -598,6 +598,13 @@ function BatchSelector({
     }
     return true;
   });
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentActiveBatches = allActiveBatches.filter((b) =>
+    !b.receivedDate || new Date(b.receivedDate).getTime() >= sevenDaysAgo
+  );
+  const [showAllBatches, setShowAllBatches] = useState(false);
+  const activeBatches = showAllBatches ? allActiveBatches
+    : recentActiveBatches.length > 0 ? recentActiveBatches : allActiveBatches;
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const portalRef = useRef<HTMLDivElement>(null);
@@ -631,13 +638,24 @@ function BatchSelector({
     };
   }
 
+  const hiddenCount = allActiveBatches.length - recentActiveBatches.length;
+
   const dropdown = (
     <div ref={portalRef} style={style} className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
       onMouseEnter={cancelClose} onMouseLeave={scheduleClose}>
-      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
         <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
           {mode === "add_existing" ? "Select Batch to Add Into" : "Select Batch to Reduce"}
         </span>
+        {hiddenCount > 0 && recentActiveBatches.length > 0 && (
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); setShowAllBatches((v) => !v); }}
+            className="text-[10px] font-semibold text-[#364F9F] hover:underline flex-shrink-0"
+          >
+            {showAllBatches ? "Last 7 days" : `Show all (${allActiveBatches.length})`}
+          </button>
+        )}
       </div>
       <div className="max-h-56 overflow-y-auto">
         {mode === "remove" && (
@@ -719,12 +737,23 @@ function ExistingBatchesCard({
   const [edited, setEdited] = useState<Batch[]>([]);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [showAllBatches, setShowAllBatches] = useState(false);
+
+  // Compute which batches to show (last 7 days by receivedDate)
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentBatches = batches.filter((b) =>
+    !b.receivedDate || new Date(b.receivedDate).getTime() >= sevenDaysAgo
+  );
+  const visibleBatches = showAllBatches ? batches
+    : recentBatches.length > 0 ? recentBatches : batches;
+  const hiddenCount = batches.length - recentBatches.length;
 
   // Sync local edit state when batches prop changes or panel opens
   useEffect(() => {
-    setEdited(batches.map((b) => ({ ...b, expiryTime: extractTime12hFromISO(b.expiryDate) })));
+    setEdited(visibleBatches.map((b) => ({ ...b, expiryTime: extractTime12hFromISO(b.expiryDate) })));
     setDirty(false);
-  }, [batches, open]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batches, open, showAllBatches]);
 
   if (batches.length === 0) return null;
 
@@ -764,17 +793,28 @@ function ExistingBatchesCard({
 
   return (
     <div className="mt-3 rounded-xl border border-[#364F9F]/15 bg-[#364F9F]/3 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full px-4 py-2 bg-[#364F9F]/8 flex items-center gap-2 hover:bg-[#364F9F]/12 transition-colors"
-      >
-        <Layers className="w-3.5 h-3.5 text-[#364F9F]" />
-        <span className="text-[11px] font-bold text-[#364F9F] uppercase tracking-widest flex-1 text-left">
-          Existing Batches ({batches.length})
-        </span>
-        <ChevronDown className={`w-3.5 h-3.5 text-[#364F9F] transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex-1 px-4 py-2 bg-[#364F9F]/8 flex items-center gap-2 hover:bg-[#364F9F]/12 transition-colors"
+        >
+          <Layers className="w-3.5 h-3.5 text-[#364F9F]" />
+          <span className="text-[11px] font-bold text-[#364F9F] uppercase tracking-widest flex-1 text-left">
+            Existing Batches ({showAllBatches ? batches.length : `${visibleBatches.length} recent`})
+          </span>
+          <ChevronDown className={`w-3.5 h-3.5 text-[#364F9F] transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+        {hiddenCount > 0 && recentBatches.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAllBatches((v) => !v)}
+            className="px-3 py-2 bg-[#364F9F]/8 hover:bg-[#364F9F]/15 border-l border-[#364F9F]/15 text-[10px] font-bold text-[#364F9F] uppercase tracking-wide transition-colors whitespace-nowrap"
+          >
+            {showAllBatches ? "Last 7 days" : `Show all (${batches.length})`}
+          </button>
+        )}
+      </div>
 
       {open && (
         <>

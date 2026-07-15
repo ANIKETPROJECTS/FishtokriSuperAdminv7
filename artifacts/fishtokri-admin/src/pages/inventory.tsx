@@ -376,16 +376,27 @@ export default function InventoryPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-center text-xs text-gray-500">
-                              {batches.length > 0 ? (
-                                <div className="flex flex-col items-center gap-0.5">
-                                  <span className="font-semibold text-[#1A56DB]">{batches.length}</span>
-                                  {batches.map((b) => (
-                                    <span key={b.id} className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1 leading-tight">
-                                      {b.batchNumber || "—"}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : <span className="text-gray-300">—</span>}
+                              {batches.length > 0 ? (() => {
+                                const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+                                const recentBatches = batches.filter((b) => {
+                                  if (!b.receivedDate) return true;
+                                  return new Date(b.receivedDate).getTime() >= sevenDaysAgo;
+                                });
+                                const displayBatches = recentBatches.length > 0 ? recentBatches : batches;
+                                return (
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className="font-bold text-[#1A56DB] text-sm">{batches.length}</span>
+                                    {displayBatches.map((b) => (
+                                      <span key={b.id} className="text-[11px] font-bold font-mono bg-[#1A56DB]/8 text-[#162B4D] border border-[#1A56DB]/20 rounded px-1.5 py-0.5 leading-tight w-full max-w-[140px] truncate">
+                                        {b.batchNumber || "—"}
+                                      </span>
+                                    ))}
+                                    {recentBatches.length < batches.length && (
+                                      <span className="text-[10px] text-gray-400 italic">+{batches.length - recentBatches.length} older</span>
+                                    )}
+                                  </div>
+                                );
+                              })() : <span className="text-gray-300">—</span>}
                             </td>
                             <td className={`px-4 py-3 text-xs font-medium ${expTone}`}>
                               {nextBatch ? (
