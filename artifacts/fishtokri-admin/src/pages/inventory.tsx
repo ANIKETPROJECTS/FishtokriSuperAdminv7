@@ -313,18 +313,18 @@ export default function InventoryPage() {
             {/* Product list */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="w-full overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Batches</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Next Expiry</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock Value</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-4 py-3 w-8"></th>
+                      <th className="px-4 py-3.5 text-left text-sm font-semibold text-gray-500 uppercase tracking-wider">Product</th>
+                      <th className="px-4 py-3.5 text-left text-sm font-semibold text-gray-500 uppercase tracking-wider">Category</th>
+                      <th className="px-4 py-3.5 text-right text-sm font-semibold text-gray-500 uppercase tracking-wider">Price</th>
+                      <th className="px-4 py-3.5 text-right text-sm font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
+                      <th className="px-4 py-3.5 text-center text-sm font-semibold text-gray-500 uppercase tracking-wider">Batches</th>
+                      <th className="px-4 py-3.5 text-left text-sm font-semibold text-gray-500 uppercase tracking-wider">Next Expiry</th>
+                      <th className="px-4 py-3.5 text-right text-sm font-semibold text-gray-500 uppercase tracking-wider">Stock Value</th>
+                      <th className="px-4 py-3.5 text-center text-sm font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3.5 w-8"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -350,32 +350,32 @@ export default function InventoryPage() {
                             className="hover:bg-blue-50/30 cursor-pointer transition-colors group"
                             onClick={() => handleProductClick(p)}
                           >
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-4">
                               <div className="flex items-center gap-3 min-w-0">
                                 {p.imageUrl ? (
-                                  <img src={p.imageUrl} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
+                                  <img src={p.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
                                 ) : (
-                                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                                    <Package className="w-4 h-4 text-gray-400" />
+                                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                    <Package className="w-5 h-5 text-gray-400" />
                                   </div>
                                 )}
                                 <div className="min-w-0">
-                                  <p className="font-semibold text-[#162B4D] truncate group-hover:text-[#1A56DB] transition-colors">{p.name}</p>
-                                  {p.unit && <p className="text-[11px] text-gray-400">{p.unit}</p>}
+                                  <p className="text-base font-semibold text-[#162B4D] truncate group-hover:text-[#1A56DB] transition-colors">{p.name}</p>
+                                  {p.unit && <p className="text-xs text-gray-400">{p.unit}</p>}
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-gray-600">
+                            <td className="px-4 py-4 text-sm text-gray-600">
                               {p.category || <span className="text-gray-300">—</span>}
                               {p.subCategory && <span className="text-gray-400"> / {p.subCategory}</span>}
                             </td>
-                            <td className="px-4 py-3 text-right text-gray-700">₹{p.price}</td>
-                            <td className="px-4 py-3 text-right">
-                              <span className={`inline-flex items-center justify-end px-2 py-0.5 rounded-md font-semibold text-xs ${stockTone}`}>
+                            <td className="px-4 py-4 text-right text-sm font-medium text-gray-700">₹{p.price}</td>
+                            <td className="px-4 py-4 text-right">
+                              <span className={`inline-flex items-center justify-end px-2.5 py-1 rounded-md font-bold text-sm ${stockTone}`}>
                                 {p.quantity}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-center text-xs text-gray-500">
+                            <td className="px-4 py-4 text-center text-sm text-gray-500">
                               {batches.length > 0 ? (() => {
                                 const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
                                 const recentBatches = batches.filter((b) => {
@@ -385,38 +385,38 @@ export default function InventoryPage() {
                                 const displayBatches = recentBatches.length > 0 ? recentBatches : batches;
                                 return (
                                   <div className="flex flex-col items-center gap-1">
-                                    <span className="font-bold text-[#1A56DB] text-sm">{batches.length}</span>
+                                    <span className="font-bold text-[#1A56DB] text-base">{batches.length}</span>
                                     {displayBatches.map((b) => (
-                                      <span key={b.id} className="text-[11px] font-bold font-mono bg-[#1A56DB]/8 text-[#162B4D] border border-[#1A56DB]/20 rounded px-1.5 py-0.5 leading-tight w-full max-w-[140px] truncate">
+                                      <span key={b.id} className="text-xs font-bold font-mono bg-[#1A56DB]/8 text-[#162B4D] border border-[#1A56DB]/20 rounded px-1.5 py-0.5 leading-tight w-full max-w-[160px] truncate">
                                         {b.batchNumber || "—"}
                                       </span>
                                     ))}
                                     {recentBatches.length < batches.length && (
-                                      <span className="text-[10px] text-gray-400 italic">+{batches.length - recentBatches.length} older</span>
+                                      <span className="text-xs text-gray-400 italic">+{batches.length - recentBatches.length} older</span>
                                     )}
                                   </div>
                                 );
                               })() : <span className="text-gray-300">—</span>}
                             </td>
-                            <td className={`px-4 py-3 text-xs font-medium ${expTone}`}>
+                            <td className={`px-4 py-4 text-sm font-semibold ${expTone}`}>
                               {nextBatch ? (
                                 <>
                                   {fmtDate(nextBatch.expiryDate)}
                                   {dl != null && (
-                                    <span className="ml-1 text-[10px]">
+                                    <span className="ml-1 text-xs font-medium">
                                       ({dl < 0 ? `expired ${Math.abs(dl)}d ago` : dl === 0 ? "today" : `${dl}d`})
                                     </span>
                                   )}
                                 </>
                               ) : <span className="text-gray-300">—</span>}
                             </td>
-                            <td className="px-4 py-3 text-right text-gray-600">₹{(p.price * p.quantity).toFixed(0)}</td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                            <td className="px-4 py-4 text-right text-sm font-medium text-gray-600">₹{(p.price * p.quantity).toFixed(0)}</td>
+                            <td className="px-4 py-4 text-center">
+                              <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                                 p.status === "available" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
                               }`}>{p.status || "—"}</span>
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-4 py-4 text-center">
                               <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#1A56DB] transition-colors" />
                             </td>
                           </tr>
