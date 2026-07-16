@@ -494,13 +494,11 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
 /**
  * Fires when an order goes out for delivery (status → out_for_delivery).
  *
- * Template: fishtokri_out_for_delivery (4 vars): name, orderId, dp_name, dp_phone
+ * Template: fishtokri_out_for_delivery_v3 (5 vars):
+ *   {{1}} name, {{2}} orderId, {{3}} dp_name, {{4}} dp_phone, {{5}} delivery slot
  *
- * Used for ALL orders regardless of payment mode (COD or UPI) — payment
- * links are no longer sent via WhatsApp for out-for-delivery notifications.
- * The previous COD-with-payment-link variant
- * (`fishtokri_out_for_delivery_cod_new`) has been retired; see
- * docs/whatsapp-templates.md for history.
+ * Used for ALL orders regardless of payment mode (COD or UPI).
+ * Previous variants (v1 / v2 / cod_new) are retired.
  */
 export async function sendOutForDelivery(
   order: any,
@@ -522,11 +520,30 @@ export async function sendOutForDelivery(
     "Our delivery partner";
   const dpPhone = deliveryPersonPhone.trim() || "-";
 
-  const templateName = "fishtokri_out_for_delivery_v2";
+  // Build "15 Jul 2026 | 10:00 AM – 12:00 PM" style label
+  const scheduleType = String(order?.scheduleType ?? "").trim().toLowerCase();
+  const dateLabel = order?.deliveryDate ? formatDeliveryDateLabel(String(order.deliveryDate)) : "";
+  const slotLabel =
+    String(order?.timeslotLabel ?? "").trim() ||
+    (order?.timeslotStart && order?.timeslotEnd
+      ? `${order.timeslotStart} – ${order.timeslotEnd}`
+      : "");
+  let deliverySlot: string;
+  if (order?.isExpress || scheduleType === "express") {
+    deliverySlot = "Express Delivery (via Porter)";
+  } else if (scheduleType === "instant") {
+    deliverySlot = "As soon as possible";
+  } else if (dateLabel && slotLabel) {
+    deliverySlot = `${dateLabel} | ${slotLabel}`;
+  } else {
+    deliverySlot = slotLabel || dateLabel || "As scheduled";
+  }
+
+  const templateName = "fishtokri_out_for_delivery_v3";
 
   console.log(
     `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} ` +
-    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} template=${templateName}`
+    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} slot="${deliverySlot}" template=${templateName}`
   );
 
   if (isDuplicate(orderId, templateName)) return;
@@ -538,6 +555,7 @@ export async function sendOutForDelivery(
       orderId,
       dpName,
       dpPhone,
+      deliverySlot,
     ],
     log
   );
