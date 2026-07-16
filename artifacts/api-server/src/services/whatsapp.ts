@@ -520,11 +520,30 @@ export async function sendOutForDelivery(
     "Our delivery partner";
   const dpPhone = deliveryPersonPhone.trim() || "-";
 
+  // Build "15 Jul 2026 | 10:00 AM – 12:00 PM" style slot label for {{5}}
+  const scheduleType = String(order?.scheduleType ?? "").trim().toLowerCase();
+  const dateLabel = order?.deliveryDate ? formatDeliveryDateLabel(String(order.deliveryDate)) : "";
+  const slotLabel =
+    String(order?.timeslotLabel ?? "").trim() ||
+    (order?.timeslotStart && order?.timeslotEnd
+      ? `${order.timeslotStart} – ${order.timeslotEnd}`
+      : "");
+  let deliverySlot: string;
+  if (order?.isExpress || scheduleType === "express") {
+    deliverySlot = "Express Delivery (via Porter)";
+  } else if (scheduleType === "instant") {
+    deliverySlot = "As soon as possible";
+  } else if (dateLabel && slotLabel) {
+    deliverySlot = `${dateLabel} | ${slotLabel}`;
+  } else {
+    deliverySlot = slotLabel || dateLabel || "As scheduled";
+  }
+
   const templateName = "fishtokri_out_for_delivery_v3";
 
   console.log(
     `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} ` +
-    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} template=${templateName}`
+    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} slot="${deliverySlot}" template=${templateName}`
   );
 
   if (isDuplicate(orderId, templateName)) return;
@@ -536,6 +555,7 @@ export async function sendOutForDelivery(
       orderId,
       dpName,
       dpPhone,
+      deliverySlot,
     ],
     log
   );
