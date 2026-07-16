@@ -522,7 +522,7 @@ export async function sendOutForDelivery(
     "Our delivery partner";
   const dpPhone = deliveryPersonPhone.trim() || "-";
 
-  const templateName = "fishtokri_out_for_delivery";
+  const templateName = "fishtokri_out_for_delivery_v2";
 
   console.log(
     `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} ` +
