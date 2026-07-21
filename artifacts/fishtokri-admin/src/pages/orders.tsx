@@ -1625,7 +1625,7 @@ export default function Orders() {
         isExpress: isExpressOrder,
         scheduleType: orderDeliveryType === "takeaway" ? "instant" : isExpressOrder ? "express" : orderScheduleType,
         deliveryDate: orderDeliveryType === "takeaway"
-          ? new Date().toISOString().slice(0, 10)
+          ? getTodayIST()
           : orderDate,
         timeslotId: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : (selectedTimeslot ? String(selectedTimeslot._id) : undefined),
         timeslotLabel: orderDeliveryType === "takeaway" ? undefined : isExpressOrder ? "Express order by Porter" : selectedTimeslot?.label,
