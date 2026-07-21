@@ -1937,24 +1937,33 @@ export default function Orders() {
       setTotal(data.total ?? 0);
       setPages(data.pages ?? 1);
 
-      // Auto-apply UPI + RZPAY for FTW orders that don't already have them set.
-      // Fire-and-forget: non-fatal, DB is the source of truth; ref prevents re-firing
-      // on every poll for the same order within a session.
+      // Auto-apply RZPAY variant for FTW orders already on UPI.
+      // For pending FTW orders with no payment mode, also set UPI first.
+      // Fire-and-forget; ftwAutoAppliedRef prevents re-firing on every poll.
       const ftwToFix: any[] = loadedOrders.filter((o: any) => {
-        if (!String(o.orderId ?? "").startsWith("FTW")) return false;
+        // Strip leading '#' before checking — orderId may be stored as "#FTW..." or "FTW..."
+        const oid = String(o.orderId ?? "").replace(/^#+/, "");
+        if (!oid.startsWith("FTW")) return false;
         if (ftwAutoAppliedRef.current.has(String(o._id))) return false;
-        const modeKey = String(o.paymentMode ?? "").toLowerCase().trim();
-        const needsMode = modeKey !== "upi";
-        const needsVariant = String(o.upiVariant ?? "") !== "RZPAY";
-        return needsMode || needsVariant;
+        const effectiveMode = orderPaymentModeKey(o); // resolves from payments array too
+        const alreadyUpi = effectiveMode === "upi";
+        const needsVariant = alreadyUpi && String(o.upiVariant ?? "") !== "RZPAY";
+        // Pending orders with no mode set → need UPI + RZPAY
+        const noModeSet = effectiveMode === "cod" && !o.paymentMode &&
+          (!Array.isArray(o.payments) || o.payments.length === 0);
+        const needsUpiAndVariant = noModeSet && o.status === "pending";
+        return needsVariant || needsUpiAndVariant;
       });
       for (const o of ftwToFix) {
         ftwAutoAppliedRef.current.add(String(o._id));
         const total = Number(o.total) || 0;
         (async () => {
           try {
-            const modeKey = String(o.paymentMode ?? "").toLowerCase().trim();
-            if (modeKey !== "upi") {
+            const effectiveMode = orderPaymentModeKey(o);
+            const noModeSet = effectiveMode === "cod" && !o.paymentMode &&
+              (!Array.isArray(o.payments) || o.payments.length === 0);
+            if (noModeSet) {
+              // Set UPI payment mode first, then variant below
               await apiFetch(`/api/orders/${String(o._id)}`, {
                 method: "PUT",
                 body: JSON.stringify({
@@ -1971,6 +1980,7 @@ export default function Orders() {
                 )
               );
             }
+            // Always set RZPAY variant if not already set
             if (String(o.upiVariant ?? "") !== "RZPAY") {
               await apiFetch(`/api/orders/${String(o._id)}`, {
                 method: "PUT",
