@@ -626,9 +626,9 @@ export default function Orders() {
   const [filterSubHubs, setFilterSubHubs] = useState<{ id: string; name: string }[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const knownSubHubsRef = useRef<Map<string, { id: string; name: string }>>(new Map());
-  // Tracks FTW order IDs that have already had UPI+RZPAY auto-applied this session
-  // so the background poll doesn't re-fire PUTs on every refresh.
-  const ftwAutoAppliedRef = useRef<Set<string>>(new Set());
+  // Tracks FTW order IDs that currently have an in-flight UPI+RZPAY fix request.
+  // Removed on completion (success or failure) so polls re-check until the DB confirms.
+  const ftwInFlightRef = useRef<Set<string>>(new Set());
 
   // Paid orders client-side filter
   const [payFilter, setPayFilter] = useState(false);
@@ -1939,26 +1939,27 @@ export default function Orders() {
       setTotal(data.total ?? 0);
       setPages(data.pages ?? 1);
 
-      // Auto-apply UPI + RZPAY for ALL FTW orders (storefront orders identified by orderId
-      // starting with "FTW"). Skip cancelled orders and orders already fully paid.
-      // Fire-and-forget; ftwAutoAppliedRef prevents re-firing on every poll.
+      // Auto-apply UPI + RZPAY for ALL storefront orders (orderId starts with "FT" but
+      // not "FTS" which is admin-generated). Covers FTW, FTN, and any future FT* prefixes.
+      // Skip cancelled/paid orders. ftwInFlightRef guards against concurrent duplicate calls
+      // for the same order; it is cleared on completion so every poll re-verifies the DB value.
       const ftwToFix: any[] = loadedOrders.filter((o: any) => {
-        // Strip leading '#' before checking — orderId may be stored as "#FTW..." or "FTW..."
+        // Strip leading '#' — orderId may be stored as "#FTW..." or "FTW..."
         const oid = String(o.orderId ?? "").replace(/^#+/, "");
-        if (!oid.startsWith("FTW")) return false;
-        if (ftwAutoAppliedRef.current.has(String(o._id))) return false;
+        if (!oid.startsWith("FT") || oid.startsWith("FTS")) return false;
+        if (ftwInFlightRef.current.has(String(o._id))) return false;
         // Don't touch cancelled or already-paid orders
         if (String(o.status ?? "").toLowerCase() === "cancelled") return false;
         if (String(o.paymentStatus ?? "").toLowerCase() === "paid") return false;
         const effectiveMode = orderPaymentModeKey(o);
         const alreadyUpi = effectiveMode === "upi";
         const needsVariant = alreadyUpi && String(o.upiVariant ?? "") !== "RZPAY";
-        // Any non-UPI FTW order needs to be switched to UPI + RZPAY
+        // Any non-UPI storefront order needs to be switched to UPI + RZPAY
         const needsUpiAndVariant = !alreadyUpi;
         return needsVariant || needsUpiAndVariant;
       });
       for (const o of ftwToFix) {
-        ftwAutoAppliedRef.current.add(String(o._id));
+        ftwInFlightRef.current.add(String(o._id));
         const total = Number(o.total) || 0;
         (async () => {
           try {
@@ -1981,7 +1982,7 @@ export default function Orders() {
                 )
               );
             }
-            // Always set RZPAY variant if not already set
+            // Set RZPAY variant if not already set
             if (String(o.upiVariant ?? "") !== "RZPAY") {
               await apiFetch(`/api/orders/${String(o._id)}`, {
                 method: "PUT",
@@ -1994,8 +1995,10 @@ export default function Orders() {
               );
             }
           } catch {
-            // Non-fatal — allow retry on next load
-            ftwAutoAppliedRef.current.delete(String(o._id));
+            // Non-fatal — will retry on next poll
+          } finally {
+            // Always clear in-flight flag so the next poll re-checks the DB value
+            ftwInFlightRef.current.delete(String(o._id));
           }
         })();
       }
