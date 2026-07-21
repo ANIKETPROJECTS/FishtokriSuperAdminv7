@@ -373,7 +373,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   const stats = useMemo(() => {
     let cash = 0, upi = 0, card = 0, wallet = 0, totalRev = 0, unpaid = 0;
 
-    for (const o of orders) {
+    for (const o of filteredOrders) {
       const isCancelled = String(o.orderStatus || o.status || "").toLowerCase() === "cancelled";
       const total = Number(o.total) || 0;
       const statusLower = String(o.paymentStatus || "").toLowerCase();
@@ -440,7 +440,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       unpaid:     r2(unpaid),
       todaySales: r2(totalRev + unpaid),
     };
-  }, [orders]);
+  }, [filteredOrders]);
 
   const handleDownload = useCallback(() => {
     if (!filteredOrders.length) return;
