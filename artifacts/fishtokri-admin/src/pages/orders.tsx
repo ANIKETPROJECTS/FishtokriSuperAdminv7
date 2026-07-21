@@ -3843,7 +3843,9 @@ export default function Orders() {
                     </div>
                     {(() => {
                       const effBal = (Number(chosenCustomer.walletBalance) || 0) + (editingOrderId && editingOrderCustomerId && String(chosenCustomer.id) === editingOrderCustomerId ? editingOrderWalletUsed : 0);
-                      const totalDue = Number(chosenCustomer.totalDue) || 0;
+                      // If wallet is negative, that debt is also owed — fold it into pending due
+                      const walletDebt = effBal < 0 ? Math.abs(effBal) : 0;
+                      const totalDue = (Number(chosenCustomer.totalDue) || 0) + walletDebt;
                       return (
                         <>
                           {effBal > 0 && (
