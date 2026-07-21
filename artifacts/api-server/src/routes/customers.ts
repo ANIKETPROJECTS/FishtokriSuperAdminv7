@@ -260,7 +260,25 @@ async function enrichCustomers(customers: any[], log?: any) {
     });
     const currentOrders = orders.filter((order) => ACTIVE_ORDER_STATUSES.has(normalize(order.status)));
     const orderHistory = orders.filter((order) => !ACTIVE_ORDER_STATUSES.has(normalize(order.status)));
-    return { ...customer, orders, currentOrders, orderHistory };
+
+    // Aggregate unpaid dues across all non-cancelled orders
+    let totalDue = 0;
+    for (const order of orders) {
+      const statusNorm = normalize(order.status ?? order.orderStatus ?? "");
+      if (statusNorm === "cancelled") continue;
+      const payStatus = normalize(order.paymentStatus ?? "");
+      if (payStatus === "unpaid") {
+        totalDue += Number(order.total) || 0;
+      } else if (payStatus === "partial") {
+        if (order.dueAmount != null && Number(order.dueAmount) > 0) {
+          totalDue += Number(order.dueAmount);
+        } else if (order.paidAmount != null) {
+          totalDue += Math.max(0, (Number(order.total) || 0) - Number(order.paidAmount));
+        }
+      }
+    }
+
+    return { ...customer, orders, currentOrders, orderHistory, totalDue: Math.round(totalDue * 100) / 100 };
   });
 }
 
