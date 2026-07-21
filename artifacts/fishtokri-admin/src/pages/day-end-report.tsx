@@ -477,8 +477,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     <div style={POPPINS}>
       {/* Stats strip */}
       {(() => {
-        const cancelledCount = orders.filter(o => String(o.orderStatus || o.status || "").toLowerCase() === "cancelled").length;
-        const regularCount   = orders.length - cancelledCount;
+        const cancelledCount = filteredOrders.filter(o => String(o.orderStatus || o.status || "").toLowerCase() === "cancelled").length;
+        const regularCount   = filteredOrders.length - cancelledCount;
 
         type InfoLine = { label: string; color: string; value?: string };
         type StatCard = {
@@ -492,7 +492,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
         const cards: StatCard[] = [
           {
             label: "Total Orders",
-            value: String(orders.length),
+            value: String(filteredOrders.length),
             color: "#000",
             sub: [
               { text: `${regularCount} regular`, color: "#16a34a" },
