@@ -1479,7 +1479,8 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         { _id: oid },
         { projection: { total: 1, items: 1 } }
       );
-      let totalNum = Number(existing?.total) || 0;
+      // Use the incoming total if provided (edit may have changed it), else fall back to DB value
+      let totalNum = total !== undefined ? (Number(total) || 0) : (Number(existing?.total) || 0);
       if (totalNum <= 0 && Array.isArray(existing?.items)) {
         totalNum = existing.items.reduce(
           (s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1),
@@ -1492,6 +1493,17 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         return o?.paymentStatus ?? "unpaid";
       })());
       update.dueAmount = String(effectivePaymentStatus) === "paid" ? 0 : Math.max(0, totalNum - paidNum);
+    } else if (total !== undefined) {
+      // Total changed (e.g. discount or delivery charge edited) but paidAmount was not sent —
+      // recalculate dueAmount against the existing paidAmount so the invoice stays accurate.
+      const conn0 = await getOrdersDb();
+      const existing = await conn0.db.collection(COLLECTION).findOne(
+        { _id: oid },
+        { projection: { paidAmount: 1, paymentStatus: 1 } }
+      );
+      const existingPaid = Math.max(0, Number(existing?.paidAmount) || 0);
+      const effectivePaymentStatus = update.paymentStatus ?? existing?.paymentStatus ?? "unpaid";
+      update.dueAmount = String(effectivePaymentStatus) === "paid" ? 0 : Math.max(0, (Number(total) || 0) - existingPaid);
     }
     const conn = await getOrdersDb();
     const prev = await conn.db.collection(COLLECTION).findOne({ _id: oid });

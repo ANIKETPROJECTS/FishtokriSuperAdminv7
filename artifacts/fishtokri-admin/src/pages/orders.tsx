@@ -1568,7 +1568,9 @@ export default function Orders() {
         subHubId: selectedSubHubId,
         subHubName: subHub?.name ?? "",
         notes: orderNotes.trim(),
-        status: orderDeliveryType === "takeaway" ? "takeaway" : "pending",
+        // On edits, omit status entirely so the backend keeps the existing stage.
+        // On new orders, set the initial status based on delivery type.
+        ...(!editingOrderId && { status: orderDeliveryType === "takeaway" ? "takeaway" : "pending" }),
         createCustomerIfMissing: customerMode === "new" || isNewCustomerEntry,
         newCustomerExtras: (customerMode === "new" || isNewCustomerEntry) ? {
           dateOfBirth: newCustomer.dateOfBirth.trim(),
