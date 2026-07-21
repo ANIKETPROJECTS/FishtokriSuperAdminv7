@@ -5,6 +5,43 @@ import { runInventoryBackgroundDeduction } from "./routes/inventory.js";
 import { getSubHubDbConnection } from "./db/sub-hub-connections.js";
 
 /**
+ * Background job: auto-set paymentMode="upi" and upiVariant="RZPAY" on any
+ * pending storefront order (orderId starts with "FT" but NOT "FTS") that
+ * doesn't yet have them. Runs at startup and every 30 s thereafter so it
+ * doesn't depend on which tab the admin currently has open.
+ */
+async function autoFixStorefrontPaymentMode() {
+  try {
+    const conn = await getSubHubDbConnection("orders");
+    const col = conn.db.collection("orders");
+
+    // Match pending FT* orders (regex: starts with FT but not FTS)
+    const filter = {
+      status: { $nin: ["delivered", "cancelled", "rejected"] },
+      paymentStatus: { $ne: "paid" },
+      orderId: { $regex: /^#?FT(?!S)/ },
+      $or: [
+        { upiVariant: { $ne: "RZPAY" } },
+        { paymentMode: { $nin: ["upi"] } },
+      ],
+    };
+
+    const result = await col.updateMany(filter, {
+      $set: { paymentMode: "upi", upiVariant: "RZPAY" },
+    });
+
+    if (result.modifiedCount > 0) {
+      logger.info(
+        { count: result.modifiedCount },
+        "autoFixStorefrontPaymentMode: set UPI+RZPAY on storefront orders"
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "autoFixStorefrontPaymentMode failed (non-fatal)");
+  }
+}
+
+/**
  * Idempotent migration that runs on every startup and fixes two classes of
  * payment inconsistency in the orders collection:
  *
@@ -78,6 +115,14 @@ connectDB()
 
       // Migration: fix paid orders that still have dueAmount > 0 (old takeaway bug).
       fixPaidOrdersDueAmount().catch(() => {});
+
+      // Auto-fix storefront (FT*) orders: set UPI+RZPAY immediately, then every 30s.
+      autoFixStorefrontPaymentMode().catch(() => {});
+      setInterval(() => {
+        autoFixStorefrontPaymentMode().catch((e) =>
+          logger.error({ err: e }, "autoFixStorefrontPaymentMode (poll) failed")
+        );
+      }, 30_000);
 
       // Run once at startup (after 15s) to catch any orders that missed deduction
       // while the server was down, then keep polling every 60s.
