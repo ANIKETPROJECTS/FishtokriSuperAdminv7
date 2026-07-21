@@ -626,6 +626,9 @@ export default function Orders() {
   const [filterSubHubs, setFilterSubHubs] = useState<{ id: string; name: string }[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const knownSubHubsRef = useRef<Map<string, { id: string; name: string }>>(new Map());
+  // Tracks FTW order IDs that have already had UPI+RZPAY auto-applied this session
+  // so the background poll doesn't re-fire PUTs on every refresh.
+  const ftwAutoAppliedRef = useRef<Set<string>>(new Set());
 
   // Paid orders client-side filter
   const [payFilter, setPayFilter] = useState(false);
@@ -1933,6 +1936,58 @@ export default function Orders() {
       setOrders(loadedOrders);
       setTotal(data.total ?? 0);
       setPages(data.pages ?? 1);
+
+      // Auto-apply UPI + RZPAY for FTW orders that don't already have them set.
+      // Fire-and-forget: non-fatal, DB is the source of truth; ref prevents re-firing
+      // on every poll for the same order within a session.
+      const ftwToFix: any[] = loadedOrders.filter((o: any) => {
+        if (!String(o.orderId ?? "").startsWith("FTW")) return false;
+        if (ftwAutoAppliedRef.current.has(String(o._id))) return false;
+        const modeKey = String(o.paymentMode ?? "").toLowerCase().trim();
+        const needsMode = modeKey !== "upi";
+        const needsVariant = String(o.upiVariant ?? "") !== "RZPAY";
+        return needsMode || needsVariant;
+      });
+      for (const o of ftwToFix) {
+        ftwAutoAppliedRef.current.add(String(o._id));
+        const total = Number(o.total) || 0;
+        (async () => {
+          try {
+            const modeKey = String(o.paymentMode ?? "").toLowerCase().trim();
+            if (modeKey !== "upi") {
+              await apiFetch(`/api/orders/${String(o._id)}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  paymentMode: "upi",
+                  payments: [{ mode: "upi", amount: total, reference: "" }],
+                  walletUsed: 0,
+                }),
+              });
+              setOrders((prev) =>
+                prev.map((ord) =>
+                  String(ord._id) === String(o._id)
+                    ? { ...ord, paymentMode: "upi", payments: [{ mode: "upi", amount: total, reference: "" }], walletUsed: 0 }
+                    : ord
+                )
+              );
+            }
+            if (String(o.upiVariant ?? "") !== "RZPAY") {
+              await apiFetch(`/api/orders/${String(o._id)}`, {
+                method: "PUT",
+                body: JSON.stringify({ upiVariant: "RZPAY" }),
+              });
+              setOrders((prev) =>
+                prev.map((ord) =>
+                  String(ord._id) === String(o._id) ? { ...ord, upiVariant: "RZPAY" } : ord
+                )
+              );
+            }
+          } catch {
+            // Non-fatal — allow retry on next load
+            ftwAutoAppliedRef.current.delete(String(o._id));
+          }
+        })();
+      }
 
       // Accumulate unique sub-hubs from orders for the filter dropdown
       let changed = false;
