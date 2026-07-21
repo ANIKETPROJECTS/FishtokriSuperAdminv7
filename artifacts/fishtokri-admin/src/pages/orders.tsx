@@ -702,6 +702,12 @@ export default function Orders() {
   const [rejectReason, setRejectReason] = useState("");
   const [confirmingReject, setConfirmingReject] = useState(false);
 
+  // Accept-order sub-hub picker (shown when a pending order has no subHubId)
+  const [pendingAcceptOrder, setPendingAcceptOrder] = useState<any>(null);
+  const [acceptPickSubHubId, setAcceptPickSubHubId] = useState("");
+  const [acceptPickSubHubs, setAcceptPickSubHubs] = useState<{ id: string; name: string }[]>([]);
+  const [loadingAcceptSubHubs, setLoadingAcceptSubHubs] = useState(false);
+
   // Create order
   // Create-order open state is driven by URL (/orders/new)
   const [creatingSaving, setCreatingSaving] = useState(false);
@@ -2158,7 +2164,38 @@ export default function Orders() {
     }
   };
 
-  const acceptOrder = async (order: any) => {
+  const acceptOrder = async (order: any, overrideSubHubId?: string, overrideSubHubName?: string) => {
+    // If the order has no sub-hub yet, pause and show the sub-hub picker.
+    const resolvedSubHubId = overrideSubHubId ?? order.subHubId ?? "";
+    if (!resolvedSubHubId) {
+      // Fetch available sub-hubs so the picker has options.
+      setLoadingAcceptSubHubs(true);
+      setPendingAcceptOrder(order);
+      setAcceptPickSubHubId("");
+      setAcceptPickSubHubs([]);
+      try {
+        // Use sub-hubs already loaded for the new-order form if available, otherwise fetch all.
+        if (subHubs.length > 0) {
+          setAcceptPickSubHubs(subHubs.map((h: any) => ({ id: String(h.id ?? h._id), name: h.name ?? "" })));
+        } else {
+          const superRes = await apiFetch("/api/super-hubs");
+          const allSubs: { id: string; name: string }[] = [];
+          for (const sh of superRes.superHubs ?? []) {
+            const subRes = await apiFetch(`/api/super-hubs/${sh._id ?? sh.id}/sub-hubs`);
+            for (const sub of subRes.subHubs ?? []) {
+              allSubs.push({ id: String(sub.id ?? sub._id), name: sub.name ?? "" });
+            }
+          }
+          setAcceptPickSubHubs(allSubs);
+        }
+      } catch {
+        // If fetch fails, still show dialog — admin can't pick but we surface the issue.
+      } finally {
+        setLoadingAcceptSubHubs(false);
+      }
+      return;
+    }
+
     const orderId = String(order._id);
     setAcceptingId(orderId);
     try {
@@ -2167,6 +2204,10 @@ export default function Orders() {
       if (isPorter) {
         payload.assignedDeliveryPersonId = "porter_delivery";
         payload.assignedDeliveryPersonName = "Porter Delivery";
+      }
+      if (overrideSubHubId) {
+        payload.subHubId = overrideSubHubId;
+        payload.subHubName = overrideSubHubName ?? "";
       }
       console.log(
         `[WhatsApp] acceptOrder → orderId=${order.orderId || orderId} customer=${order.customerName} phone=${order.phone} ` +
@@ -3256,6 +3297,77 @@ export default function Orders() {
                   className="bg-red-700 hover:bg-red-800 h-9 text-white"
                 >
                   {confirmingPermanentDelete ? "Deleting..." : "Delete Permanently"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Accept Order — Sub Hub Picker (shown when pending order has no subHubId) */}
+      <Dialog open={!!pendingAcceptOrder} onOpenChange={(o) => { if (!o) { setPendingAcceptOrder(null); setAcceptPickSubHubId(""); setAcceptPickSubHubs([]); } }}>
+        <DialogContent className="sm:max-w-[420px]">
+          {pendingAcceptOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-[#162B4D] flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  Assign Sub Hub to Accept Order
+                </DialogTitle>
+              </DialogHeader>
+              <div className="py-2 space-y-3">
+                <p className="text-sm text-gray-700">
+                  Order for <span className="font-semibold text-[#162B4D]">{pendingAcceptOrder.customerName}</span> has no sub hub assigned.
+                  Select a sub hub to confirm and deduct inventory correctly.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-black">Sub Hub <span className="text-red-500">*</span></Label>
+                  {loadingAcceptSubHubs ? (
+                    <p className="text-xs text-gray-400 py-2">Loading sub hubs…</p>
+                  ) : acceptPickSubHubs.length === 0 ? (
+                    <p className="text-xs text-red-500 py-2">No sub hubs found. Please assign a sub hub manually from the order detail panel first.</p>
+                  ) : (
+                    <select
+                      value={acceptPickSubHubId}
+                      onChange={(e) => setAcceptPickSubHubId(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#162B4D]/20"
+                    >
+                      <option value="">— Select sub hub —</option>
+                      {acceptPickSubHubs.map((h) => (
+                        <option key={h.id} value={h.id}>{h.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                  <p className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    Without a sub hub, inventory will not be deducted when this order is confirmed.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setPendingAcceptOrder(null); setAcceptPickSubHubId(""); setAcceptPickSubHubs([]); }}
+                  className="h-9"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!acceptPickSubHubId}
+                  onClick={() => {
+                    const sub = acceptPickSubHubs.find((h) => h.id === acceptPickSubHubId);
+                    const order = pendingAcceptOrder;
+                    setPendingAcceptOrder(null);
+                    setAcceptPickSubHubId("");
+                    setAcceptPickSubHubs([]);
+                    acceptOrder(order, acceptPickSubHubId, sub?.name ?? "");
+                  }}
+                  className="bg-green-600 hover:bg-green-700 h-9 text-white gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Assign &amp; Accept
                 </Button>
               </DialogFooter>
             </>
