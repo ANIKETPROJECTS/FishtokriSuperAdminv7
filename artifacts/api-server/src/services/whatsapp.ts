@@ -391,13 +391,13 @@ async function sendTemplate(
  *
  * TWO templates are used depending on whether wallet balance was applied:
  *
- * A) fishtokri_confirmed  — no wallet (14 vars, unchanged):
+ * A) fishtokri_confirmed_v2  — no wallet (14 vars):
  *   {{1}} name, {{2}} orderId,
  *   {{3}}-{{7}} five item-line slots,
  *   {{8}} subtotal, {{9}} discount, {{10}} delivery, {{11}} total,
  *   {{12}} paymentMode, {{13}} address, {{14}} delivery time.
  *
- * B) fishtokri_confirmed_wallet — wallet used (16 vars):
+ * B) fishtokri_confirmed_wallet_v2 — wallet used (16 vars):
  *   {{1}}-{{11}} same as above,
  *   {{12}} walletUsed, {{13}} amountDue (cash/UPI left to pay),
  *   {{14}} paymentMode, {{15}} address, {{16}} delivery time.
@@ -452,7 +452,7 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     const amountDue = Math.max(0, grandTotal - walletUsed);
 
     await sendTemplate(
-      "fishtokri_confirmed_wallet",
+      "fishtokri_confirmed_wallet_v2",
       phone,
       [
         String(order.customerName ?? "Customer"),
@@ -472,7 +472,7 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
     );
   } else {
     await sendTemplate(
-      "fishtokri_confirmed",
+      "fishtokri_confirmed_v2",
       phone,
       [
         String(order.customerName ?? "Customer"),
