@@ -1948,8 +1948,9 @@ export default function Orders() {
         const oid = String(o.orderId ?? "").replace(/^#+/, "");
         if (!oid.startsWith("FT") || oid.startsWith("FTS")) return false;
         if (ftwInFlightRef.current.has(String(o._id))) return false;
-        // Don't touch cancelled or already-paid orders
-        if (String(o.status ?? "").toLowerCase() === "cancelled") return false;
+        // Only touch brand-new pending orders — leave delivered, confirmed, cancelled,
+        // paid and any other historical orders completely untouched.
+        if (String(o.status ?? "").toLowerCase() !== "pending") return false;
         if (String(o.paymentStatus ?? "").toLowerCase() === "paid") return false;
         const effectiveMode = orderPaymentModeKey(o);
         const alreadyUpi = effectiveMode === "upi";
