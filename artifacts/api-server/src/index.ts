@@ -15,27 +15,46 @@ async function autoFixStorefrontPaymentMode() {
     const conn = await getSubHubDbConnection("orders");
     const col = conn.db.collection("orders");
 
-    // Match pending FT* orders (regex: starts with FT but not FTS)
-    const filter = {
-      status: { $nin: ["delivered", "cancelled", "rejected"] },
-      paymentStatus: { $ne: "paid" },
-      orderId: { $regex: /^#?FT(?!S)/ },
-      $or: [
-        { upiVariant: { $ne: "RZPAY" } },
-        { paymentMode: { $nin: ["upi"] } },
-      ],
-    };
+    // Fetch all active (non-terminal, non-paid) orders and filter in JS
+    // to avoid relying on MongoDB regex lookahead support.
+    const candidates: any[] = await col
+      .find({
+        status: { $nin: ["delivered", "cancelled", "rejected"] },
+        paymentStatus: { $ne: "paid" },
+      })
+      .project({ _id: 1, orderId: 1, paymentMode: 1, upiVariant: 1 })
+      .toArray();
 
-    const result = await col.updateMany(filter, {
-      $set: { paymentMode: "upi", upiVariant: "RZPAY" },
+    // Keep only storefront orders: orderId starts with FT but NOT FTS
+    const toFix = candidates.filter((o: any) => {
+      const oid = String(o.orderId ?? "").replace(/^#+/, "");
+      if (!oid.startsWith("FT") || oid.startsWith("FTS")) return false;
+      const alreadyUpi = String(o.paymentMode ?? "").toLowerCase() === "upi";
+      const alreadyRzpay = String(o.upiVariant ?? "") === "RZPAY";
+      return !alreadyUpi || !alreadyRzpay;
     });
 
-    if (result.modifiedCount > 0) {
-      logger.info(
-        { count: result.modifiedCount },
-        "autoFixStorefrontPaymentMode: set UPI+RZPAY on storefront orders"
-      );
-    }
+    logger.info(
+      {
+        candidateCount: candidates.length,
+        toFixCount: toFix.length,
+        sampleOrderIds: toFix.slice(0, 5).map((o: any) => o.orderId),
+      },
+      "autoFixStorefrontPaymentMode: scan complete"
+    );
+
+    if (toFix.length === 0) return;
+
+    const ids = toFix.map((o: any) => o._id);
+    const result = await col.updateMany(
+      { _id: { $in: ids } },
+      { $set: { paymentMode: "upi", upiVariant: "RZPAY" } }
+    );
+
+    logger.info(
+      { matched: result.matchedCount, modified: result.modifiedCount },
+      "autoFixStorefrontPaymentMode: applied UPI+RZPAY"
+    );
   } catch (err) {
     logger.error({ err }, "autoFixStorefrontPaymentMode failed (non-fatal)");
   }
