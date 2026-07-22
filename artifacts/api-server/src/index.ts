@@ -15,12 +15,14 @@ async function autoFixStorefrontPaymentMode() {
     const conn = await getSubHubDbConnection("orders");
     const col = conn.db.collection("orders");
 
-    // Fetch all active (non-terminal, non-paid) orders and filter in JS
-    // to avoid relying on MongoDB regex lookahead support.
+    // Fetch all active (non-terminal) orders and filter in JS to avoid relying
+    // on MongoDB regex lookahead support. Storefront orders (FTN/FTW) are
+    // pre-paid at Razorpay checkout so they arrive with paymentStatus:"paid"
+    // and status:"pending" — we must NOT filter by paymentStatus here.
     const candidates: any[] = await col
       .find({
         status: { $nin: ["delivered", "cancelled", "rejected"] },
-        paymentStatus: { $ne: "paid" },
+        isDeleted: { $ne: true },
       })
       .project({ _id: 1, orderId: 1, paymentMode: 1, upiVariant: 1 })
       .toArray();
@@ -33,15 +35,6 @@ async function autoFixStorefrontPaymentMode() {
       const alreadyRzpay = String(o.upiVariant ?? "") === "RZPAY";
       return !alreadyUpi || !alreadyRzpay;
     });
-
-    logger.info(
-      {
-        candidateCount: candidates.length,
-        toFixCount: toFix.length,
-        sampleOrderIds: toFix.slice(0, 5).map((o: any) => o.orderId),
-      },
-      "autoFixStorefrontPaymentMode: scan complete"
-    );
 
     if (toFix.length === 0) return;
 
