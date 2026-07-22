@@ -539,7 +539,7 @@ export async function sendOutForDelivery(
     deliverySlot = slotLabel || dateLabel || "As scheduled";
   }
 
-  const templateName = "fishtokri_out_for_delivery_v6";
+  const templateName = "fishtokri_out_for_delivery_v7";
 
   console.log(
     `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} ` +
