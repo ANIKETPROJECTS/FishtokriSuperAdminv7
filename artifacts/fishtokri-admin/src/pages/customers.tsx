@@ -298,6 +298,7 @@ export default function Customers() {
   const [filterOrders, setFilterOrders] = useState<"all" | "has" | "none">("all");
   const [filterEmail, setFilterEmail] = useState<"all" | "yes" | "no">("all");
   const [filterAddr, setFilterAddr] = useState<"all" | "yes" | "no">("all");
+  const [filterWallet, setFilterWallet] = useState<"all" | "has" | "none">("all");
   const [filterJoinedFrom, setFilterJoinedFrom] = useState("");
   const [filterJoinedTo, setFilterJoinedTo] = useState("");
   const [showDateFilters, setShowDateFilters] = useState(false);
@@ -338,10 +339,15 @@ export default function Customers() {
     if (filterEmail === "no") result = result.filter((c) => !c.email?.trim());
     if (filterAddr === "yes") result = result.filter((c) => (c.addresses?.length ?? 0) > 0);
     if (filterAddr === "no") result = result.filter((c) => (c.addresses?.length ?? 0) === 0);
+    if (filterWallet === "has") result = result.filter((c) => (Number(c.walletBalance) || 0) > 0);
+    if (filterWallet === "none") result = result.filter((c) => (Number(c.walletBalance) || 0) === 0);
     if (filterJoinedFrom) result = result.filter((c) => new Date(c.createdAt) >= new Date(filterJoinedFrom));
     if (filterJoinedTo) result = result.filter((c) => new Date(c.createdAt) <= new Date(filterJoinedTo + "T23:59:59"));
+    // Client-side wallet sort (the API also sorts server-side for cross-page correctness)
+    if (sort === "wallet_desc") result = [...result].sort((a, b) => (Number(b.walletBalance) || 0) - (Number(a.walletBalance) || 0));
+    if (sort === "wallet_asc") result = [...result].sort((a, b) => (Number(a.walletBalance) || 0) - (Number(b.walletBalance) || 0));
     return result;
-  }, [customers, filterOrders, filterEmail, filterAddr, filterJoinedFrom, filterJoinedTo]);
+  }, [customers, filterOrders, filterEmail, filterAddr, filterWallet, filterJoinedFrom, filterJoinedTo, sort]);
 
   const deleteMutation = useMutation({
     mutationFn: deleteCustomer,
@@ -358,13 +364,13 @@ export default function Customers() {
   const hasFilters = !!(
     debouncedSearch || sort !== "createdAt_desc" ||
     filterOrders !== "all" || filterEmail !== "all" ||
-    filterAddr !== "all" || filterJoinedFrom || filterJoinedTo
+    filterAddr !== "all" || filterWallet !== "all" || filterJoinedFrom || filterJoinedTo
   );
 
   const clearFilters = () => {
     setSearch(""); setDebouncedSearch(""); setSort("createdAt_desc");
     setFilterOrders("all"); setFilterEmail("all"); setFilterAddr("all");
-    setFilterJoinedFrom(""); setFilterJoinedTo(""); setPage(1);
+    setFilterWallet("all"); setFilterJoinedFrom(""); setFilterJoinedTo(""); setPage(1);
   };
 
   const openEdit = (customer: Customer) => {
@@ -439,6 +445,8 @@ export default function Customers() {
             <SelectItem value="name_desc">Name (Z → A)</SelectItem>
             <SelectItem value="email_asc">Email (A → Z)</SelectItem>
             <SelectItem value="email_desc">Email (Z → A)</SelectItem>
+            <SelectItem value="wallet_desc">Wallet (High → Low)</SelectItem>
+            <SelectItem value="wallet_asc">Wallet (Low → High)</SelectItem>
           </SelectContent>
         </Select>
 
@@ -475,6 +483,18 @@ export default function Customers() {
             <SelectItem value="all">Any address</SelectItem>
             <SelectItem value="yes">Has address</SelectItem>
             <SelectItem value="no">No address</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={filterWallet} onValueChange={(v: any) => { setFilterWallet(v); setPage(1); }}>
+          <SelectTrigger className="h-9 w-36 text-sm border-gray-200 bg-white text-black">
+            <Wallet className="w-3.5 h-3.5 text-gray-500 mr-1.5 flex-shrink-0" />
+            <SelectValue placeholder="Wallet" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Any wallet</SelectItem>
+            <SelectItem value="has">Has balance</SelectItem>
+            <SelectItem value="none">No balance</SelectItem>
           </SelectContent>
         </Select>
 

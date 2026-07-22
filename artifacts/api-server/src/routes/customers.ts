@@ -325,6 +325,8 @@ router.get("/", async (req: ScopedRequest, res) => {
     else if (sort === "email_desc") sortObj = { email: -1 };
     else if (sort === "createdAt_asc") sortObj = { createdAt: 1 };
     else if (sort === "createdAt_desc") sortObj = { createdAt: -1 };
+    else if (sort === "wallet_desc") sortObj = { walletBalance: -1 };
+    else if (sort === "wallet_asc") sortObj = { walletBalance: 1 };
 
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
