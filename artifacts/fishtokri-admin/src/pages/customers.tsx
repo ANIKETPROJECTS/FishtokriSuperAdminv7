@@ -612,11 +612,12 @@ export default function Customers() {
                         <span className="text-sm text-black">{totalOrders}</span>
                       </td>
                       <td className="px-3 py-4 text-right">
-                        {(Number(c.walletBalance) || 0) > 0 ? (
-                          <span className="text-sm font-semibold text-[#1A56DB]">{formatRupees(Number(c.walletBalance))}</span>
-                        ) : (
-                          <span className="text-sm text-black">₹0</span>
-                        )}
+                        {(() => {
+                          const wb = Number(c.walletBalance) || 0;
+                          if (wb > 0) return <span className="text-sm font-semibold text-[#1A56DB]">{formatRupees(wb)}</span>;
+                          if (wb < 0) return <span className="text-sm font-semibold text-red-600">{formatRupees(wb)}</span>;
+                          return <span className="text-sm text-black">₹0</span>;
+                        })()}
                       </td>
                       <td className="px-3 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
