@@ -371,7 +371,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
   }, [orders, ordSearch, ordPayFilter, ordPayModeFilter, ordStatusFilter, ordSort]);
 
   const stats = useMemo(() => {
-    let cash = 0, upi = 0, card = 0, wallet = 0, totalRev = 0, unpaid = 0;
+    let cash = 0, upi = 0, card = 0, wallet = 0, totalRev = 0, unpaid = 0, walletUsedTotal = 0;
 
     for (const o of filteredOrders) {
       const isCancelled = String(o.orderStatus || o.status || "").toLowerCase() === "cancelled";
@@ -417,6 +417,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
 
       // Grand total: one contribution per order, no double-counting across modes
       totalRev += collected;
+      walletUsedTotal += walletUsed;
 
       // Mode buckets use the SAME filter logic as the UI mode buttons.
       // An order with mixed modes (e.g. Cash + UPI) contributes its full collected
@@ -436,9 +437,10 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       // netRev = physically collected via cash/UPI/card (wallet bonuses excluded).
       // This is the correct base for Today's Sales — wallet overpayments are excess
       // amounts credited back to customer wallets, not business revenue.
-      netRev:     r2(totalRev),
-      unpaid:     r2(unpaid),
-      todaySales: r2(totalRev + unpaid),
+      netRev:        r2(totalRev),
+      unpaid:        r2(unpaid),
+      walletUsedTotal: r2(walletUsedTotal),
+      todaySales:    r2(totalRev + walletUsedTotal + unpaid),
     };
   }, [filteredOrders]);
 
@@ -463,7 +465,7 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     rows.push(["Grand Total (Cash+UPI+Card)", stats.totalRev]);
     rows.push(["Wallet Collected (Extra)", stats.wallet]);
     rows.push(["Unpaid Dues", stats.unpaid]);
-    rows.push(["Today's Sales (Cash+UPI+Card+Unpaid)", stats.todaySales]);
+    rows.push(["Today's Sales (Cash+UPI+Card+Wallet Used+Unpaid)", stats.todaySales]);
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws["!cols"] = [{wch:20},{wch:22},{wch:14},{wch:48},{wch:14},{wch:22},{wch:14},{wch:14},{wch:20},{wch:14},{wch:16},{wch:16},{wch:16},{wch:18}];
     const wb = XLSX.utils.book_new();
@@ -525,9 +527,10 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
             info: {
               lines: [
                 { label: "Net Collected (Cash + UPI + Card)", color: "#0f766e", value: formatRupees(stats.netRev) },
+                { label: "Wallet Used",                       color: "#7c3aed", value: formatRupees(stats.walletUsedTotal) },
                 { label: "Unpaid Dues",                       color: "#dc2626", value: formatRupees(stats.unpaid) },
               ],
-              note: "Wallet Collected is excluded — it's excess payment credited back to customer wallets, not business revenue.",
+              note: "Wallet Collected (excess bonuses credited back to customer wallets) is excluded — only wallet amounts used to pay for orders are included.",
             },
           },
         ];
