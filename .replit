@@ -135,6 +135,7 @@ kMbtFAxP0L+A/3nT9RB2XNGDNfIYum8GVgkv0nIRNaiwoTPAuuq8w5Nt/cFcagnk
 xTgJdFPkkJQBFSzbo9zY+MI=
 -----END PRIVATE KEY-----"""
 WABA_API_KEY = "f14bbabd-3245-44e3-ad2a-0ef632747400"
+BASE_URL = "http://187.127.174.48:3015"
 
 [[ports]]
 localPort = 5000
