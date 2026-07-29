@@ -34,6 +34,12 @@ app.use(express.text());
 
 app.use("/api", router);
 
+// Serve locally uploaded images from <project-root>/Images/
+// Works in both dev (Replit) and production (VPS) since cwd is the project root in both.
+const imagesDir = path.join(process.cwd(), "Images");
+fs.mkdirSync(imagesDir, { recursive: true });
+app.use("/images", express.static(imagesDir));
+
 // In production, serve the React frontend from the built dist folder.
 // The path is resolved relative to the process working directory (cwd in ecosystem.config.cjs).
 if (process.env["NODE_ENV"] === "production") {

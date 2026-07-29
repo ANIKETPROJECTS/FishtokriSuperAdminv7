@@ -13,9 +13,6 @@ module.exports = {
         PORT: 3015,
         MONGODB_URI: "mongodb://admin:FishTokri%40132231@187.127.174.48:27017/?authSource=admin",
         SESSION_SECRET: "N+sLoTPRIVALoyG9KZg8BEhKC9NNxOSlqfNCDEyxEMIej55cNCHOE1bjIaGh+VFlDXgg9Oh8Wbtgr73PTjkfDQ==",
-        CLOUDINARY_CLOUD_NAME: "dbkmmxnzd",
-        CLOUDINARY_API_KEY: "935594792745712",
-        CLOUDINARY_API_SECRET: "ouFPGE7SlNoQAG_OR7IT5sdFiiU",
         WABA_API_KEY: "f14bbabd-3245-44e3-ad2a-0ef632747400",
         WABA_PHONE_ID: "1103117459561700",
         QZ_PRIVATE_KEY: `-----BEGIN PRIVATE KEY-----
