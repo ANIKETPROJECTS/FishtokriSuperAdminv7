@@ -53,32 +53,15 @@ The URL stored in MongoDB for every image looks like:
 
 ## Accessing images from the fishtokriwebsite app (`/var/www/fishtokriwebsite`)
 
-Because the website is a separate app at a different location, the relative `/images/...` path from MongoDB will not resolve on its own. You have two options:
+**No nginx configuration needed.**
 
-### Option A — Nginx alias (recommended)
+The admin API is configured with `BASE_URL=http://187.127.174.48:3015`, so every image URL stored in MongoDB is already a fully absolute URL:
 
-Add an `alias` block to the nginx config for `fishtokriwebsite` so it serves the shared `Images/` folder directly from disk — no extra HTTP hop, fastest performance.
-
-```nginx
-# Inside the fishtokriwebsite server block in nginx
-location /images/ {
-    alias /var/www/fishtokri/Images/;
-    expires 30d;
-    add_header Cache-Control "public, immutable";
-}
+```
+http://187.127.174.48:3015/images/fishtokri/banners/1785339604951-tgox0c.png
 ```
 
-After adding this, any image whose URL in the database is `/images/fishtokri/banners/xyz.png` will be served correctly from the website too.
-
-### Option B — Proxy to the admin API
-
-If you prefer not to touch nginx, proxy `/images/` traffic to the admin API:
-
-```nginx
-location /images/ {
-    proxy_pass http://localhost:3015/images/;
-}
-```
+The fishtokriwebsite (or any other app) can use these URLs directly in `<img src="...">` tags or anywhere else — they resolve over the public network without any proxy or shared filesystem setup.
 
 ---
 

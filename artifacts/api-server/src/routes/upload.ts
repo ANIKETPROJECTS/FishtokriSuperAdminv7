@@ -42,7 +42,12 @@ router.post("/", upload.single("image"), (req, res) => {
     }
 
     const folder = (req.query.folder as string) || "uploads";
-    const url = `/images/${folder}/${req.file.filename}`;
+    const relativePath = `/images/${folder}/${req.file.filename}`;
+
+    // If BASE_URL is set (e.g. on VPS: "http://187.127.174.48:3015"), return an
+    // absolute URL so other apps can use it directly without any proxy/nginx config.
+    const baseUrl = (process.env.BASE_URL || "").replace(/\/$/, "");
+    const url = baseUrl ? `${baseUrl}${relativePath}` : relativePath;
 
     req.log.info({ url, size: req.file.size }, "Image saved to local storage");
     res.json({ url });
