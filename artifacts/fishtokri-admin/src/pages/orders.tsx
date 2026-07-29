@@ -1790,9 +1790,9 @@ export default function Orders() {
 
       await apiFetch(`/api/orders/${orderId}`, {
         method: "PUT",
-        body: JSON.stringify({ paymentMode, payments, walletUsed }),
+        body: JSON.stringify({ paymentMode, payments, walletUsed, paymentStatus: "paid" }),
       });
-      const updates = { paymentMode, payments, walletUsed };
+      const updates = { paymentMode, payments, walletUsed, paymentStatus: "paid" };
       setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, ...updates } : o));
       setSelectedOrder((o: any) => o && String(o._id) === orderId ? { ...o, ...updates } : o);
     } catch (err: any) {
