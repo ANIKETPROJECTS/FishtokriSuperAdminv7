@@ -128,9 +128,6 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
   const modes = Object.entries(summary.byMode || {}) as [string, { count: number; amount: number }][];
   const walletExtra: number = summary.walletExtra || 0;
   const totalSales: number = summary.totalSales || 0;
-  // Count fixed left cards to know how many mode cards fit before overflow
-  const fixedCards = 2 + (totalSales > 0 ? 1 : 0) + (walletExtra > 0 ? 1 : 0);
-  const modeSlots = Math.max(0, 5 - fixedCards);
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {/* Deliveries */}
@@ -171,8 +168,8 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
         </div>
       )}
 
-      {/* Payment mode breakdown cards (fill remaining slots) */}
-      {modes.slice(0, modeSlots).map(([mode, data]) => {
+      {/* Payment mode breakdown cards */}
+      {modes.map(([mode, data]) => {
         const m = modeMeta(mode);
         return (
           <div key={mode} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
