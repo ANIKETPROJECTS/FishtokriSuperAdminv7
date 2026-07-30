@@ -24,6 +24,7 @@ const ORDER_PROJECTION = {
   paidAmount: 1, dueAmount: 1, payments: 1, paymentStatus: 1, status: 1,
   deliveryType: 1, assignedDeliveryPersonId: 1, assignedDeliveryPersonName: 1,
   createdAt: 1, deliveryDate: 1, subHubName: 1, deliveryArea: 1, items: 1, isExpress: 1,
+  walletUsed: 1,
 };
 
 interface ModeData { count: number; amount: number; }
@@ -50,6 +51,7 @@ function processOrders(orders: any[]) {
         personName,
         orderCount: 0,
         totalRevenue: 0,
+        totalSales: 0,
         dueAmount: 0,
         walletExtra: 0,
         byMode: {} as Record<string, ModeData>,
@@ -62,24 +64,45 @@ function processOrders(orders: any[]) {
     person.dueAmount += Number(order.dueAmount) || 0;
 
     const payments: any[] = Array.isArray(order.payments) ? order.payments : [];
-    let nonWalletCollected = 0;
-    for (const p of payments) {
-      const mode = (p.mode || "other").toLowerCase();
-      const amount = Number(p.amount) || 0;
-      // Wallet payments = wallet balance used by customer (not physically collected).
-      // Exclude from the delivery report's collected totals and mode breakdown.
-      if (mode === "wallet") continue;
-      if (!person.byMode[mode]) person.byMode[mode] = { count: 0, amount: 0 };
-      (person.byMode[mode] as ModeData).count++;
-      (person.byMode[mode] as ModeData).amount += amount;
-      person.totalRevenue += amount;
-      nonWalletCollected += amount;
+    const orderTotal = Number(order.total) || 0;
+
+    // Wallet amount used by customer: prefer payments[] wallet entries,
+    // fall back to order.walletUsed (the field set at order creation).
+    // Mirrors the Day-end report cash calculation so numbers stay consistent.
+    const walletFromPays = payments
+      .filter(p => (p.mode || "").toLowerCase() === "wallet")
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const walletUsed = walletFromPays > 0 ? walletFromPays : (Number(order.walletUsed) || 0);
+
+    const nonWalletPays = payments.filter(p => (p.mode || "").toLowerCase() !== "wallet");
+    const nonWalletPaid = nonWalletPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+    // Scale factor: when a cash entry stores the full order total but wallet was
+    // also used (tracked in order.walletUsed), scale down each mode amount so
+    // the sum equals (total − walletUsed) — the physically collected amount.
+    const scaleFactor = nonWalletPaid > 0
+      ? Math.min(1, Math.max(0, (orderTotal - walletUsed) / nonWalletPaid))
+      : 0;
+
+    // Physically collected (non-wallet cash/UPI/card)
+    const collected = Math.max(0, orderTotal - walletUsed);
+
+    if (nonWalletPays.length > 0) {
+      for (const p of nonWalletPays) {
+        const mode = (p.mode || "other").toLowerCase();
+        const amount = (Number(p.amount) || 0) * scaleFactor;
+        if (!person.byMode[mode]) person.byMode[mode] = { count: 0, amount: 0 };
+        (person.byMode[mode] as ModeData).count++;
+        (person.byMode[mode] as ModeData).amount += amount;
+      }
+      person.totalRevenue += collected;
     }
 
     // Extra physically collected beyond order total → credited to customer wallet
-    const orderTotal = Number(order.total) || 0;
-    const excess = Math.max(0, nonWalletCollected - orderTotal);
-    person.walletExtra += excess;
+    person.walletExtra += Math.max(0, nonWalletPaid - orderTotal);
+
+    // Gross order value (for "Today's Sales" card, mirrors Day-end report)
+    person.totalSales += orderTotal;
 
     person.orders.push({
       id: String(order._id),
@@ -158,11 +181,13 @@ router.get("/", async (req: ScopedRequest, res) => {
     let totalRevenue = 0;
     let totalDue = 0;
     let totalWalletExtra = 0;
+    let totalSales = 0;
 
     for (const p of byPersonArr) {
       totalRevenue += p.totalRevenue;
       totalDue += p.dueAmount;
       totalWalletExtra += p.walletExtra || 0;
+      totalSales += p.totalSales || 0;
       for (const [mode, data] of Object.entries(p.byMode) as [string, ModeData][]) {
         if (!globalByMode[mode]) globalByMode[mode] = { count: 0, amount: 0 };
         globalByMode[mode].count += data.count;
@@ -170,8 +195,9 @@ router.get("/", async (req: ScopedRequest, res) => {
       }
     }
 
+    const r2 = (n: number) => Math.round(n * 100) / 100;
     res.json({
-      summary: { totalOrders: orders.length, totalRevenue, dueAmount: totalDue, walletExtra: totalWalletExtra, byMode: globalByMode },
+      summary: { totalOrders: orders.length, totalRevenue: r2(totalRevenue), dueAmount: r2(totalDue), walletExtra: r2(totalWalletExtra), totalSales: r2(totalSales), byMode: globalByMode },
       byPerson: byPersonArr,
     });
   } catch (err) {

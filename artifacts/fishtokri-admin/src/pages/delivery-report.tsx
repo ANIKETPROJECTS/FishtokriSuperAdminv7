@@ -127,13 +127,20 @@ export function DateFilterBar({
 function SummaryStrip({ summary, personCount }: { summary: any; personCount: number }) {
   const modes = Object.entries(summary.byMode || {}) as [string, { count: number; amount: number }][];
   const walletExtra: number = summary.walletExtra || 0;
+  const totalSales: number = summary.totalSales || 0;
+  // Count fixed left cards to know how many mode cards fit before overflow
+  const fixedCards = 2 + (totalSales > 0 ? 1 : 0) + (walletExtra > 0 ? 1 : 0);
+  const modeSlots = Math.max(0, 5 - fixedCards);
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Deliveries */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Deliveries</p>
         <p className="text-2xl font-bold text-brand-primary">{summary.totalOrders}</p>
         {personCount > 0 && <p className="text-xs text-gray-400 mt-0.5">{personCount} person{personCount !== 1 ? "s" : ""}</p>}
       </div>
+
+      {/* Total Collected (physically received, wallet deducted) */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Collected</p>
         <p className="text-2xl font-bold text-green-600">{formatRupees(summary.totalRevenue)}</p>
@@ -141,6 +148,19 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
           <p className="text-xs text-red-500 mt-0.5">Due: {formatRupees(summary.dueAmount)}</p>
         )}
       </div>
+
+      {/* Today's Sales (gross order value — mirrors Day End Report) */}
+      {totalSales > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <TrendingUp className="w-3.5 h-3.5" /> Today's Sales
+          </p>
+          <p className="text-2xl font-bold text-gray-800">{formatRupees(totalSales)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Gross order value</p>
+        </div>
+      )}
+
+      {/* Wallet Extra Collected */}
       {walletExtra > 0 && (
         <div className="bg-blue-50 rounded-xl border border-blue-200 shadow-sm p-4">
           <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1 flex items-center gap-1">
@@ -150,7 +170,9 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
           <p className="text-xs text-blue-400 mt-0.5">Excess credited to wallets</p>
         </div>
       )}
-      {modes.slice(0, walletExtra > 0 ? 2 : 3).map(([mode, data]) => {
+
+      {/* Payment mode breakdown cards (fill remaining slots) */}
+      {modes.slice(0, modeSlots).map(([mode, data]) => {
         const m = modeMeta(mode);
         return (
           <div key={mode} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
