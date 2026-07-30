@@ -128,6 +128,10 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
   const modes = Object.entries(summary.byMode || {}) as [string, { count: number; amount: number }][];
   const walletExtra: number = summary.walletExtra || 0;
   const totalSales: number = summary.totalSales || 0;
+  const dueAmount: number = summary.dueAmount || 0;
+  // Grand total physically collected = mode amounts + wallet extra bonuses (mirrors Day End "Grand Total")
+  const grandCollected: number = (summary.totalRevenue || 0) + walletExtra;
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {/* Deliveries */}
@@ -137,13 +141,11 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
         {personCount > 0 && <p className="text-xs text-gray-400 mt-0.5">{personCount} person{personCount !== 1 ? "s" : ""}</p>}
       </div>
 
-      {/* Total Collected (physically received, wallet deducted) */}
+      {/* Total Collected — cash+UPI+card+wallet extra, mirrors Day End Grand Total */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Collected</p>
-        <p className="text-2xl font-bold text-green-600">{formatRupees(summary.totalRevenue)}</p>
-        {(summary.dueAmount || 0) > 0 && (
-          <p className="text-xs text-red-500 mt-0.5">Due: {formatRupees(summary.dueAmount)}</p>
-        )}
+        <p className="text-2xl font-bold text-green-600">{formatRupees(grandCollected)}</p>
+        <p className="text-xs text-gray-400 mt-0.5">Incl. wallet bonuses</p>
       </div>
 
       {/* Today's Sales (gross order value — mirrors Day End Report) */}
@@ -157,11 +159,22 @@ function SummaryStrip({ summary, personCount }: { summary: any; personCount: num
         </div>
       )}
 
+      {/* Unpaid Dues — own card, only when non-zero */}
+      {dueAmount > 0 && (
+        <div className="bg-red-50 rounded-xl border border-red-200 shadow-sm p-4">
+          <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <AlertCircle className="w-3.5 h-3.5" /> Unpaid Dues
+          </p>
+          <p className="text-2xl font-bold text-red-600">{formatRupees(dueAmount)}</p>
+          <p className="text-xs text-red-400 mt-0.5">Pending collection</p>
+        </div>
+      )}
+
       {/* Wallet Extra Collected */}
       {walletExtra > 0 && (
         <div className="bg-blue-50 rounded-xl border border-blue-200 shadow-sm p-4">
           <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-            <Wallet className="w-3.5 h-3.5" /> Wallet Extra Collected
+            <Wallet className="w-3.5 h-3.5" /> Wallet Bonuses
           </p>
           <p className="text-2xl font-bold text-blue-600">{formatRupees(walletExtra)}</p>
           <p className="text-xs text-blue-400 mt-0.5">Excess credited to wallets</p>
