@@ -150,8 +150,13 @@ function OrderCard({ order }: { order: any }) {
           const m = String(p?.mode || "").toLowerCase();
           return m !== "wallet" ? s + (Number(p.amount) || 0) : s;
         }, 0);
+        const walletUsed = pays.reduce((s: number, p: any) => {
+          const m = String(p?.mode || "").toLowerCase();
+          return m === "wallet" ? s + (Number(p.amount) || 0) : s;
+        }, 0) || (Number((order as any).walletUsed) || 0);
         const orderTotal = Number(order.total) || 0;
-        const excess = Math.round((nonWalletTotal - orderTotal) * 100) / 100;
+        const balanceDue = Math.max(0, orderTotal - walletUsed);
+        const excess = Math.round((nonWalletTotal - balanceDue) * 100) / 100;
         if (excess === 0) return null;
         return (
           <div className={`mt-2 flex items-center gap-1.5 px-2 py-1 rounded-lg text-[12px] font-semibold ${excess > 0 ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"}`}>
@@ -336,7 +341,12 @@ export default function DeliveryReportPersonPage() {
         const m = String(p?.mode || "").toLowerCase();
         return m !== "wallet" ? s + (Number(p.amount) || 0) : s;
       }, 0);
-      const excess = Math.max(0, nonWalletPaid - (Number(o.total) || 0));
+      const walletUsed = pays.reduce((s: number, p: any) => {
+        const m = String(p?.mode || "").toLowerCase();
+        return m === "wallet" ? s + (Number(p.amount) || 0) : s;
+      }, 0) || (Number((o as any).walletUsed) || 0);
+      const balanceDue = Math.max(0, (Number(o.total) || 0) - walletUsed);
+      const excess = Math.max(0, nonWalletPaid - balanceDue);
       if (excess > 0) { total += excess; count++; }
     });
     return { total: Math.round(total * 100) / 100, count };

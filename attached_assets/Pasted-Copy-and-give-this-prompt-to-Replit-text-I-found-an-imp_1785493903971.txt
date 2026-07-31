@@ -1,0 +1,101 @@
+Copy and give this prompt to Replit:
+
+```text
+I found an important calculation bug in the Delivery Report related to orders where wallet balance has been used.
+
+Please investigate and fix this issue at the CODE/LOGIC level, not just for this specific order.
+
+Example affected order:
+Customer: Sunil Patil
+Order: #FTS202607319
+
+Invoice:
+- Grand Total: ₹1,939
+- Wallet Applied: ₹3
+- Balance Due (Cash/UPI): ₹1,936
+
+Actual payment received:
+- Cash received: ₹1,940
+
+CURRENT WRONG CALCULATION:
+The Delivery Report is calculating:
+
+₹1,940 Cash - ₹1,939 Grand Total = ₹1 extra
+
+Therefore it currently shows:
+"₹1 extra collected → credited to wallet"
+
+This is WRONG because ₹3 wallet had already been applied to the order.
+
+CORRECT CALCULATION:
+
+First calculate the amount actually due after wallet usage:
+
+Balance Due = Grand Total - Wallet Applied
+
+₹1,939 - ₹3 = ₹1,936
+
+Then calculate excess collection against BALANCE DUE, not against Grand Total:
+
+Extra Collected = Actual Cash/UPI/Card Received - Balance Due
+
+₹1,940 - ₹1,936 = ₹4
+
+Therefore, for this order:
+- Order Grand Total = ₹1,939
+- Existing Wallet Used = ₹3
+- Amount Due through Cash/UPI/Card = ₹1,936
+- Cash actually received = ₹1,940
+- Extra Collected = ₹4
+- ₹4 should be credited back to the customer's wallet.
+
+IMPORTANT:
+This is probably not limited to Sunil Patil's order.
+
+Any existing or future order where:
+1. Customer wallet balance was applied, AND
+2. Cash/UPI/Card amount received was greater than the remaining balance due
+
+may currently have the same incorrect extra-collection calculation.
+
+Please inspect the complete Delivery Report calculation logic and fix it globally.
+
+The logic should essentially be:
+
+walletUsed = amount of existing wallet balance applied to order
+
+balanceDue = grandTotal - walletUsed
+
+externalPaymentReceived =
+    cashReceived + upiReceived + cardReceived
+
+extraCollected = max(0, externalPaymentReceived - balanceDue)
+
+Do NOT calculate:
+
+extraCollected = externalPaymentReceived - grandTotal
+
+because this ignores wallet usage.
+
+Also make sure the fix propagates everywhere this information is used:
+- Individual order cards
+- "Extra collected → credited to wallet" display
+- Wallet Credited summary
+- Total Collected
+- Cash Collected
+- UPI Collected
+- Card Collected
+- Bottom summary totals
+- Any backend/API aggregation used by the Delivery Report
+
+IMPORTANT:
+Do not hardcode a fix for order #FTS202607319.
+
+Find the underlying calculation responsible for this and correct it so ALL orders with wallet usage are calculated correctly.
+
+After making the fix, verify Sunil Patil's order specifically. It should show ₹4 extra collected/credited to wallet based on the values above.
+
+Also test multiple existing orders that used wallet balance to ensure the same bug is not present elsewhere.
+
+Before changing code, trace where grandTotal, walletApplied, balanceDue, actual received amount, and wallet credit are calculated/stored so that we don't accidentally double-count wallet transactions.
+```

@@ -98,8 +98,11 @@ function processOrders(orders: any[]) {
       person.totalRevenue += collected;
     }
 
-    // Extra physically collected beyond order total → credited to customer wallet
-    person.walletExtra += Math.max(0, nonWalletPaid - orderTotal);
+    // Extra physically collected beyond balance due (grand total minus wallet already
+    // applied) → credited to customer wallet. Must subtract walletUsed so we compare
+    // against what the customer actually owed in cash/UPI/card, not the gross total.
+    const balanceDue = Math.max(0, orderTotal - walletUsed);
+    person.walletExtra += Math.max(0, nonWalletPaid - balanceDue);
 
     // Gross order value (for "Today's Sales" card, mirrors Day-end report)
     person.totalSales += orderTotal;
