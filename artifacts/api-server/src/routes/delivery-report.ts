@@ -119,6 +119,11 @@ function processOrders(orders: any[]) {
       subHubName: order.subHubName,
       deliveryArea: order.deliveryArea,
       itemCount: Array.isArray(order.items) ? order.items.reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0) : 0,
+      // walletUsed must always be sent so the frontend can compute
+      // dueViaCashUpi = orderTotal - walletUsed correctly, even for orders
+      // where walletUsed is stored in the top-level field rather than as a
+      // payments[] entry with mode="wallet".
+      walletUsed,
     });
   }
 

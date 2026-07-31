@@ -1,0 +1,115 @@
+There is still a bug in the Delivery Report UI related to orders where a wallet amount was used.
+
+The backend/calculation fix we made earlier appears to be correct, but the UI is still showing the WRONG "Due via Cash/UPI" amount for these orders.
+
+Example:
+
+Order: #FTS2026073121 – Anu Paryani
+
+Order Total = ₹1,609
+Wallet Used = ₹11
+
+Therefore:
+
+Due via Cash/UPI = Order Total - Wallet Used
+                 = ₹1,609 - ₹11
+                 = ₹1,598
+
+Actual Cash Collected = ₹1,600
+
+So the correct values are:
+
+Wallet Used: ₹11
+Due via Cash/UPI: ₹1,598
+Cash Collected: ₹1,600
+Extra Collected: ₹2 → credited to wallet
+
+However, somewhere in the Delivery Report UI / summary/table, "Due via Cash/UPI" is still being calculated or displayed incorrectly.
+
+IMPORTANT:
+This is NOT only an Anu Paryani order issue.
+
+Please inspect the entire Delivery Report frontend and backend flow and find every place where "Due via Cash/UPI" is calculated, returned by an API, transformed, aggregated, or displayed.
+
+The rule must ALWAYS be:
+
+dueViaCashUpi = orderTotal - walletUsed
+
+Where:
+- orderTotal = final payable order total
+- walletUsed = wallet amount actually applied to that order
+
+Do NOT use:
+- cash collected
+- payment received
+- order total directly
+- balance due before wallet adjustment
+- any old cached/calculated field
+
+to represent "Due via Cash/UPI".
+
+For orders without wallet usage:
+
+walletUsed = 0
+dueViaCashUpi = orderTotal
+
+For orders with wallet usage:
+
+dueViaCashUpi = orderTotal - walletUsed
+
+Example:
+₹1,609 total - ₹11 wallet = ₹1,598 due via Cash/UPI.
+
+Then excess/shortage should be calculated separately:
+
+difference = actualCashOrUpiCollected - dueViaCashUpi
+
+If difference > 0:
+    Extra collected = difference
+
+If difference < 0:
+    Short collected = abs(difference)
+
+If difference == 0:
+    Exact amount collected
+
+Please:
+
+1. Find the component/page responsible for the Delivery Report.
+2. Find where "Due via Cash/UPI" is calculated for individual orders.
+3. Find where it is calculated for totals/cards/summary sections.
+4. Check the API/backend response used by this page.
+5. Remove any duplicate/old calculation that ignores wallet usage.
+6. Use ONE consistent calculation everywhere:
+   dueViaCashUpi = orderTotal - walletUsed
+7. Make the fix generic so ALL existing and future orders with wallet usage are handled correctly.
+8. Do not hardcode any order IDs, customer names, or amounts.
+9. Make sure orders without wallet usage continue working exactly as before.
+10. Check all Delivery Report totals/aggregations so they sum the corrected dueViaCashUpi values rather than the raw order totals.
+11. Search the codebase for all variations such as:
+    "Due via Cash/UPI"
+    "dueViaCash"
+    "dueCash"
+    "cashDue"
+    "amountDue"
+    "walletUsed"
+    "walletAmount"
+    and verify there is no remaining old calculation.
+
+After fixing it, verify specifically:
+
+Anu Paryani:
+Order Total: ₹1,609
+Wallet Used: ₹11
+Expected Due via Cash/UPI: ₹1,598
+Collected: ₹1,600
+Expected Extra: ₹2
+
+Also test several other wallet-used orders to ensure this is a GLOBAL fix.
+
+Before changing code, first identify exactly where the incorrect UI value is coming from. Then implement the fix and tell me:
+- what was causing the bug,
+- which files were changed,
+- what formula was previously being used,
+- what formula is now being used,
+- and how you verified wallet and non-wallet orders.

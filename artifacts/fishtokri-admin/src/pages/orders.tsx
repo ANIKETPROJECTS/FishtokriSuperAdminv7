@@ -4812,7 +4812,10 @@ export default function Orders() {
                     const grand = Math.max(0, subtotal - totalDiscount + slot + instant + delivery);
                     const pays: any[] = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : [];
                     const walletPay = pays.find((p: any) => String(p?.mode || "").toLowerCase() === "wallet");
-                    const walletUsed = walletPay ? Number(walletPay.amount) || 0 : 0;
+                    // Prefer wallet payment entry; fall back to the top-level walletUsed field
+                    // (set at order creation) so orders that store wallet in the field rather
+                    // than a payments[] entry still show the correct "Amount due (cash/UPI)".
+                    const walletUsed = walletPay ? Number(walletPay.amount) || 0 : (Number(selectedOrder.walletUsed) || 0);
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100 space-y-2.5">
                         <div className="flex justify-between text-sm font-semibold text-black">
