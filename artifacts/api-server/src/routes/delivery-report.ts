@@ -77,25 +77,20 @@ function processOrders(orders: any[]) {
     const nonWalletPays = payments.filter(p => (p.mode || "").toLowerCase() !== "wallet");
     const nonWalletPaid = nonWalletPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
-    // Scale factor: when a cash entry stores the full order total but wallet was
-    // also used (tracked in order.walletUsed), scale down each mode amount so
-    // the sum equals (total − walletUsed) — the physically collected amount.
-    const scaleFactor = nonWalletPaid > 0
-      ? Math.min(1, Math.max(0, (orderTotal - walletUsed) / nonWalletPaid))
-      : 0;
-
-    // Physically collected (non-wallet cash/UPI/card)
-    const collected = Math.max(0, orderTotal - walletUsed);
-
+    // Accumulate each payment mode at its actual received amount.
+    // Do NOT scale down by wallet usage — the delivery person physically collected
+    // the full nonWalletPaid amount; any excess over balanceDue is tracked separately
+    // in walletExtra and credited back to the customer's wallet.
     if (nonWalletPays.length > 0) {
       for (const p of nonWalletPays) {
         const mode = (p.mode || "other").toLowerCase();
-        const amount = (Number(p.amount) || 0) * scaleFactor;
+        const amount = Number(p.amount) || 0;
         if (!person.byMode[mode]) person.byMode[mode] = { count: 0, amount: 0 };
         (person.byMode[mode] as ModeData).count++;
         (person.byMode[mode] as ModeData).amount += amount;
       }
-      person.totalRevenue += collected;
+      // totalRevenue = actual money physically received (cash/UPI/card)
+      person.totalRevenue += nonWalletPaid;
     }
 
     // Extra physically collected beyond balance due (grand total minus wallet already

@@ -1,0 +1,143 @@
+I found another calculation bug in the Delivery Report.
+
+The "Cash Collected" card is showing the wrong amount because it appears that the code is subtracting the amount credited to customer wallets from the actual cash received.
+
+CURRENT DATA:
+
+There are 3 cash transactions:
+
+₹1,500
+₹200
+₹1,940
+
+Therefore:
+
+Actual Cash Collected
+= ₹1,500 + ₹200 + ₹1,940
+= ₹3,640
+
+However, the "Cash Collected" card currently shows:
+
+₹3,590
+
+The difference is exactly:
+
+₹3,640 - ₹3,590 = ₹50
+
+And ₹50 is the amount shown under "Wallet Credited".
+
+This strongly indicates that the current code is doing something like:
+
+Cash Collected = Actual Cash Received - Wallet Credited
+
+₹3,640 - ₹50 = ₹3,590
+
+THIS IS INCORRECT.
+
+--------------------------------------------------
+CORRECT LOGIC
+--------------------------------------------------
+
+"Cash Collected" should represent the ACTUAL physical cash received by the delivery person.
+
+Therefore:
+
+Cash Collected = SUM of actual cash amounts received
+
+In this example:
+
+Cash Collected = ₹3,640
+
+Even if ₹50 of the excess collection is credited to customer wallets, the delivery person still physically received that ₹50 in cash.
+
+So:
+
+Cash Collected: ₹3,640
+Wallet Credited: ₹50
+
+These are separate accounting values.
+
+Wallet Credited must NOT be subtracted from Cash Collected.
+
+--------------------------------------------------
+IMPORTANT
+--------------------------------------------------
+
+Please fix this at the underlying calculation/API level and NOT by hardcoding these values.
+
+Also investigate UPI and Card calculations for the same bug.
+
+For example, if:
+
+Order balance due = ₹950
+Customer pays = ₹1,000 UPI
+Extra credited to wallet = ₹50
+
+Then:
+
+UPI Collected must remain ₹1,000
+Wallet Credited = ₹50
+
+It must NOT show:
+
+UPI Collected = ₹950
+
+The same principle applies to:
+
+- Cash Collected
+- UPI Collected
+- Card Collected
+
+Each payment-mode card must show the FULL amount actually received through that payment mode.
+
+--------------------------------------------------
+EXPECTED FORMULAS
+--------------------------------------------------
+
+cashCollected = sum(actual cash received)
+
+upiCollected = sum(actual UPI received)
+
+cardCollected = sum(actual card received)
+
+totalExternalReceived =
+    cashCollected +
+    upiCollected +
+    cardCollected
+
+walletCredited =
+    sum(extra amounts credited to customer wallets)
+
+Do NOT subtract walletCredited from the payment-mode totals.
+
+--------------------------------------------------
+ALSO CHECK "TOTAL COLLECTED"
+--------------------------------------------------
+
+Please inspect the "Total Collected" calculation as well.
+
+We need to avoid mixing two different concepts:
+
+1. Actual money received through Cash/UPI/Card
+2. Amount of that money allocated/credited to customer wallets
+
+Wallet credit is not a negative payment transaction. The money was still physically/digitally received.
+
+Therefore, make sure Total Collected follows the intended reporting definition consistently and does not accidentally subtract wallet credits twice.
+
+--------------------------------------------------
+VERIFY AFTER FIX
+--------------------------------------------------
+
+For the current data:
+
+Cash transactions:
+₹1,500 + ₹200 + ₹1,940
+
+Expected Cash Collected = ₹3,640
+
+NOT ₹3,590.
+
+Wallet Credited should continue to be displayed separately.
+
+Also test all existing orders where extra Cash, UPI, or Card payments were credited to wallet to ensure this bug is fixed globally.
