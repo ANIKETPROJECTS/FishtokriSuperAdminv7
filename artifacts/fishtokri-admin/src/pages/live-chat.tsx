@@ -93,8 +93,8 @@ function avatarColor(str: string) {
 function lastMessagePreview(c: Contact): string {
   const lm = c.lastmessage;
   if (!lm) return "";
-  if (lm.template) return `📋 ${lm.template}`;
   if (lm.text?.body) return lm.text.body.slice(0, 55);
+  if (lm.template) return `📋 ${lm.template}`;
   return "";
 }
 
@@ -165,8 +165,14 @@ function MessageBubble({ msg, contactName }: { msg: Message; contactName: string
       <div className="flex justify-end mb-2">
         <div className="max-w-[72%]">
           <div className="bg-[#DCF8C6] rounded-2xl rounded-tr-sm px-3.5 py-2 shadow-sm">
-            <span className="text-[9px] font-bold text-green-700 uppercase tracking-wide block mb-0.5">Template</span>
-            <p className="text-[13px] text-gray-800 font-medium break-words">{msg.template}</p>
+            {msg.text?.body ? (
+              <p className="text-[13px] text-gray-800 break-words whitespace-pre-wrap">{msg.text.body}</p>
+            ) : (
+              <>
+                <span className="text-[9px] font-bold text-green-700 uppercase tracking-wide block mb-0.5">Template</span>
+                <p className="text-[13px] text-gray-800 font-medium break-words">{msg.template}</p>
+              </>
+            )}
             <div className="flex items-center justify-end gap-1 mt-1">
               <span className="text-[10px] text-gray-500">{time}</span>
               <Ticks status={msg.status} />
@@ -401,7 +407,7 @@ export default function LiveChatPage() {
               className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-wide transition-colors relative ${tab === t ? "text-[#25D366]" : "text-gray-400 hover:text-gray-600"}`}>
               {t === "ACTIVE" ? "Active" : t === "REQ" ? "Requests" : "Closed"}
               {tabCounts[t] > 0 && (
-                <span className={`ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${tab === t ? "bg-[#25D366] text-white" : "bg-gray-200 text-gray-600"}`}>
+                <span className={`ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold ${tab === t ? "bg-[#25D366] text-white" : "bg-gray-200 text-gray-600"}`}>
                   {tabCounts[t]}
                 </span>
               )}
