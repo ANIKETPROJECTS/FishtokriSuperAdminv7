@@ -20,6 +20,7 @@ import qzRouter from "./qz";
 import upiVariantsRouter from "./upi-variants";
 import paymentTypesRouter from "./payment-types";
 import fishCalculatorRouter from "./fish-calculator";
+import liveChatRouter from "./live-chat";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(qzRouter);
 router.use("/upi-variants", upiVariantsRouter);
 router.use("/payment-types", paymentTypesRouter);
 router.use("/fish-calculator", fishCalculatorRouter);
+router.use("/live-chat", liveChatRouter);
 
 export default router;

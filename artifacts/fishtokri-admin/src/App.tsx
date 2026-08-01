@@ -42,6 +42,7 @@ import FishCalculatorPrice from "@/pages/fish-calculator-price";
 import FishCalculatorYield from "@/pages/fish-calculator-yield";
 import FishCalculatorHistory from "@/pages/fish-calculator-history";
 import FishCalculatorConfig from "@/pages/fish-calculator-config";
+import LiveChat from "@/pages/live-chat";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -300,6 +301,11 @@ function App() {
             {/* Wastage Report — all admin roles (under inventory) */}
             <Route path="/inventory/wastage">
               <ProtectedRoute component={WastageReport} allowedRoles={ALL_ADMIN_ROLES} />
+            </Route>
+
+            {/* Live Chat — master admin only */}
+            <Route path="/live-chat">
+              <ProtectedRoute component={LiveChat} allowedRoles={MASTER_ONLY} />
             </Route>
 
             {/* Delivery Report — all roles */}
