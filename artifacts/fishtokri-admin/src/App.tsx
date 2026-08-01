@@ -43,6 +43,7 @@ import FishCalculatorYield from "@/pages/fish-calculator-yield";
 import FishCalculatorHistory from "@/pages/fish-calculator-history";
 import FishCalculatorConfig from "@/pages/fish-calculator-config";
 import LiveChat from "@/pages/live-chat";
+import WaContacts from "@/pages/wa-contacts";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -306,6 +307,11 @@ function App() {
             {/* Live Chat — master admin only */}
             <Route path="/live-chat">
               <ProtectedRoute component={LiveChat} allowedRoles={MASTER_ONLY} />
+            </Route>
+
+            {/* WA Contacts — master admin only */}
+            <Route path="/wa-contacts">
+              <ProtectedRoute component={WaContacts} allowedRoles={MASTER_ONLY} />
             </Route>
 
             {/* Delivery Report — all roles */}

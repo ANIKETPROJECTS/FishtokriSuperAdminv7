@@ -172,4 +172,124 @@ router.post("/send-media", async (req, res) => {
   }
 });
 
+// ── GET /api/live-chat/wa-contacts ───────────────────────────────────────────
+router.get("/wa-contacts", async (req, res) => {
+  try {
+    const url = new URL(`${WABA_BASE}/get-contacts`);
+    url.searchParams.set("api-key", apiKey());
+    url.searchParams.set("phoneNumberId", phoneId());
+    const resp = await fetch(url.toString());
+    if (!resp.ok) { res.status(resp.status).json({ error: `Admark ${resp.status}` }); return; }
+    res.json(await resp.json());
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/live-chat/wa-contacts/edit ─────────────────────────────────────
+router.post("/wa-contacts/edit", async (req, res) => {
+  try {
+    const { number, name } = req.body ?? {};
+    if (!number) { res.status(400).json({ error: "number required" }); return; }
+    const resp = await fetch(`${WABA_BASE}/edit-contact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey() },
+      body: JSON.stringify({ phoneNumberId: phoneId(), number, name }),
+    });
+    res.status(resp.ok ? 200 : resp.status).json(await resp.json().catch(() => ({ ok: resp.ok })));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/live-chat/wa-contacts/delete ───────────────────────────────────
+router.post("/wa-contacts/delete", async (req, res) => {
+  try {
+    const { number } = req.body ?? {};
+    if (!number) { res.status(400).json({ error: "number required" }); return; }
+    const resp = await fetch(`${WABA_BASE}/delete-contact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey() },
+      body: JSON.stringify({ phoneNumberId: phoneId(), number }),
+    });
+    res.status(resp.ok ? 200 : resp.status).json(await resp.json().catch(() => ({ ok: resp.ok })));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/live-chat/wa-groups ─────────────────────────────────────────────
+router.get("/wa-groups", async (_req, res) => {
+  try {
+    const url = new URL(`${WABA_BASE}/get-groups`);
+    url.searchParams.set("api-key", apiKey());
+    url.searchParams.set("phoneNumberId", phoneId());
+    const resp = await fetch(url.toString());
+    if (!resp.ok) { res.status(resp.status).json({ error: `Admark ${resp.status}` }); return; }
+    res.json(await resp.json());
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/live-chat/wa-groups/create ─────────────────────────────────────
+router.post("/wa-groups/create", async (req, res) => {
+  try {
+    const { name } = req.body ?? {};
+    if (!name) { res.status(400).json({ error: "name required" }); return; }
+    const resp = await fetch(`${WABA_BASE}/create-group`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey() },
+      body: JSON.stringify({ phoneNumberId: phoneId(), name }),
+    });
+    res.status(resp.ok ? 200 : resp.status).json(await resp.json());
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/live-chat/wa-groups/delete ─────────────────────────────────────
+router.post("/wa-groups/delete", async (req, res) => {
+  try {
+    const { name } = req.body ?? {};
+    if (!name) { res.status(400).json({ error: "name required" }); return; }
+    const resp = await fetch(`${WABA_BASE}/delete-group`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey() },
+      body: JSON.stringify({ phoneNumberId: phoneId(), name }),
+    });
+    res.status(resp.ok ? 200 : resp.status).json(await resp.json());
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/live-chat/wa-tags ───────────────────────────────────────────────
+router.get("/wa-tags", async (_req, res) => {
+  try {
+    const url = new URL(`${WABA_BASE}/get-tags`);
+    url.searchParams.set("api-key", apiKey());
+    url.searchParams.set("phoneNumberId", phoneId());
+    const resp = await fetch(url.toString());
+    if (!resp.ok) { res.status(resp.status).json({ error: `Admark ${resp.status}` }); return; }
+    res.json(await resp.json());
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/live-chat/wa-tags/create ───────────────────────────────────────
+router.post("/wa-tags/create", async (req, res) => {
+  try {
+    const { name, color } = req.body ?? {};
+    if (!name) { res.status(400).json({ error: "name required" }); return; }
+    const resp = await fetch(`${WABA_BASE}/create-tag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey() },
+      body: JSON.stringify({ phoneNumberId: phoneId(), name, color: color ?? "#4caf50" }),
+    });
+    res.status(resp.ok ? 200 : resp.status).json(await resp.json());
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/live-chat/wa-tags/delete ───────────────────────────────────────
+router.post("/wa-tags/delete", async (req, res) => {
+  try {
+    const { name } = req.body ?? {};
+    if (!name) { res.status(400).json({ error: "name required" }); return; }
+    const resp = await fetch(`${WABA_BASE}/delete-tag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey() },
+      body: JSON.stringify({ phoneNumberId: phoneId(), name }),
+    });
+    res.status(resp.ok ? 200 : resp.status).json(await resp.json());
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 export default router;
