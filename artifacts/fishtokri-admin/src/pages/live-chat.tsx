@@ -90,11 +90,15 @@ function avatarColor(str: string) {
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 
-function lastMessagePreview(c: Contact): string {
+function lastMessagePreview(c: Contact, templateMap: Record<string, string> = {}): string {
   const lm = c.lastmessage;
   if (!lm) return "";
   if (lm.text?.body) return lm.text.body.slice(0, 55);
-  if (lm.template) return `📋 ${lm.template}`;
+  if (lm.template) {
+    const body = templateMap[lm.template];
+    if (body) return body.split("\n")[0].slice(0, 55); // first line of template body
+    return `📋 ${lm.template}`;
+  }
   return "";
 }
 
@@ -154,19 +158,20 @@ function MediaPreview({ msg }: { msg: Message }) {
   return null;
 }
 
-function MessageBubble({ msg, contactName }: { msg: Message; contactName: string }) {
+function MessageBubble({ msg, contactName, templateMap = {} }: { msg: Message; contactName: string; templateMap?: Record<string, string> }) {
   const isInbound = !!msg.from || !!msg.from_user_id;
   const isTemplate = !!msg.template && !msg.from;
   const hasMedia = !!(msg.image || msg.video || msg.document || msg.audio);
   const time = formatFullTime(msg.timestamp);
 
   if (isTemplate) {
+    const bodyText = msg.text?.body || (msg.template ? templateMap[msg.template] : null);
     return (
       <div className="flex justify-end mb-2">
         <div className="max-w-[72%]">
           <div className="bg-[#DCF8C6] rounded-2xl rounded-tr-sm px-3.5 py-2 shadow-sm">
-            {msg.text?.body ? (
-              <p className="text-[13px] text-gray-800 break-words whitespace-pre-wrap">{msg.text.body}</p>
+            {bodyText ? (
+              <p className="text-[13px] text-gray-800 break-words whitespace-pre-wrap">{bodyText}</p>
             ) : (
               <>
                 <span className="text-[9px] font-bold text-green-700 uppercase tracking-wide block mb-0.5">Template</span>
@@ -247,6 +252,18 @@ export default function LiveChatPage() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  // ── Templates (fetch once for body text lookup) ───────────────────────────
+  const { data: templatesList = [] } = useQuery<{ name: string; body: string | null; footer: string | null }[]>({
+    queryKey: ["live-chat-templates"],
+    queryFn: () => apiFetch("/api/live-chat/templates"),
+    staleTime: 10 * 60 * 1000,
+  });
+  const templateMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const t of templatesList) { if (t.body) m[t.name] = t.body; }
+    return m;
+  }, [templatesList]);
 
   // ── Contacts ──────────────────────────────────────────────────────────────
   const { data: contactsRaw = [], isLoading: loadingContacts, refetch: refetchContacts, isFetching: fetchingContacts } =
@@ -445,7 +462,7 @@ export default function LiveChatPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-1 mt-0.5">
-                    <span className="text-[11px] text-gray-500 truncate flex-1">{lastMessagePreview(c)}</span>
+                    <span className="text-[11px] text-gray-500 truncate flex-1">{lastMessagePreview(c, templateMap)}</span>
                     {(c.lastmessage as any)?.from && <span className="w-2 h-2 rounded-full bg-[#25D366] flex-shrink-0" />}
                   </div>
                   <span className={`inline-block mt-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${meta.bg} ${meta.color}`}>
@@ -505,7 +522,7 @@ export default function LiveChatPage() {
                   <p className="text-xs text-gray-500">No messages yet</p>
                 </div>
               ) : messages.map((msg) => (
-                <MessageBubble key={msg.id} msg={msg} contactName={selectedContact.name || selectedContact.number} />
+                <MessageBubble key={msg.id} msg={msg} contactName={selectedContact.name || selectedContact.number} templateMap={templateMap} />
               ))}
               <div ref={messagesEndRef} />
             </div>

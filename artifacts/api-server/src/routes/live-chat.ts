@@ -99,6 +99,34 @@ router.post("/upload-media", upload.single("file"), async (req, res) => {
   }
 });
 
+// ── GET /api/live-chat/templates ─────────────────────────────────────────────
+// Returns list of all templates with their body text (cached 10 min)
+let templatesCache: { data: any[]; at: number } | null = null;
+router.get("/templates", async (_req, res) => {
+  try {
+    const now = Date.now();
+    if (templatesCache && now - templatesCache.at < 10 * 60 * 1000) {
+      res.json(templatesCache.data); return;
+    }
+    const url = new URL(`${WABA_BASE}/templates`);
+    url.searchParams.set("api-key", apiKey());
+    const resp = await fetch(url.toString());
+    if (!resp.ok) { res.status(resp.status).json({ error: `Admark ${resp.status}` }); return; }
+    const data = await resp.json();
+    const list = Array.isArray(data) ? data : [];
+    // Enrich with body text from each template's components
+    const enriched = list.map((t: any) => {
+      const body = (t.components ?? []).find((c: any) => c.type === "BODY");
+      const footer = (t.components ?? []).find((c: any) => c.type === "FOOTER");
+      return { name: t.name, body: body?.text ?? null, footer: footer?.text ?? null };
+    });
+    templatesCache = { data: enriched, at: now };
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/live-chat/send-media ───────────────────────────────────────────
 // Body: { number, media: { url, filename, mimetype, size }, caption? }
 router.post("/send-media", async (req, res) => {
