@@ -292,7 +292,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const sidebarW = sidebarOpen ? "220px" : "56px";
 
   return (
-    <div className="flex min-h-screen bg-[#F4F6FA]" style={{ ["--sidebar-w" as any]: sidebarW }}>
+    <div className="flex h-screen overflow-hidden bg-[#F4F6FA]" style={{ ["--sidebar-w" as any]: sidebarW }}>
       {/* Mobile drawer backdrop */}
       {mobileOpen && (
         <div
@@ -529,7 +529,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ml-0 md:ml-[var(--sidebar-w)] w-full min-w-0">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300 ease-in-out ml-0 md:ml-[var(--sidebar-w)] w-full min-w-0">
         {/* Header */}
         <header className="bg-white h-14 border-b border-gray-100 flex items-center px-4 md:px-8 z-10 sticky top-0 shadow-sm gap-2">
           {/* Mobile hamburger */}
@@ -552,7 +552,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div id="page-header-slot" className="flex items-center gap-3 flex-1 min-w-0" />
         </header>
 
-        <div className={`flex-1 min-w-0 bg-white ${location.startsWith("/day-end-report") ? "p-0" : location.startsWith("/orders") ? "px-4 py-3" : location.startsWith("/my-deliveries") || location.startsWith("/delivery-report") ? "p-4" : "p-4 sm:p-6 lg:p-8"}`}>
+        <div className={`flex-1 min-w-0 bg-white overflow-hidden ${location.startsWith("/live-chat") ? "p-0 flex flex-col" : location.startsWith("/day-end-report") ? "p-0" : location.startsWith("/orders") ? "px-4 py-3" : location.startsWith("/my-deliveries") || location.startsWith("/delivery-report") ? "p-4" : "p-4 sm:p-6 lg:p-8"}`}>
           {children}
         </div>
       </main>
