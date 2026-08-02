@@ -83,7 +83,7 @@ channel = "stable-25_05"
 PORT = "8080"
 API_PORT = "8080"
 BASE_URL = "http://187.127.174.48:3015"
-MONGODB_URI = "mongodb://admin:FishTokri%40132231@187.127.174.48:27017/?authSource=admin"
+MONGODB_URI = "mongodb+srv://raneaniket23_db_user:0lEZL6KqIATNmZsj@fishtokricluster.vhw7jp9.mongodb.net/?appName=Fishtokricluster"
 QZ_CERTIFICATE = """
 -----BEGIN CERTIFICATE-----
 MIIDQzCCAiugAwIBAgIUY+hstKLTrZP3+xprD/AXgiexPFQwDQYJKoZIhvcNAQEL
