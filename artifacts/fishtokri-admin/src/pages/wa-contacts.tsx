@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, Tags, FolderOpen, Search, Plus, Trash2, Edit2, X,
-  RefreshCw, ChevronDown, Check,
+  RefreshCw, ChevronDown, Check, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -102,6 +102,8 @@ function ContactsTab() {
   const [stateFilter, setStateFilter] = useState<string>("ALL");
   const [editContact, setEditContact] = useState<WaContact | null>(null);
   const [deleteContact, setDeleteContact] = useState<WaContact | null>(null);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
 
   const { data: contacts = [], isLoading, refetch, isFetching } = useQuery<WaContact[]>({
     queryKey: ["wa-contacts"],
@@ -117,6 +119,21 @@ function ContactsTab() {
       return c.number.includes(q) || (c.name || "").toLowerCase().includes(q);
     });
   }, [contacts, search, stateFilter]);
+
+  // Reset to page 1 whenever filter/search changes
+  useEffect(() => { setPage(1); }, [search, stateFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * perPage, safePage * perPage);
+
+  // Page number buttons: show up to 7 slots with ellipsis
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (safePage <= 4) return [1, 2, 3, 4, 5, "…", totalPages];
+    if (safePage >= totalPages - 3) return [1, "…", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    return [1, "…", safePage - 1, safePage, safePage + 1, "…", totalPages];
+  }, [totalPages, safePage]);
 
   const editMutation = useMutation({
     mutationFn: ({ number, name }: { number: string; name: string }) =>
@@ -177,7 +194,13 @@ function ContactsTab() {
           <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
           Refresh
         </button>
-        <span className="text-[12px] text-gray-400 ml-auto">{filtered.length} contacts</span>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-[12px] text-gray-400">{filtered.length} contacts</span>
+          <select value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setPage(1); }}
+            className="h-9 pl-3 pr-8 text-[12px] border border-gray-200 rounded-lg outline-none bg-white focus:ring-2 focus:ring-[#25D366]/20 cursor-pointer">
+            {[25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Table */}
@@ -200,9 +223,9 @@ function ContactsTab() {
                 <tr><td colSpan={7} className="py-12 text-center text-gray-400">
                   <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-gray-300" />Loading…
                 </td></tr>
-              ) : filtered.length === 0 ? (
+              ) : paged.length === 0 ? (
                 <tr><td colSpan={7} className="py-12 text-center text-gray-400">No contacts found</td></tr>
-              ) : filtered.map(c => (
+              ) : paged.map(c => (
                 <tr key={c.number} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-gray-800">{c.number}</td>
                   <td className="px-4 py-3 text-gray-700">{c.name || "Unknown"}</td>
@@ -246,6 +269,50 @@ function ContactsTab() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination bar */}
+        {!isLoading && filtered.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/60">
+            <p className="text-[11px] text-gray-500">
+              Showing {(safePage - 1) * perPage + 1}–{Math.min(safePage * perPage, filtered.length)} of {filtered.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {pageNumbers.map((n, i) =>
+                n === "…" ? (
+                  <span key={`ellipsis-${i}`} className="w-8 h-8 flex items-center justify-center text-[12px] text-gray-400">…</span>
+                ) : (
+                  <button
+                    key={n}
+                    onClick={() => setPage(n as number)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-[12px] font-medium border transition-colors ${
+                      safePage === n
+                        ? "bg-[#25D366] text-white border-[#25D366]"
+                        : "border-gray-200 text-gray-600 hover:bg-white"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                )
+              )}
+
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
