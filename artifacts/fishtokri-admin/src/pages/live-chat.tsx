@@ -236,7 +236,8 @@ export default function LiveChatPage() {
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollNumberRef = useRef<string | null>(null);
   const imageInputRef  = useRef<HTMLInputElement>(null);
   const videoInputRef  = useRef<HTMLInputElement>(null);
   const docInputRef    = useRef<HTMLInputElement>(null);
@@ -312,7 +313,27 @@ export default function LiveChatPage() {
 
   const messages: Message[] = useMemo(() => messagesData?.messages ?? [], [messagesData]);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
+  useEffect(() => {
+    initialScrollNumberRef.current = null;
+  }, [selectedNumber]);
+
+  // Match WhatsApp: jump to the latest message once when a chat opens.
+  // Do not smooth-scroll on every message refresh, otherwise opening a long
+  // chat visibly animates from the top to the bottom and can interrupt
+  // someone who is reading older messages.
+  useEffect(() => {
+    if (!selectedNumber) {
+      initialScrollNumberRef.current = null;
+      return;
+    }
+    if (loadingMessages || initialScrollNumberRef.current === selectedNumber) return;
+
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+      initialScrollNumberRef.current = selectedNumber;
+    }
+  }, [selectedNumber, loadingMessages]);
 
   // ── Send text ─────────────────────────────────────────────────────────────
   const sendMutation = useMutation({
@@ -511,7 +532,7 @@ export default function LiveChatPage() {
             </div>
 
             {/* Messages — scrollable fill */}
-            <div className="flex-1 overflow-y-auto px-4 py-3" style={{ backgroundColor: "#E5DDD5" }}>
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-3" style={{ backgroundColor: "#E5DDD5" }}>
               {loadingMessages ? (
                 <div className="flex items-center justify-center py-12">
                   <RefreshCw className="w-5 h-5 animate-spin text-gray-400" />
@@ -524,7 +545,6 @@ export default function LiveChatPage() {
               ) : messages.map((msg) => (
                 <MessageBubble key={msg.id} msg={msg} contactName={selectedContact.name || selectedContact.number} templateMap={templateMap} />
               ))}
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Input bar — fixed at bottom */}
