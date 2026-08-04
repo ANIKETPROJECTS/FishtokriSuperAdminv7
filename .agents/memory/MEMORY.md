@@ -4,3 +4,4 @@
 - [WhatsApp template param newlines unreliable](whatsapp-template-param-newlines.md) — `\n` in a template variable can get collapsed (e.g. to " | "); number list entries instead of relying on line breaks.
 - [Wallet deduction per order-type payment path](wallet-deduction-per-order-type.md) — per-order-type payment overrides must derive from wallet-aware `paymentEntries`, not rebuild from `mainPaymentMode` alone.
 - [Two delivery-charge fields on orders](order-delivery-charge-fields.md) — admin orders use `deliveryCharge`, storefront/FTW orders use `slotCharge`; UI must check both, not just one.
+- [Admark media sending contract](admark-media-sending.md) — upload returns top-level `url`/`cloudUrl`; send attachments through documented `/api/send/bymedia` query parameters, not `/send-chat-message`.

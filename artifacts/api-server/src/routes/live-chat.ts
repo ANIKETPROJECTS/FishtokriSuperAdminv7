@@ -148,24 +148,35 @@ router.get("/templates", async (_req, res) => {
 
 // ── POST /api/live-chat/send-media ───────────────────────────────────────────
 // Body: { number, media: { url, filename, mimetype, size }, caption? }
+//
+// Admark's documented media endpoint is GET /api/send/bymedia. Do not send
+// the custom media object to /send-chat-message: that endpoint accepts text
+// chat payloads, but rejects attachments.
 router.post("/send-media", async (req, res) => {
   try {
     const { number, media, caption = "" } = req.body ?? {};
-    if (!number || !media?.url) { res.status(400).json({ error: "number and media.url required" }); return; }
-    const payload = {
-      phoneNumberId: phoneId(),
-      type: "media",
-      number: String(number),
-      tempId: `temp-${Date.now()}`,
-      message: caption,
-      media,
-    };
-    const resp = await fetch(`${WABA_BASE}/send-chat-message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": apiKey() },
-      body: JSON.stringify(payload),
-    });
-    const data = await resp.json();
+    const mediaUrl = media?.url || media?.cloudUrl || media?.fileUrl;
+    if (!number || !mediaUrl) {
+      res.status(400).json({ error: "number and media URL required" });
+      return;
+    }
+
+    const mime = String(media?.mimetype || media?.mimeType || "").toLowerCase();
+    const mediaType = mime.startsWith("image/") ? "image"
+      : mime.startsWith("video/") ? "video"
+      : "document";
+
+    const url = new URL(`${WABA_BASE}/api/send/bymedia`);
+    url.searchParams.set("api-key", apiKey());
+    url.searchParams.set("phoneNumber", String(number));
+    url.searchParams.set("phoneNumberId", phoneId());
+    url.searchParams.set("mediaUrl", String(mediaUrl));
+    url.searchParams.set("mediaType", mediaType);
+    if (media?.filename) url.searchParams.set("documentName", String(media.filename));
+    if (caption) url.searchParams.set("caption", String(caption));
+
+    const resp = await fetch(url.toString());
+    const data = await resp.json().catch(() => ({ error: `Admark ${resp.status}` }));
     res.status(resp.ok ? 200 : resp.status).json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

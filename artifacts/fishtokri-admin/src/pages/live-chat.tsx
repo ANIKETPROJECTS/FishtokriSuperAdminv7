@@ -373,10 +373,15 @@ export default function LiveChatPage() {
         method: "POST",
         body: fd,
       });
-      if (!uploadRes.success && !uploadRes.url) throw new Error("Upload failed");
+      if (!uploadRes.success && !uploadRes.url && !uploadRes.cloudUrl) throw new Error("Upload failed");
 
       // 2. Send media message
-      const media = uploadRes.file || { url: uploadRes.url, filename: file.name, mimetype: file.type, size: file.size };
+      const media = uploadRes.file || {
+        url: uploadRes.url || uploadRes.cloudUrl,
+        filename: file.name,
+        mimetype: file.type,
+        size: file.size,
+      };
       await apiFetch("/api/live-chat/send-media", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
