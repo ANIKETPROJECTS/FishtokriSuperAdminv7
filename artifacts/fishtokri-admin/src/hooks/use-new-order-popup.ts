@@ -138,14 +138,24 @@ export function useNewOrderPopup(): NewOrderPopupState {
           Notification.permission === "granted"
         ) {
           const isTakeawayOnly = newOrders.every(o => String(o.deliveryType ?? "").toLowerCase() === "takeaway");
-          new Notification(isTakeawayOnly ? "🛍️ New Takeaway Order!" : "🔔 New Order!", {
+          const isPreorderOnly = !isTakeawayOnly && newOrders.every(o =>
+            String(o.orderType ?? "").toLowerCase() === "preorder"
+          );
+          new Notification(
+            isTakeawayOnly
+              ? "🛍️ New Takeaway Order!"
+              : isPreorderOnly
+                ? "📅 New Preorder Arrived!"
+                : "🔔 New Order!",
+            {
             body: newOrders.length === 1
               ? `New order from ${newOrders[0].customerName ?? "a customer"}`
               : `${newOrders.length} new orders arrived`,
             icon: "/favicon.ico",
             tag: "fishtokri-new-order",
             renotify: true,
-          });
+            },
+          );
         }
 
         setQueue(q => [

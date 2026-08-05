@@ -18,6 +18,7 @@ export function NewOrderPopup({ queue, onDismiss }: Props) {
     }}>
       {queue.map(({ order }) => {
         const isTakeaway = String(order.deliveryType ?? "").toLowerCase() === "takeaway";
+        const isPreorder = !isTakeaway && String(order.orderType ?? "").toLowerCase() === "preorder";
         return (
           <div
             key={String(order._id)}
@@ -25,7 +26,11 @@ export function NewOrderPopup({ queue, onDismiss }: Props) {
               background: "#fff",
               borderRadius: 14,
               boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
-              border: isTakeaway ? "1.5px solid #f59e0b" : "1.5px solid #e5e7eb",
+              border: isTakeaway
+                ? "1.5px solid #f59e0b"
+                : isPreorder
+                  ? "1.5px solid #93c5fd"
+                  : "1.5px solid #e5e7eb",
               padding: "14px 18px",
               minWidth: 280,
               maxWidth: 340,
@@ -40,16 +45,18 @@ export function NewOrderPopup({ queue, onDismiss }: Props) {
               width: 38, height: 38, borderRadius: 10, flexShrink: 0,
               background: isTakeaway
                 ? "linear-gradient(135deg,#d97706,#b45309)"
+                : isPreorder
+                  ? "linear-gradient(135deg,#2563eb,#1d4ed8)"
                 : "linear-gradient(135deg,#162B4D,#1e3a6e)",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 18,
             }}>
-              {isTakeaway ? "🛍️" : "🔔"}
+              {isTakeaway ? "🛍️" : isPreorder ? "📅" : "🔔"}
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: "#111", marginBottom: 2 }}>
-                {isTakeaway ? "New Takeaway Order!" : "New Order Arrived!"}
+                {isTakeaway ? "New Takeaway Order!" : isPreorder ? "New Preorder Arrived!" : "New Order Arrived!"}
               </div>
               <div style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace", marginBottom: 2 }}>
                 {order.invoiceNo ?? order.orderId ?? "—"}
@@ -61,7 +68,7 @@ export function NewOrderPopup({ queue, onDismiss }: Props) {
               <button
                 onClick={() => onDismiss(String(order._id))}
                 style={{
-                  background: isTakeaway ? "#d97706" : "#162B4D",
+                  background: isTakeaway ? "#d97706" : isPreorder ? "#2563eb" : "#162B4D",
                   color: "#fff", border: "none",
                   borderRadius: 8, padding: "6px 18px", fontSize: 12,
                   fontWeight: 700, cursor: "pointer", width: "100%",
