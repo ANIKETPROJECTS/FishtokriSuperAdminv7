@@ -841,13 +841,15 @@ export default function Orders() {
       setOrderDeliveryType("delivery");
       setIsExpressOrder(false);
       setOrderScheduleType("slot");
-      setSelectedTimeslotId("");
+      // Keep the saved slot when an existing preorder is being edited. New
+      // preorder orders should start without a slot selected.
+      if (!editingOrderId) setSelectedTimeslotId("");
       if (orderDate <= getTodayIST()) setOrderDate(getTomorrowIST());
     } else if (!editingOrderId) {
       setOrderScheduleType("slot");
       if (orderDate > getTomorrowIST()) setOrderDate(getTodayIST());
     }
-  }, [posProductMode, isCreatePage]);
+  }, [posProductMode, isCreatePage, editingOrderId]);
 
   // When a customer is picked from the dropdown, immediately show them for
   // responsive UX, then re-fetch their document so activeCoupons / usedCoupons
@@ -1146,10 +1148,17 @@ export default function Orders() {
   // A slot selected for one date must never carry over to another date if
   // that slot is disabled, inactive, or full on the newly selected date.
   useEffect(() => {
-    if (selectedTimeslotId && !activeTimeslots.some((t) => String(t._id) === selectedTimeslotId)) {
+    // Do not clear the saved slot while the date-specific slot request is
+    // still in flight during edit-form initialization.
+    if (
+      selectedTimeslotId &&
+      !loadingTimeslots &&
+      timeslots.length > 0 &&
+      !activeTimeslots.some((t) => String(t._id) === selectedTimeslotId)
+    ) {
       setSelectedTimeslotId("");
     }
-  }, [activeTimeslots, selectedTimeslotId]);
+  }, [activeTimeslots, loadingTimeslots, selectedTimeslotId, timeslots.length]);
 
   const productsForMode = useMemo(() => {
     return subHubProducts.filter((p) => posProductMode === "preorder"
@@ -2417,6 +2426,10 @@ export default function Orders() {
 
   const populateCreateFormFromOrder = useCallback((o: any) => {
     setEditingOrderId(String(o._id));
+    // Restore the order mode before populating the shared POS form. The
+    // default is "normal", which previously caused preorder edits to be saved
+    // back as normal orders.
+    setPosProductMode(String(o.orderType ?? "").toLowerCase() === "preorder" ? "preorder" : "normal");
     // Customer — if the order has a customerId, treat it as existing even if the
     // full customer list hasn't loaded yet (we'll re-resolve when it does).
     if (o.customerId) {
