@@ -919,6 +919,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
       { header: "Stock",                           key: "stock",            width: 10 },
       { header: "Status (available/out_of_stock)", key: "status",           width: 30 },
       { header: "Archived (yes/no)",               key: "archived",         width: 16 },
+      { header: "Preorder Mode",                   key: "preorderMode",     width: 24 },
       { header: "Image URL",                       key: "imageUrl",         width: 40 },
     ];
 
@@ -944,6 +945,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
         stock: p.quantity ?? 0,
         status: p.status ?? "available",
         archived: p.isArchived ? "yes" : "no",
+        preorderMode: p.preorderMode ?? "normal",
         imageUrl: p.imageUrl ?? "",
       });
     });
@@ -984,6 +986,17 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
         errorTitle: "Invalid Value",
         error: "Please enter yes or no.",
         formulae: ['"yes,no"'],
+      };
+
+      // Preorder mode dropdown — column N
+      ws.getCell(`N${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        showErrorMessage: true,
+        errorStyle: "warning",
+        errorTitle: "Invalid Preorder Mode",
+        error: "Choose normal, preorder_only, or normal_and_preorder.",
+        formulae: ['"normal,preorder_only,normal_and_preorder"'],
       };
 
       // Category dropdown — column C (uses hidden sheet reference to avoid 255-char limit)
@@ -1097,6 +1110,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
           quantity: Number(r["Stock"] ?? r["quantity"] ?? 0),
           status: r["Status (available/out_of_stock)"] ?? r["status"] ?? "available",
           isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? "no",
+          preorderMode: r["Preorder Mode"] ?? r["preorderMode"] ?? "normal",
           imageUrl: r["Image URL"] ?? r["imageUrl"] ?? "",
         }))
         .filter((r) => r.name);
@@ -1137,6 +1151,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
             quantity: Number(r["Stock"] ?? r["quantity"] ?? orig?.quantity ?? 0),
             status: r["Status (available/out_of_stock)"] ?? r["status"] ?? orig?.status ?? "available",
             isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? (orig?.isArchived ? "yes" : "no"),
+            preorderMode: r["Preorder Mode"] ?? r["preorderMode"] ?? orig?.preorderMode ?? "normal",
             imageUrl: r["Image URL"] ?? r["imageUrl"] ?? orig?.imageUrl ?? "",
           };
           if (!row._id || !orig) return null;
@@ -1151,6 +1166,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
             row.serves !== String(orig.serves ?? "") || row.quantity !== (orig.quantity ?? 0) ||
             row.status !== (orig.status ?? "available") ||
             (String(row.isArchived).toLowerCase() === "yes") !== (orig.isArchived === true) ||
+            row.preorderMode !== (orig.preorderMode ?? "normal") ||
             row.imageUrl !== (orig.imageUrl ?? "");
           return changed ? row : null;
         })
@@ -1212,6 +1228,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Pieces / Serves</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide text-center">Stock</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide text-center">Recipes</th>
+                <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Preorder</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Status</th>
                 <th className="px-5 py-3 text-sm font-bold text-black uppercase tracking-wide">Actions</th>
               </tr>
@@ -1260,6 +1277,15 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
                     {Array.isArray(p.recipes) && p.recipes.length > 0
                       ? <span className="inline-flex items-center gap-1 text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-semibold">{p.recipes.length} recipes</span>
                       : <span className="text-black text-sm">—</span>}
+                  </td>
+                  <td className="px-5 py-4">
+                    {p.preorderMode === "preorder_only" ? (
+                      <span className="inline-flex text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-2 py-1 rounded-full whitespace-nowrap">Preorder only</span>
+                    ) : p.preorderMode === "normal_and_preorder" ? (
+                      <span className="inline-flex text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-1 rounded-full whitespace-nowrap">Both</span>
+                    ) : (
+                      <span className="text-xs text-gray-500">Normal</span>
+                    )}
                   </td>
                   <td className="px-5 py-4">{statusBadge(p)}</td>
                   <td className="px-5 py-4">
@@ -2568,6 +2594,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [quantity, setQuantity] = useState("0");
   const [status, setStatus] = useState("available");
   const [isArchived, setIsArchived] = useState(false);
+  const [preorderMode, setPreorderMode] = useState<"normal" | "preorder_only" | "normal_and_preorder">("normal");
   const [imageUrl, setProductImageUrl] = useState("");
   const [productImageMode, setProductImageMode] = useState<"url" | "upload">("url");
   const [productImageUploading, setProductImageUploading] = useState(false);
@@ -2607,6 +2634,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setQuantity(String(product.quantity ?? 0));
       setStatus(product.status ?? "available");
       setIsArchived(product.isArchived === true);
+      setPreorderMode(["normal", "preorder_only", "normal_and_preorder"].includes(product.preorderMode) ? product.preorderMode : "normal");
       setProductImageUrl(product.imageUrl ?? "");
       setRecipes(Array.isArray(product.recipes) ? product.recipes.map((r: any) => ({
         title: r.title ?? "", description: r.description ?? "", image: r.image ?? "",
@@ -2639,6 +2667,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setPrice(""); setOriginalPrice(""); setUnit("pack");
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
       setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
+      setPreorderMode("normal");
       setCouponIds([]);
       setLowStockThreshold("0");
       setBatches([]);
@@ -2689,6 +2718,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       quantity: batchesTotal,
       status, isArchived, imageUrl,
       lowStockThreshold: Number(lowStockThreshold) || 0,
+      preorderMode,
       recipes: cleanedRecipes,
       couponIds,
     };
@@ -2787,6 +2817,18 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     )}
                   </PopoverContent>
                 </Popover>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-600">Sales Mode</Label>
+                <Select value={preorderMode} onValueChange={(v) => setPreorderMode(v as typeof preorderMode)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">Normal Product</SelectItem>
+                    <SelectItem value="preorder_only">Preorder Only Product</SelectItem>
+                    <SelectItem value="normal_and_preorder">Normal and Preorder Product</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-gray-400">Controls whether this product appears in the normal POS, preorder POS, or both.</p>
               </div>
             </div>
           </section>

@@ -610,7 +610,7 @@ export default function Orders() {
   const editIdFromUrl = isEditPage ? location.replace("/orders/edit/", "") : "";
   const isCreatePage = location === "/orders/new" || location.endsWith("/orders/new") || isEditPage;
 
-  const [activeTab, setActiveTab] = useState<"current" | "otherday" | "history" | "all" | "invoices" | "deleted">("current");
+  const [activeTab, setActiveTab] = useState<"current" | "otherday" | "history" | "all" | "invoices" | "preorder" | "deleted">("current");
   const [invoiceOrder, setInvoiceOrder] = useState<any | null>(null);
 
   // Filters
@@ -660,7 +660,7 @@ export default function Orders() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [statsData, setStatsData] = useState<Record<string, number>>({});
-  const [statsTotals, setStatsTotals] = useState<{ total?: number; currentTotal?: number; historyTotal?: number; todayTotal?: number; otherDayTotal?: number; deletedTotal?: number }>({});
+  const [statsTotals, setStatsTotals] = useState<{ total?: number; currentTotal?: number; historyTotal?: number; todayTotal?: number; otherDayTotal?: number; preorderTotal?: number; deletedTotal?: number }>({});
 
   // Order alert is now handled globally in Layout (useGlobalOrderAlert)
 
@@ -745,6 +745,7 @@ export default function Orders() {
   const [productSearch, setProductSearch] = useState("");
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [pickerCategory, setPickerCategory] = useState<string | null>(null);
+  const [posProductMode, setPosProductMode] = useState<"normal" | "preorder">("normal");
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; unit: string; quantity: number }[]>([]);
 
   // Coupons / timeslots / scheduling
@@ -814,6 +815,7 @@ export default function Orders() {
     // Clear only the cart and per-order state.
     setSelectedProducts([]);
     setProductSearch(""); setProductPickerOpen(false);
+    setPosProductMode("normal");
     setAppliedCouponIds([]); setCouponCode(""); setCouponError("");
     setSelectedTimeslotId("");
     setOrderScheduleType("slot");
@@ -832,6 +834,20 @@ export default function Orders() {
     setEditingOrderCustomerId("");
     setEditingOrderId("");
   }, []);
+
+  useEffect(() => {
+    if (!isCreatePage) return;
+    if (posProductMode === "preorder") {
+      setOrderDeliveryType("delivery");
+      setIsExpressOrder(false);
+      setOrderScheduleType("instant");
+      setSelectedTimeslotId("");
+      if (orderDate <= getTodayIST()) setOrderDate(getTomorrowIST());
+    } else if (!editingOrderId) {
+      setOrderScheduleType("slot");
+      if (orderDate > getTomorrowIST()) setOrderDate(getTodayIST());
+    }
+  }, [posProductMode, isCreatePage]);
 
   // When a customer is picked from the dropdown, immediately show them for
   // responsive UX, then re-fetch their document so activeCoupons / usedCoupons
@@ -1112,20 +1128,26 @@ export default function Orders() {
     });
   }, [timeslots, orderDate]);
 
+  const productsForMode = useMemo(() => {
+    return subHubProducts.filter((p) => posProductMode === "preorder"
+      ? p.preorderMode === "preorder_only" || p.preorderMode === "normal_and_preorder"
+      : p.preorderMode !== "preorder_only");
+  }, [subHubProducts, posProductMode]);
+
   const productCategories = useMemo(() => {
     const map = new Map<string, number>();
-    for (const p of subHubProducts) {
+    for (const p of productsForMode) {
       const cat = String(p.category || "").trim() || "Uncategorized";
       map.set(cat, (map.get(cat) || 0) + 1);
     }
     return Array.from(map.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [subHubProducts]);
+  }, [productsForMode]);
 
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
-    let list = subHubProducts;
+    let list = productsForMode;
     if (pickerCategory) {
       const target = pickerCategory === "Uncategorized" ? "" : pickerCategory.toLowerCase();
       list = list.filter((p) => {
@@ -1146,7 +1168,7 @@ export default function Orders() {
       if (aStock <= 0 && bStock > 0) return 1;
       return 0;
     });
-  }, [subHubProducts, productSearch, pickerCategory]);
+  }, [productsForMode, productSearch, pickerCategory]);
 
   const filteredCategories = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
@@ -1559,6 +1581,7 @@ export default function Orders() {
         customerId,
         customerName, phone, email,
         items: cleanItems,
+        orderType: posProductMode === "preorder" ? "preorder" : "normal",
         deliveryType: orderDeliveryType,
         address,
         deliveryArea,
@@ -1915,6 +1938,8 @@ export default function Orders() {
       });
       if (activeTab === "deleted") {
         params.set("tab", "deleted");
+      } else if (activeTab === "preorder") {
+        params.set("orderType", "preorder");
       } else if (activeTab === "current" || activeTab === "otherday" || activeTab === "history" || activeTab === "invoices") {
         params.set("tab",
           activeTab === "invoices" ? "history" :
@@ -2028,6 +2053,7 @@ export default function Orders() {
         historyTotal: data.historyTotal,
         todayTotal: data.todayTotal,
         otherDayTotal: data.otherDayTotal,
+        preorderTotal: data.preorderTotal ?? 0,
         deletedTotal: data.deletedTotal ?? 0,
       });
     } catch { }
@@ -2611,6 +2637,7 @@ export default function Orders() {
   const invoiceCount = (statsData["delivered"] ?? 0) + (statsData["takeaway"] ?? 0);
   const totalToday = statsTotals.todayTotal ?? totalActive;
   const totalOtherDay = statsTotals.otherDayTotal ?? 0;
+  const totalPreorder = statsTotals.preorderTotal ?? 0;
   const totalDeleted = statsTotals.deletedTotal ?? 0;
   const TABS = [
     { key: "current" as const, label: "Current Orders", count: totalToday, icon: Clock, color: "text-blue-600" },
@@ -2618,6 +2645,7 @@ export default function Orders() {
     { key: "history" as const, label: "History", count: totalHistory, icon: CheckCircle2, color: "text-green-600" },
     { key: "all" as const, label: "All Orders", count: totalAll, icon: ClipboardList, color: "text-gray-600" },
     { key: "invoices" as const, label: "Order Invoices", count: invoiceCount, icon: FileText, color: "text-violet-600" },
+    { key: "preorder" as const, label: "Preorders", count: totalPreorder, icon: Calendar, color: "text-orange-600" },
     { key: "deleted" as const, label: "Deleted", count: totalDeleted, icon: Trash2, color: "text-red-600" },
   ];
 
@@ -3658,14 +3686,34 @@ export default function Orders() {
           {/* Delivery / Takeaway pill toggle */}
           <div className="flex items-center gap-1 flex-shrink-0 bg-white/10 rounded-full p-0.5">
             <button
+              type="button"
+              onClick={() => setPosProductMode("normal")}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${posProductMode === "normal" ? "bg-white text-[#364F9F] shadow-sm" : "text-white hover:bg-white/10"}`}
+            >
+              Normal
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPosProductMode("preorder"); setOrderDeliveryType("delivery"); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${posProductMode === "preorder" ? "bg-[#F05B4E] text-white shadow-sm" : "text-white hover:bg-white/10"}`}
+            >
+              Preorder
+            </button>
+          </div>
+          <div className="w-px h-6 bg-white/20 flex-shrink-0" />
+          <div className="flex items-center gap-1 flex-shrink-0 bg-white/10 rounded-full p-0.5">
+            <button
+              type="button"
               onClick={() => setOrderDeliveryType("delivery")}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${orderDeliveryType === "delivery" ? "bg-[#F05B4E] text-white shadow-sm" : "text-white"}`}
             >
               Delivery
             </button>
             <button
+              type="button"
+              disabled={posProductMode === "preorder"}
               onClick={() => setOrderDeliveryType("takeaway")}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${orderDeliveryType === "takeaway" ? "bg-[#F05B4E] text-white shadow-sm" : "text-white"}`}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${posProductMode === "preorder" ? "text-white/30 cursor-not-allowed" : orderDeliveryType === "takeaway" ? "bg-[#F05B4E] text-white shadow-sm" : "text-white"}`}
             >
               Takeaway
             </button>
@@ -3688,7 +3736,7 @@ export default function Orders() {
                 }`}
               >
                 <span className="truncate flex-1">All Items</span>
-                <span className={`text-[11px] font-bold min-w-[20px] h-5 px-1.5 rounded-full flex-shrink-0 flex items-center justify-center ${!pickerCategory ? "bg-[#162B4D] text-white" : "bg-[#F05B4E] text-white"}`}>{subHubProducts.length}</span>
+                <span className={`text-[11px] font-bold min-w-[20px] h-5 px-1.5 rounded-full flex-shrink-0 flex items-center justify-center ${!pickerCategory ? "bg-[#162B4D] text-white" : "bg-[#F05B4E] text-white"}`}>{productsForMode.length}</span>
               </button>
               {loadingProducts ? (
                 <div className="px-4 py-6 text-xs text-white/40 text-center">Loading...</div>
@@ -4297,30 +4345,50 @@ export default function Orders() {
                     </div>
                   ) : (
                     <>
-                      {/* Today / Tomorrow selector — only these two days are bookable */}
-                      <div className="flex gap-2 mb-2">
-                        {[
-                          { label: "Today", value: getTodayIST() },
-                          { label: "Tomorrow", value: getTomorrowIST() },
-                        ].map(({ label, value }) => {
-                          const isSelected = orderDate === value;
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => { setOrderDate(value); setSelectedTimeslotId(""); }}
-                              className={`flex-1 h-9 rounded-lg border text-sm font-semibold transition-all ${
-                                isSelected
-                                  ? "border-[#1A56DB] bg-blue-50 text-[#1A56DB]"
-                                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {orderScheduleType === "slot" && (
+                      {posProductMode === "preorder" ? (
+                        <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
+                          <label className="block text-xs font-semibold text-orange-800 mb-1.5">
+                            Future delivery date
+                          </label>
+                          <input
+                            type="date"
+                            min={getTomorrowIST()}
+                            value={orderDate}
+                            onChange={(e) => setOrderDate(e.target.value)}
+                            className="w-full h-9 rounded-lg border border-orange-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                          />
+                          <p className="text-[11px] text-orange-700 mt-1.5">
+                            Preorders are delivered on a future date and do not use today’s delivery slots.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Today / Tomorrow selector — only these two days are bookable */}
+                          <div className="flex gap-2 mb-2">
+                            {[
+                              { label: "Today", value: getTodayIST() },
+                              { label: "Tomorrow", value: getTomorrowIST() },
+                            ].map(({ label, value }) => {
+                              const isSelected = orderDate === value;
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => { setOrderDate(value); setSelectedTimeslotId(""); }}
+                                  className={`flex-1 h-9 rounded-lg border text-sm font-semibold transition-all ${
+                                    isSelected
+                                      ? "border-[#1A56DB] bg-blue-50 text-[#1A56DB]"
+                                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                      {posProductMode !== "preorder" && orderScheduleType === "slot" && (
                         loadingTimeslots ? <p className="text-xs text-gray-400">Loading slots...</p>
                         : activeTimeslots.length === 0 ? <p className="text-xs text-amber-600 flex items-center gap-1"><Zap className="w-3 h-3" />No slots available for this date</p>
                         : (

@@ -104,9 +104,11 @@ router.post("/products", async (req, res) => {
       name, description, category, subCategory, shortCode,
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
       status, isArchived, imageUrl, limitedStockNote, lowStockThreshold,
-      recipes, sectionId, couponIds,
+      recipes, sectionId, couponIds, preorderMode,
     } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
+    const validPreorderModes = new Set(["normal", "preorder_only", "normal_and_preorder"]);
+    const normalizedPreorderMode = validPreorderModes.has(String(preorderMode)) ? String(preorderMode) : "normal";
     const p = Number(price) || 0;
     const op = Number(originalPrice) || p;
     const doc = {
@@ -130,6 +132,7 @@ router.post("/products", async (req, res) => {
       imageUrl: imageUrl ?? "",
       limitedStockNote: limitedStockNote ?? "",
       lowStockThreshold: lowStockThreshold != null ? Number(lowStockThreshold) : 0,
+      preorderMode: normalizedPreorderMode,
       recipes: Array.isArray(recipes) ? recipes : [],
       sectionId: normalizeIdList(sectionId),
       couponIds: normalizeIdList(couponIds),
@@ -154,7 +157,7 @@ router.put("/products/:productId", async (req, res) => {
       name, description, category, subCategory, shortCode,
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
       status, isArchived, imageUrl, limitedStockNote, lowStockThreshold,
-      recipes, sectionId, couponIds,
+      recipes, sectionId, couponIds, preorderMode,
     } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
@@ -177,6 +180,14 @@ router.put("/products/:productId", async (req, res) => {
     if (imageUrl !== undefined) update.imageUrl = imageUrl;
     if (limitedStockNote !== undefined) update.limitedStockNote = limitedStockNote;
     if (lowStockThreshold !== undefined) update.lowStockThreshold = Number(lowStockThreshold) || 0;
+    if (preorderMode !== undefined) {
+      const validPreorderModes = new Set(["normal", "preorder_only", "normal_and_preorder"]);
+      if (!validPreorderModes.has(String(preorderMode))) {
+        res.status(400).json({ error: "ValidationError", message: "Invalid preorder mode" });
+        return;
+      }
+      update.preorderMode = String(preorderMode);
+    }
     if (recipes !== undefined) update.recipes = Array.isArray(recipes) ? recipes : [];
     if (sectionId !== undefined) update.sectionId = normalizeIdList(sectionId);
     if (couponIds !== undefined) update.couponIds = normalizeIdList(couponIds);
@@ -257,6 +268,9 @@ router.post("/products/bulk-upsert", async (req, res) => {
           quantity: Number(row.quantity ?? row.stock) || 0,
           status: row.status ?? "available",
           isArchived: String(row.isArchived ?? row.archived ?? "").toLowerCase() === "yes" || row.isArchived === true,
+          preorderMode: ["normal", "preorder_only", "normal_and_preorder"].includes(String(row.preorderMode))
+            ? String(row.preorderMode)
+            : "normal",
           imageUrl: row.imageUrl ?? "",
           limitedStockNote: row.limitedStockNote ?? "",
           updatedAt: new Date(),

@@ -415,6 +415,7 @@ router.get("/", async (req: ScopedRequest, res) => {
       to = "",
       assignedTo = "",
       deliveryDateFilter = "",
+      orderType = "",
     } = req.query as Record<string, string>;
 
     const filter: any = {};
@@ -422,6 +423,7 @@ router.get("/", async (req: ScopedRequest, res) => {
     // Deleted tab: show only soft-deleted orders. All other tabs exclude them.
     const isDeletedTab = tab === "deleted";
     filter.isDeleted = isDeletedTab ? true : { $ne: true };
+    if (orderType === "preorder") filter.orderType = "preorder";
 
     if (q) {
       const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -595,7 +597,7 @@ router.get("/stats", async (req: ScopedRequest, res) => {
     const conn = await getOrdersDb();
     const scopeClause = scopeOrderFilter(req);
     if (scopeClause === null) {
-      res.json({ stats: {}, rawStats: {}, total: 0, currentTotal: 0, historyTotal: 0, todayTotal: 0, otherDayTotal: 0 });
+      res.json({ stats: {}, rawStats: {}, total: 0, currentTotal: 0, historyTotal: 0, todayTotal: 0, otherDayTotal: 0, preorderTotal: 0 });
       return;
     }
     const pipeline: any[] = [];
@@ -668,8 +670,13 @@ router.get("/stats", async (req: ScopedRequest, res) => {
 
     // Count soft-deleted orders for the Deleted tab badge.
     const deletedTotal = await conn.db.collection(COLLECTION).countDocuments({ ...scopeClause, isDeleted: true });
+    const preorderTotal = await conn.db.collection(COLLECTION).countDocuments({
+      ...scopeClause,
+      isDeleted: { $ne: true },
+      orderType: "preorder",
+    });
 
-    res.json({ stats, rawStats, total, currentTotal, historyTotal, todayTotal, otherDayTotal, deletedTotal });
+    res.json({ stats, rawStats, total, currentTotal, historyTotal, todayTotal, otherDayTotal, preorderTotal, deletedTotal });
   } catch (err) {
     req.log.error({ err }, "Failed to get order stats");
     res.status(500).json({ error: "InternalError", message: "Failed to fetch order stats" });
@@ -924,6 +931,7 @@ router.post("/", async (req: ScopedRequest, res) => {
       timeslotStart,
       timeslotEnd,
       isExpress,
+      orderType,
     } = req.body ?? {};
 
     // Fall back to the name stored in the delivery address if the account has no name
@@ -946,6 +954,18 @@ router.post("/", async (req: ScopedRequest, res) => {
     if (dt === "delivery" && !String(address ?? "").trim()) {
       res.status(400).json({ error: "ValidationError", message: "Delivery address is required" });
       return;
+    }
+    const normalizedOrderType = orderType === "preorder" ? "preorder" : "normal";
+    if (normalizedOrderType === "preorder") {
+      const preorderDate = String(deliveryDate ?? "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(preorderDate) || preorderDate <= getTodayISODate()) {
+        res.status(400).json({ error: "ValidationError", message: "Preorder delivery date must be a future date" });
+        return;
+      }
+      if (dt !== "delivery") {
+        res.status(400).json({ error: "ValidationError", message: "Preorders must use delivery" });
+        return;
+      }
     }
 
     const cleanItems = items.map((it: any) => ({
@@ -1039,6 +1059,7 @@ router.post("/", async (req: ScopedRequest, res) => {
       extraDiscountType: extraDiscountType ? String(extraDiscountType) : "flat",
       total: totalNum,
       deliveryType: dt,
+      orderType: normalizedOrderType,
       address: dt === "delivery" ? String(address ?? "").trim() : "",
       deliveryArea: dt === "delivery" ? String(deliveryArea ?? "").trim() : "",
       deliveryAddressDetail: dt === "delivery" && deliveryAddressDetail ? deliveryAddressDetail : undefined,
@@ -1401,6 +1422,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       walletTopup,
       walletAdjustment,
       isExpress,
+      orderType,
     } = req.body;
     if (status !== undefined && !VALID_ORDER_STATUSES.has(String(status))) {
       res.status(400).json({ error: "ValidationError", message: `Invalid order status: ${status}` });
@@ -1418,6 +1440,13 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     if (deliveryArea !== undefined) update.deliveryArea = deliveryArea;
     if (deliveryAddressDetail !== undefined) update.deliveryAddressDetail = deliveryAddressDetail;
     if (deliveryType !== undefined) update.deliveryType = deliveryType;
+    if (orderType !== undefined) {
+      if (!["normal", "preorder"].includes(String(orderType))) {
+        res.status(400).json({ error: "ValidationError", message: "Invalid order type" });
+        return;
+      }
+      update.orderType = String(orderType);
+    }
     if (superHubId !== undefined) update.superHubId = superHubId;
     if (superHubName !== undefined) update.superHubName = superHubName;
     if (subHubId !== undefined) update.subHubId = subHubId;
@@ -1509,6 +1538,21 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     const prev = await conn.db.collection(COLLECTION).findOne({ _id: oid });
     if (!prev || !isOrderInScope(req.scope, prev, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
+    }
+    // Validate preorder constraints after loading the current order so partial
+    // edits can safely inherit its existing delivery type/date.
+    const nextOrderType = orderType !== undefined ? String(orderType) : String(prev.orderType ?? "normal");
+    if (nextOrderType === "preorder") {
+      const nextDeliveryType = deliveryType !== undefined ? String(deliveryType) : String(prev.deliveryType ?? "");
+      const nextDeliveryDate = deliveryDate !== undefined ? String(deliveryDate).trim() : String(prev.deliveryDate ?? "").slice(0, 10);
+      if (nextDeliveryType === "takeaway") {
+        res.status(400).json({ error: "ValidationError", message: "Preorders must use delivery" });
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDeliveryDate) || nextDeliveryDate <= getTodayISODate()) {
+        res.status(400).json({ error: "ValidationError", message: "Preorder delivery date must be a future date" });
+        return;
+      }
     }
     // Hub admins cannot reassign an order to a sub hub outside their scope.
     if (req.scope && !req.scope.isMaster && update.subHubId !== undefined) {
