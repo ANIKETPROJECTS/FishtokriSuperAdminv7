@@ -840,7 +840,7 @@ export default function Orders() {
     if (posProductMode === "preorder") {
       setOrderDeliveryType("delivery");
       setIsExpressOrder(false);
-      setOrderScheduleType("instant");
+      setOrderScheduleType("slot");
       setSelectedTimeslotId("");
       if (orderDate <= getTodayIST()) setOrderDate(getTomorrowIST());
     } else if (!editingOrderId) {
@@ -978,12 +978,6 @@ export default function Orders() {
       .catch(() => setCoupons([]))
       .finally(() => setLoadingCoupons(false));
 
-    setLoadingTimeslots(true);
-    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/timeslots`)
-      .then((d) => setTimeslots(d.timeslots ?? []))
-      .catch(() => setTimeslots([]))
-      .finally(() => setLoadingTimeslots(false));
-
     if (skipMenuResetRef.current) {
       skipMenuResetRef.current = false;
       return;
@@ -992,6 +986,22 @@ export default function Orders() {
     setAppliedCouponIds([]); setCouponCode(""); setCouponError("");
     setSelectedTimeslotId("");
   }, [selectedSubHubId]);
+
+  // Reload slot availability whenever the delivery date changes. The API
+  // returns capacity for this exact date, while activeDays is also evaluated
+  // locally so future preorder dates behave like normal delivery dates.
+  useEffect(() => {
+    if (!selectedSubHubId) {
+      setTimeslots([]);
+      return;
+    }
+    setLoadingTimeslots(true);
+    const dateParam = orderDate ? `?deliveryDate=${encodeURIComponent(orderDate)}` : "";
+    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/timeslots${dateParam}`)
+      .then((d) => setTimeslots(d.timeslots ?? []))
+      .catch(() => setTimeslots([]))
+      .finally(() => setLoadingTimeslots(false));
+  }, [selectedSubHubId, orderDate]);
 
   // Sync editedSavedAddress (and the baseline) whenever the selected saved address changes.
   // Both are set together so Save/Cancel don't appear until the user edits something.
@@ -1021,12 +1031,13 @@ export default function Orders() {
   useEffect(() => {
     if (!isCreatePage || !selectedSubHubId) return;
     const id = setInterval(() => {
-      apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/timeslots`)
+      const dateParam = orderDate ? `?deliveryDate=${encodeURIComponent(orderDate)}` : "";
+      apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/timeslots${dateParam}`)
         .then((d) => setTimeslots(d.timeslots ?? []))
         .catch(() => {/* silent – keep existing list */});
     }, 1000);
     return () => clearInterval(id);
-  }, [isCreatePage, selectedSubHubId]);
+  }, [isCreatePage, selectedSubHubId, orderDate]);
 
   // Poll products every 1 s so stock/price changes in the DB appear without a page refresh.
   useEffect(() => {
@@ -1094,12 +1105,13 @@ export default function Orders() {
     const todayISO = getTodayIST();
     const isToday = orderDate === todayISO;
 
-    // Compute IST day-of-week (0=Sun..6=Sat) for today and tomorrow once.
+    // Compute the actual weekday for the selected delivery date. This matters
+    // for preorders because their date can be any future day, not just tomorrow.
     const now = new Date();
     const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
-    const todayDow = istNow.getUTCDay();
-    const tomorrowDow = (todayDow + 1) % 7;
-    const targetDow = isToday ? todayDow : tomorrowDow;
+    const targetDow = /^\d{4}-\d{2}-\d{2}$/.test(orderDate)
+      ? new Date(`${orderDate}T00:00:00Z`).getUTCDay()
+      : istNow.getUTCDay();
 
     return timeslots.filter((t) => {
       if (t.isActive === false) return false;
@@ -1107,13 +1119,16 @@ export default function Orders() {
       // Hide slots whose activeDays marks the target day as "off".
       if (!isDayActive(t.activeDays, targetDow)) return false;
 
-      // Hide slots that have hit their order limit for the selected date.
-      // todaysOrderCount / nextDayOrderCount are computed live by the backend —
-      // no stale date guard needed.
+       // Hide slots that have hit their order limit for the selected date.
+       // Future preorder dates use the exact-date count returned by the API.
       const limit = Number(t.orderLimit) || 0;
       if (limit > 0) {
-        if (isToday && (t.todaysOrderCount ?? 0) >= limit) return false;
-        if (!isToday && (t.nextDayOrderCount ?? 0) >= limit) return false;
+         const booked = isToday
+           ? Number(t.todaysOrderCount) || 0
+           : orderDate === getTomorrowIST()
+             ? Number(t.nextDayOrderCount) || 0
+             : Number(t.orderCountForDate) || 0;
+         if (booked >= limit) return false;
       }
       if (!isToday) return true;
       const match = (t.startTime ?? "").match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -1127,6 +1142,14 @@ export default function Orders() {
       return slotStartMins > currentMins + 30;
     });
   }, [timeslots, orderDate]);
+
+  // A slot selected for one date must never carry over to another date if
+  // that slot is disabled, inactive, or full on the newly selected date.
+  useEffect(() => {
+    if (selectedTimeslotId && !activeTimeslots.some((t) => String(t._id) === selectedTimeslotId)) {
+      setSelectedTimeslotId("");
+    }
+  }, [activeTimeslots, selectedTimeslotId]);
 
   const productsForMode = useMemo(() => {
     return subHubProducts.filter((p) => posProductMode === "preorder"
@@ -4333,8 +4356,9 @@ export default function Orders() {
                       >Normal</button>
                       <button
                         type="button"
-                        onClick={() => { setIsExpressOrder(true); setSelectedTimeslotId(""); }}
-                        className={`px-3 py-1.5 transition-all border-l border-gray-200 ${isExpressOrder ? "bg-orange-500 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                        disabled={posProductMode === "preorder"}
+                        onClick={() => { if (posProductMode !== "preorder") { setIsExpressOrder(true); setSelectedTimeslotId(""); } }}
+                        className={`px-3 py-1.5 transition-all border-l border-gray-200 ${posProductMode === "preorder" ? "bg-gray-50 text-gray-300 cursor-not-allowed" : isExpressOrder ? "bg-orange-500 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
                       >Express</button>
                     </div>
                   </div>
@@ -4358,7 +4382,7 @@ export default function Orders() {
                             className="w-full h-9 rounded-lg border border-orange-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
                           />
                           <p className="text-[11px] text-orange-700 mt-1.5">
-                            Preorders are delivered on a future date and do not use today’s delivery slots.
+                            Choose a delivery slot available for the selected date.
                           </p>
                         </div>
                       ) : (
@@ -4388,7 +4412,7 @@ export default function Orders() {
                           </div>
                         </>
                       )}
-                      {posProductMode !== "preorder" && orderScheduleType === "slot" && (
+                      {orderScheduleType === "slot" && (
                         loadingTimeslots ? <p className="text-xs text-gray-400">Loading slots...</p>
                         : activeTimeslots.length === 0 ? <p className="text-xs text-amber-600 flex items-center gap-1"><Zap className="w-3 h-3" />No slots available for this date</p>
                         : (
@@ -4411,7 +4435,7 @@ export default function Orders() {
                             })}
                           </div>
                         )
-                      )}
+                       )}
                     </>
                   )}
                 </div>

@@ -1026,11 +1026,15 @@ router.get("/timeslots", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
+    const requestedDate = typeof req.query.deliveryDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.deliveryDate)
+      ? req.query.deliveryDate
+      : "";
     const timeslots = await ctx.conn.db.collection("timeslots").find({}).sort({ sortOrder: 1, startTime: 1 }).toArray();
 
     if (timeslots.length > 0) {
       const todayISO = getTimeslotTodayISO();
       const tomorrowISO = getTimeslotTomorrowISO();
+      const countDates = requestedDate ? [requestedDate] : [todayISO, tomorrowISO];
       const timeslotIdStrs = timeslots.map((t: any) => String(t._id));
       try {
         const ordersConn = await getSubHubDbConnection("orders");
@@ -1039,7 +1043,7 @@ router.get("/timeslots", async (req, res) => {
             $match: {
               timeslotId: { $in: timeslotIdStrs },
               scheduleType: "slot",
-              deliveryDate: { $in: [todayISO, tomorrowISO] },
+              deliveryDate: { $in: countDates },
               status: { $ne: "cancelled" },
             },
           },
@@ -1051,20 +1055,20 @@ router.get("/timeslots", async (req, res) => {
           },
         ]).toArray();
 
-        const countMap = new Map<string, { today: number; tomorrow: number }>();
+        const countMap = new Map<string, Record<string, number>>();
         for (const row of countsAgg as any[]) {
           const tid = String(row._id.timeslotId);
           const date = String(row._id.deliveryDate);
-          if (!countMap.has(tid)) countMap.set(tid, { today: 0, tomorrow: 0 });
+          if (!countMap.has(tid)) countMap.set(tid, {});
           const entry = countMap.get(tid)!;
-          if (date === todayISO) entry.today = row.count;
-          else if (date === tomorrowISO) entry.tomorrow = row.count;
+          entry[date] = Number(row.count) || 0;
         }
 
         for (const slot of timeslots as any[]) {
-          const counts = countMap.get(String(slot._id)) ?? { today: 0, tomorrow: 0 };
-          slot.todaysOrderCount = counts.today;
-          slot.nextDayOrderCount = counts.tomorrow;
+          const counts = countMap.get(String(slot._id)) ?? {};
+          slot.todaysOrderCount = counts[todayISO] ?? 0;
+          slot.nextDayOrderCount = counts[tomorrowISO] ?? 0;
+          if (requestedDate) slot.orderCountForDate = counts[requestedDate] ?? 0;
           delete slot.todaysOrderDate;
           delete slot.nextDayOrderDate;
         }
@@ -1088,6 +1092,7 @@ router.get("/timeslots", async (req, res) => {
         for (const slot of timeslots as any[]) {
           slot.todaysOrderCount = slot.todaysOrderCount ?? 0;
           slot.nextDayOrderCount = slot.nextDayOrderCount ?? 0;
+          if (requestedDate) slot.orderCountForDate = slot.orderCountForDate ?? 0;
           delete slot.todaysOrderDate;
           delete slot.nextDayOrderDate;
         }
