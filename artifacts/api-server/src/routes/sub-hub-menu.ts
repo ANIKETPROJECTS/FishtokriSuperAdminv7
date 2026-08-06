@@ -50,7 +50,7 @@ function normalizeIdList(values: any) {
 }
 
 const PRODUCT_PREORDER_DAY_NUMBERS = [0, 1, 2, 3, 4, 5, 6];
-const PRODUCT_PREORDER_AVAILABILITY_TYPES = new Set(["all", "weekdays", "date_range"]);
+const PRODUCT_PREORDER_AVAILABILITY_TYPES = new Set(["all", "weekdays", "date_range", "date_range_and_weekdays"]);
 
 function normalizePreorderAvailability(raw: any): { value: any; error?: string } {
   if (raw === undefined || raw === null || raw === "") {
@@ -71,23 +71,24 @@ function normalizePreorderAvailability(raw: any): { value: any; error?: string }
       .filter((day: number) => Number.isInteger(day) && day >= 0 && day <= 6),
   )).sort((a, b) => a - b);
 
-  if (type === "weekdays" && weekdays.length === 0) {
+  if ((type === "weekdays" || type === "date_range_and_weekdays") && weekdays.length === 0) {
     return { value: null, error: "Select at least one preorder weekday" };
   }
 
   const startDate = String(raw.startDate ?? "");
   const endDate = String(raw.endDate ?? "");
   const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date);
-  if (type === "date_range" && (!validDate(startDate) || !validDate(endDate) || startDate > endDate)) {
+  if ((type === "date_range" || type === "date_range_and_weekdays") &&
+      (!validDate(startDate) || !validDate(endDate) || startDate > endDate)) {
     return { value: null, error: "Preorder date range must have valid dates with the start date on or before the end date" };
   }
 
   return {
     value: {
       type,
-      weekdays: type === "weekdays" ? weekdays : [...PRODUCT_PREORDER_DAY_NUMBERS],
-      startDate: type === "date_range" ? startDate : "",
-      endDate: type === "date_range" ? endDate : "",
+      weekdays: type === "weekdays" || type === "date_range_and_weekdays" ? weekdays : [...PRODUCT_PREORDER_DAY_NUMBERS],
+      startDate: type === "date_range" || type === "date_range_and_weekdays" ? startDate : "",
+      endDate: type === "date_range" || type === "date_range_and_weekdays" ? endDate : "",
     },
   };
 }

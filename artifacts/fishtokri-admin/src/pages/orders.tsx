@@ -292,24 +292,27 @@ function isProductAvailableForPreorder(product: any, date: string): boolean {
   if (!availability || typeof availability !== "object") return true;
 
   const type = String(availability.type ?? "all");
-  if (type === "date_range") {
+  const usesDateRange = type === "date_range" || type === "date_range_and_weekdays";
+  const usesWeekdays = type === "weekdays" || type === "date_range_and_weekdays";
+
+  if (usesDateRange) {
     const startDate = String(availability.startDate ?? "");
     const endDate = String(availability.endDate ?? "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return false;
-    return date >= startDate && date <= endDate;
+    if (date < startDate || date > endDate) return false;
   }
 
-  if (type === "weekdays") {
+  if (usesWeekdays) {
     const targetDow = /^\d{4}-\d{2}-\d{2}$/.test(date)
       ? new Date(`${date}T00:00:00Z`).getUTCDay()
       : new Date().getDay();
     const weekdays = Array.isArray(availability.weekdays)
       ? availability.weekdays.map(Number)
       : [];
-    return weekdays.includes(targetDow);
+    if (!weekdays.includes(targetDow)) return false;
   }
 
-  return true;
+  return type === "all" || usesDateRange || usesWeekdays;
 }
 
 function formatDate(d: any) {

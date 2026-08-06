@@ -111,6 +111,7 @@ For the Preorder flow:
   - `type: "all"` means the product is available for every future date.
   - `type: "weekdays"` means only dates whose weekday number is included in `weekdays` are eligible (`0` = Sunday through `6` = Saturday).
   - `type: "date_range"` means only dates from `startDate` through `endDate`, inclusive, are eligible.
+  - `type: "date_range_and_weekdays"` means the date must be within `startDate` through `endDate`, inclusive, and its weekday number must be included in `weekdays`.
 - When the customer changes the preorder date, immediately hide products that are unavailable for the newly selected date.
 - A product with the same `startDate` and `endDate` is available on one specific date only.
 

@@ -50,7 +50,7 @@ import {
   DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 
-type PreorderAvailabilityType = "all" | "weekdays" | "date_range";
+type PreorderAvailabilityType = "all" | "weekdays" | "date_range" | "date_range_and_weekdays";
 type PreorderAvailability = {
   type: PreorderAvailabilityType;
   weekdays: number[];
@@ -76,7 +76,7 @@ const defaultPreorderAvailability = (): PreorderAvailability => ({
 });
 
 function normalizePreorderAvailability(raw: any): PreorderAvailability {
-  const type: PreorderAvailabilityType = ["all", "weekdays", "date_range"].includes(String(raw?.type))
+  const type: PreorderAvailabilityType = ["all", "weekdays", "date_range", "date_range_and_weekdays"].includes(String(raw?.type))
     ? raw.type
     : "all";
   const weekdays = Array.from(new Set(
@@ -87,8 +87,8 @@ function normalizePreorderAvailability(raw: any): PreorderAvailability {
   return {
     type,
     weekdays: weekdays.length > 0 ? weekdays : [0, 1, 2, 3, 4, 5, 6],
-    startDate: type === "date_range" ? String(raw?.startDate ?? "") : "",
-    endDate: type === "date_range" ? String(raw?.endDate ?? "") : "",
+    startDate: type === "date_range" || type === "date_range_and_weekdays" ? String(raw?.startDate ?? "") : "",
+    endDate: type === "date_range" || type === "date_range_and_weekdays" ? String(raw?.endDate ?? "") : "",
   };
 }
 
@@ -1056,8 +1056,8 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
         showErrorMessage: true,
         errorStyle: "warning",
         errorTitle: "Invalid Preorder Availability",
-        error: "Choose all, weekdays, or date_range.",
-        formulae: ['"all,weekdays,date_range"'],
+        error: "Choose all, weekdays, date_range, or date_range_and_weekdays.",
+        formulae: ['"all,weekdays,date_range,date_range_and_weekdays"'],
       };
 
       // Category dropdown — column C (uses hidden sheet reference to avoid 255-char limit)
@@ -2781,11 +2781,11 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (preorderMode === "preorder_only") {
-      if (preorderAvailability.type === "weekdays" && preorderAvailability.weekdays.length === 0) {
+      if ((preorderAvailability.type === "weekdays" || preorderAvailability.type === "date_range_and_weekdays") && preorderAvailability.weekdays.length === 0) {
         toast({ title: "Select at least one weekday", description: "Choose the days when this preorder product should be available.", variant: "destructive" });
         return;
       }
-      if (preorderAvailability.type === "date_range") {
+      if (preorderAvailability.type === "date_range" || preorderAvailability.type === "date_range_and_weekdays") {
         if (!preorderAvailability.startDate || !preorderAvailability.endDate) {
           toast({ title: "Choose a preorder date range", description: "Select both a start date and an end date.", variant: "destructive" });
           return;
@@ -2946,12 +2946,15 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                       <SelectItem value="all">All dates</SelectItem>
                       <SelectItem value="weekdays">Selected weekdays</SelectItem>
                       <SelectItem value="date_range">Specific date or date range</SelectItem>
+                      <SelectItem value="date_range_and_weekdays">Date range + selected weekdays</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  {preorderAvailability.type === "weekdays" && (
+                  {(preorderAvailability.type === "weekdays" || preorderAvailability.type === "date_range_and_weekdays") && (
                     <div>
-                      <p className="text-[11px] font-semibold text-orange-800 mb-1.5">Available on</p>
+                      <p className="text-[11px] font-semibold text-orange-800 mb-1.5">
+                        {preorderAvailability.type === "date_range_and_weekdays" ? "Available on these weekdays within the date range" : "Available on"}
+                      </p>
                       <div className="grid grid-cols-7 gap-1">
                         {PREORDER_WEEKDAYS.map((day) => {
                           const selected = preorderAvailability.weekdays.includes(day.value);
@@ -2982,7 +2985,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     </div>
                   )}
 
-                  {preorderAvailability.type === "date_range" && (
+                  {(preorderAvailability.type === "date_range" || preorderAvailability.type === "date_range_and_weekdays") && (
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] font-semibold text-orange-800">Start date</Label>

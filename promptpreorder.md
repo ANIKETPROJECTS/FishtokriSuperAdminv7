@@ -78,6 +78,24 @@ The product can be ordered only when the selected delivery date falls on one of 
 
 Both dates are inclusive. If `startDate` and `endDate` are the same, the product is available on one specific date only.
 
+### 4. Date range plus selected weekdays
+
+```json
+{
+  "type": "date_range_and_weekdays",
+  "weekdays": [1, 3, 5],
+  "startDate": "2026-08-07",
+  "endDate": "2026-08-31"
+}
+```
+
+This combined condition requires both rules to pass:
+
+1. The delivery date must be inside the inclusive date range.
+2. The delivery date's weekday must be one of the selected weekdays.
+
+For example, a product configured for Monday, Wednesday, and Friday from 07 Aug 2026 through 31 Aug 2026 is available only on those weekdays within that range. Dates in the range that fall on Tuesday, Thursday, Saturday, or Sunday are not valid.
+
 Dates are always `YYYY-MM-DD` values and must be interpreted in India Standard Time without a timezone shift.
 
 Products created before this feature may not have `preorderAvailability`. Treat missing availability as:
@@ -128,6 +146,7 @@ The details should show:
 - Availability type
 - Selected weekdays, if applicable
 - Start and end dates, if applicable
+- When both are configured, explain that both the date range and weekday must match.
 - A clear note that the final delivery date must be valid for all products in the cart
 
 Do not make availability details the only way to discover a product’s restriction. The compact summary must remain visible in the cart.
@@ -164,6 +183,8 @@ Another example:
 - Valid cart dates: 14 Aug 2026 through 21 Aug 2026
 
 Products with `type: "all"` do not narrow the cart’s valid dates.
+
+For `type: "date_range_and_weekdays"`, apply both restrictions before calculating the cart-wide intersection.
 
 If the cart has no common valid date:
 
@@ -363,10 +384,12 @@ The cart/order-summary panel must remain usable at mobile widths like the refere
 - A preorder product with `type: "all"` shows that it is available on all future dates.
 - A weekday-limited product shows its selected weekday names in the cart.
 - A date-range product shows its inclusive start and end dates in the cart.
+- A combined date-range-and-weekdays product shows both restrictions in the cart.
 - A single-date product shows the one date clearly.
 - The cart displays availability for every preorder product.
 - The delivery-date picker disables dates unavailable for any product in the cart.
 - The valid dates are the intersection of all cart-product schedules.
+- A combined schedule accepts only dates that satisfy both its range and weekday restrictions.
 - Adding or removing a product recalculates valid dates immediately.
 - A conflicting product/date combination cannot be submitted.
 - A valid date still requires a valid delivery timeslot.
