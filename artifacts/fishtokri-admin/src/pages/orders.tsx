@@ -45,7 +45,7 @@ import { playOrderAlertOnce } from "@/hooks/use-order-alert";
 import { printHtmlWithQZ } from "@/lib/qz-print";
 import { useLocation } from "wouter";
 import { getCurrentAdminScope } from "@/lib/api";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, type Matcher } from "react-day-picker";
 import { format } from "date-fns";
 import "react-day-picker/style.css";
 
@@ -320,6 +320,10 @@ function isProductAvailableForPreorder(product: any, date: string): boolean {
   }
 
   return type === "all" || usesDateRange || usesWeekdays;
+}
+
+function dateToISODate(date: Date): string {
+  return format(date, "yyyy-MM-dd");
 }
 
 function isPreorderOnlyProduct(product: any): boolean {
@@ -824,6 +828,7 @@ export default function Orders() {
   const [selectedTimeslotId, setSelectedTimeslotId] = useState<string>("");
   const [orderScheduleType, setOrderScheduleType] = useState<"instant" | "slot">("slot");
   const [orderDate, setOrderDate] = useState<string>(() => getTodayIST());
+  const [showPreorderDatePicker, setShowPreorderDatePicker] = useState(false);
   const [isOutstationDelivery, setIsOutstationDelivery] = useState(false);
   const [isExpressOrder, setIsExpressOrder] = useState(false);
 
@@ -1230,6 +1235,31 @@ export default function Orders() {
       ? isPreorderOnlyProduct(p) && isProductAvailableForPreorder(p, orderDate)
       : !isPreorderOnlyProduct(p));
   }, [subHubProducts, posProductMode, orderDate]);
+
+  // A preorder date must be valid for every product already in the cart.
+  // Before anything is selected, use the union of preorder product schedules
+  // so the cashier can first choose a date on which at least one product can
+  // be sold. Selecting a product narrows the calendar to that product.
+  const preorderDateProducts = useMemo(() => {
+    const preorderProducts = subHubProducts.filter(isPreorderOnlyProduct);
+    if (selectedProducts.length === 0) return preorderProducts;
+    const selectedIds = new Set(selectedProducts.map((item) => String(item.productId)));
+    return preorderProducts.filter((product) => selectedIds.has(String(product._id)));
+  }, [subHubProducts, selectedProducts]);
+
+  const preorderDisabledDays = useMemo<Matcher[]>(() => {
+    const tomorrow = new Date(`${getTomorrowIST()}T00:00:00`);
+    return [
+      { before: tomorrow },
+      (date: Date) => {
+        const isoDate = dateToISODate(date);
+        if (preorderDateProducts.length === 0) return true;
+        return selectedProducts.length > 0
+          ? !preorderDateProducts.every((product) => isProductAvailableForPreorder(product, isoDate))
+          : !preorderDateProducts.some((product) => isProductAvailableForPreorder(product, isoDate));
+      },
+    ];
+  }, [preorderDateProducts, selectedProducts.length]);
 
   // A product may be in the cart when the preorder date changes. Keep the
   // cart aligned with the availability schedule configured on the product.
@@ -3803,6 +3833,7 @@ export default function Orders() {
               type="button"
               onClick={() => {
                 setPosProductMode("normal");
+                setSelectedProducts([]);
                 setPickerCategory(null);
                 setProductSearch("");
                 setSelectedTimeslotId("");
@@ -3817,6 +3848,7 @@ export default function Orders() {
                 setPosProductMode("preorder");
                 setOrderDeliveryType("delivery");
                 setOrderDate(getTomorrowIST());
+                setSelectedProducts([]);
                 setPickerCategory(null);
                 setProductSearch("");
                 setSelectedTimeslotId("");
@@ -4484,16 +4516,33 @@ export default function Orders() {
                           <label className="block text-xs font-semibold text-orange-800 mb-1.5">
                             Future delivery date
                           </label>
-                          <input
-                            type="date"
-                            min={getTomorrowIST()}
-                            value={orderDate}
-                            onChange={(e) => {
-                              setOrderDate(e.target.value);
-                              setSelectedTimeslotId("");
-                            }}
-                            className="w-full h-9 rounded-lg border border-orange-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                          />
+                          <Popover open={showPreorderDatePicker} onOpenChange={setShowPreorderDatePicker}>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className="w-full h-9 rounded-lg border border-orange-200 bg-white px-3 text-left text-sm text-gray-700 hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                              >
+                                {formatDeliveryDate(orderDate)}
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-2" align="start">
+                              <DayPicker
+                                mode="single"
+                                selected={orderDate ? new Date(`${orderDate}T00:00:00`) : undefined}
+                                defaultMonth={orderDate ? new Date(`${orderDate}T00:00:00`) : new Date(`${getTomorrowIST()}T00:00:00`)}
+                                disabled={preorderDisabledDays}
+                                onSelect={(date) => {
+                                  if (!date) return;
+                                  setOrderDate(dateToISODate(date));
+                                  setSelectedTimeslotId("");
+                                  setShowPreorderDatePicker(false);
+                                }}
+                              />
+                              <p className="px-2 pb-1 text-[11px] text-orange-700">
+                                Only dates available for the selected preorder products can be selected.
+                              </p>
+                            </PopoverContent>
+                          </Popover>
                           <p className="text-[11px] text-orange-700 mt-1.5">
                             Choose a delivery slot available for the selected date.
                           </p>
