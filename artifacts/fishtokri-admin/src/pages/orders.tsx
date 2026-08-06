@@ -288,7 +288,14 @@ function isDayActive(activeDays: any[], dow: number): boolean {
 }
 
 function isProductAvailableForPreorder(product: any, date: string): boolean {
-  const availability = product?.preorderAvailability;
+  let availability = product?.preorderAvailability;
+  if (typeof availability === "string") {
+    try {
+      availability = JSON.parse(availability);
+    } catch {
+      availability = null;
+    }
+  }
   if (!availability || typeof availability !== "object") return true;
 
   const type = String(availability.type ?? "all");
@@ -313,6 +320,36 @@ function isProductAvailableForPreorder(product: any, date: string): boolean {
   }
 
   return type === "all" || usesDateRange || usesWeekdays;
+}
+
+function isPreorderOnlyProduct(product: any): boolean {
+  // `preorderMode` is the current field. Keep legacy aliases so the POS does
+  // not silently hide products created by an older admin build.
+  const rawMode = product?.preorderMode ??
+    product?.preOrderMode ??
+    product?.preorderType ??
+    product?.salesMode ??
+    product?.sales_mode ??
+    product?.productType ??
+    "";
+  const mode = String(
+    rawMode,
+  ).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (
+    product?.preorderOnly === true ||
+    product?.isPreorder === true ||
+    product?.preorder === true
+  ) {
+    return true;
+  }
+  return [
+    "preorder_only",
+    "preorderonly",
+    "preorder",
+    "pre_order",
+    "pre_order_only",
+    "preorder_product",
+  ].includes(mode);
 }
 
 function formatDate(d: any) {
@@ -1190,8 +1227,8 @@ export default function Orders() {
 
   const productsForMode = useMemo(() => {
     return subHubProducts.filter((p) => posProductMode === "preorder"
-      ? p.preorderMode === "preorder_only" && isProductAvailableForPreorder(p, orderDate)
-      : p.preorderMode !== "preorder_only");
+      ? isPreorderOnlyProduct(p) && isProductAvailableForPreorder(p, orderDate)
+      : !isPreorderOnlyProduct(p));
   }, [subHubProducts, posProductMode, orderDate]);
 
   // A product may be in the cart when the preorder date changes. Keep the
@@ -3764,14 +3801,26 @@ export default function Orders() {
           <div className="flex items-center gap-1 flex-shrink-0 bg-white/10 rounded-full p-0.5">
             <button
               type="button"
-              onClick={() => setPosProductMode("normal")}
+              onClick={() => {
+                setPosProductMode("normal");
+                setPickerCategory(null);
+                setProductSearch("");
+                setSelectedTimeslotId("");
+              }}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${posProductMode === "normal" ? "bg-white text-[#364F9F] shadow-sm" : "text-white hover:bg-white/10"}`}
             >
               Normal
             </button>
             <button
               type="button"
-              onClick={() => { setPosProductMode("preorder"); setOrderDeliveryType("delivery"); }}
+              onClick={() => {
+                setPosProductMode("preorder");
+                setOrderDeliveryType("delivery");
+                setOrderDate(getTomorrowIST());
+                setPickerCategory(null);
+                setProductSearch("");
+                setSelectedTimeslotId("");
+              }}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${posProductMode === "preorder" ? "bg-[#F05B4E] text-white shadow-sm" : "text-white hover:bg-white/10"}`}
             >
               Preorder
@@ -3881,7 +3930,14 @@ export default function Orders() {
               ) : filteredProducts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-center">
                   <Package className="w-10 h-10 text-gray-200 mb-3" />
-                  <p className="text-sm font-medium text-gray-400">No products found</p>
+                  <p className="text-sm font-medium text-gray-500">
+                    {posProductMode === "preorder" ? "No preorder products available" : "No products found"}
+                  </p>
+                  {posProductMode === "preorder" && (
+                    <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                      Check the product’s preorder mode and availability for the selected delivery date.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-4 gap-3">
@@ -4432,7 +4488,10 @@ export default function Orders() {
                             type="date"
                             min={getTomorrowIST()}
                             value={orderDate}
-                            onChange={(e) => setOrderDate(e.target.value)}
+                            onChange={(e) => {
+                              setOrderDate(e.target.value);
+                              setSelectedTimeslotId("");
+                            }}
                             className="w-full h-9 rounded-lg border border-orange-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
                           />
                           <p className="text-[11px] text-orange-700 mt-1.5">
