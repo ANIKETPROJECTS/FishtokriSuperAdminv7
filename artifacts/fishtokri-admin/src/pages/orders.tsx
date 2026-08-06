@@ -1162,7 +1162,7 @@ export default function Orders() {
 
   const productsForMode = useMemo(() => {
     return subHubProducts.filter((p) => posProductMode === "preorder"
-      ? p.preorderMode === "preorder_only" || p.preorderMode === "normal_and_preorder"
+      ? p.preorderMode === "preorder_only"
       : p.preorderMode !== "preorder_only");
   }, [subHubProducts, posProductMode]);
 

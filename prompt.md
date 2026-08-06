@@ -96,7 +96,6 @@ Use the existing product preorder mode values:
 
 - `normal`
 - `preorder_only`
-- `normal_and_preorder`
 
 For the normal Today and Next Day flows:
 
@@ -107,8 +106,7 @@ For the normal Today and Next Day flows:
 For the Preorder flow:
 
 - Show `preorder_only` products.
-- Show `normal_and_preorder` products.
-- Do not show products that are normal-only.
+- Do not show products that are `normal`.
 
 If the digital menu has a product mode filter already, reuse it instead of creating a second incompatible product classification.
 

@@ -107,7 +107,7 @@ router.post("/products", async (req, res) => {
       recipes, sectionId, couponIds, preorderMode,
     } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
-    const validPreorderModes = new Set(["normal", "preorder_only", "normal_and_preorder"]);
+    const validPreorderModes = new Set(["normal", "preorder_only"]);
     const normalizedPreorderMode = validPreorderModes.has(String(preorderMode)) ? String(preorderMode) : "normal";
     const p = Number(price) || 0;
     const op = Number(originalPrice) || p;
@@ -181,7 +181,7 @@ router.put("/products/:productId", async (req, res) => {
     if (limitedStockNote !== undefined) update.limitedStockNote = limitedStockNote;
     if (lowStockThreshold !== undefined) update.lowStockThreshold = Number(lowStockThreshold) || 0;
     if (preorderMode !== undefined) {
-      const validPreorderModes = new Set(["normal", "preorder_only", "normal_and_preorder"]);
+      const validPreorderModes = new Set(["normal", "preorder_only"]);
       if (!validPreorderModes.has(String(preorderMode))) {
         res.status(400).json({ error: "ValidationError", message: "Invalid preorder mode" });
         return;
@@ -268,7 +268,7 @@ router.post("/products/bulk-upsert", async (req, res) => {
           quantity: Number(row.quantity ?? row.stock) || 0,
           status: row.status ?? "available",
           isArchived: String(row.isArchived ?? row.archived ?? "").toLowerCase() === "yes" || row.isArchived === true,
-          preorderMode: ["normal", "preorder_only", "normal_and_preorder"].includes(String(row.preorderMode))
+          preorderMode: ["normal", "preorder_only"].includes(String(row.preorderMode))
             ? String(row.preorderMode)
             : "normal",
           imageUrl: row.imageUrl ?? "",

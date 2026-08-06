@@ -995,8 +995,8 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
         showErrorMessage: true,
         errorStyle: "warning",
         errorTitle: "Invalid Preorder Mode",
-        error: "Choose normal, preorder_only, or normal_and_preorder.",
-        formulae: ['"normal,preorder_only,normal_and_preorder"'],
+        error: "Choose normal or preorder_only.",
+        formulae: ['"normal,preorder_only"'],
       };
 
       // Category dropdown — column C (uses hidden sheet reference to avoid 255-char limit)
@@ -1279,10 +1279,8 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
                       : <span className="text-black text-sm">—</span>}
                   </td>
                   <td className="px-5 py-4">
-                    {p.preorderMode === "preorder_only" ? (
+                     {p.preorderMode === "preorder_only" ? (
                       <span className="inline-flex text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-2 py-1 rounded-full whitespace-nowrap">Preorder only</span>
-                    ) : p.preorderMode === "normal_and_preorder" ? (
-                      <span className="inline-flex text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-1 rounded-full whitespace-nowrap">Both</span>
                     ) : (
                       <span className="text-xs text-gray-500">Normal</span>
                     )}
@@ -2594,7 +2592,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [quantity, setQuantity] = useState("0");
   const [status, setStatus] = useState("available");
   const [isArchived, setIsArchived] = useState(false);
-  const [preorderMode, setPreorderMode] = useState<"normal" | "preorder_only" | "normal_and_preorder">("normal");
+   const [preorderMode, setPreorderMode] = useState<"normal" | "preorder_only">("normal");
   const [imageUrl, setProductImageUrl] = useState("");
   const [productImageMode, setProductImageMode] = useState<"url" | "upload">("url");
   const [productImageUploading, setProductImageUploading] = useState(false);
@@ -2634,7 +2632,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setQuantity(String(product.quantity ?? 0));
       setStatus(product.status ?? "available");
       setIsArchived(product.isArchived === true);
-      setPreorderMode(["normal", "preorder_only", "normal_and_preorder"].includes(product.preorderMode) ? product.preorderMode : "normal");
+       setPreorderMode(product.preorderMode === "preorder_only" ? "preorder_only" : "normal");
       setProductImageUrl(product.imageUrl ?? "");
       setRecipes(Array.isArray(product.recipes) ? product.recipes.map((r: any) => ({
         title: r.title ?? "", description: r.description ?? "", image: r.image ?? "",
@@ -2825,10 +2823,9 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                   <SelectContent>
                     <SelectItem value="normal">Normal Product</SelectItem>
                     <SelectItem value="preorder_only">Preorder Only Product</SelectItem>
-                    <SelectItem value="normal_and_preorder">Normal and Preorder Product</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-[11px] text-gray-400">Controls whether this product appears in the normal POS, preorder POS, or both.</p>
+                 <p className="text-[11px] text-gray-400">Controls whether this product appears in the normal POS or preorder POS.</p>
               </div>
             </div>
           </section>
