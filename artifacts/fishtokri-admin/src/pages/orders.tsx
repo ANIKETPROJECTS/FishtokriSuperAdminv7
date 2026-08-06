@@ -4538,9 +4538,6 @@ export default function Orders() {
                                   setShowPreorderDatePicker(false);
                                 }}
                               />
-                              <p className="px-2 pb-1 text-[11px] text-orange-700">
-                                Only dates available for the selected preorder products can be selected.
-                              </p>
                             </PopoverContent>
                           </Popover>
                           <p className="text-[11px] text-orange-700 mt-1.5">
