@@ -49,6 +49,49 @@ function normalizeIdList(values: any) {
     .filter(Boolean);
 }
 
+const PRODUCT_PREORDER_DAY_NUMBERS = [0, 1, 2, 3, 4, 5, 6];
+const PRODUCT_PREORDER_AVAILABILITY_TYPES = new Set(["all", "weekdays", "date_range"]);
+
+function normalizePreorderAvailability(raw: any): { value: any; error?: string } {
+  if (raw === undefined || raw === null || raw === "") {
+    return { value: { type: "all", weekdays: [...PRODUCT_PREORDER_DAY_NUMBERS], startDate: "", endDate: "" } };
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { value: null, error: "Invalid preorder availability" };
+  }
+
+  const type = String(raw.type ?? "all");
+  if (!PRODUCT_PREORDER_AVAILABILITY_TYPES.has(type)) {
+    return { value: null, error: "Invalid preorder availability type" };
+  }
+
+  const weekdays = Array.from(new Set(
+    (Array.isArray(raw.weekdays) ? raw.weekdays : [])
+      .map((day: any) => Number(day))
+      .filter((day: number) => Number.isInteger(day) && day >= 0 && day <= 6),
+  )).sort((a, b) => a - b);
+
+  if (type === "weekdays" && weekdays.length === 0) {
+    return { value: null, error: "Select at least one preorder weekday" };
+  }
+
+  const startDate = String(raw.startDate ?? "");
+  const endDate = String(raw.endDate ?? "");
+  const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date);
+  if (type === "date_range" && (!validDate(startDate) || !validDate(endDate) || startDate > endDate)) {
+    return { value: null, error: "Preorder date range must have valid dates with the start date on or before the end date" };
+  }
+
+  return {
+    value: {
+      type,
+      weekdays: type === "weekdays" ? weekdays : [...PRODUCT_PREORDER_DAY_NUMBERS],
+      startDate: type === "date_range" ? startDate : "",
+      endDate: type === "date_range" ? endDate : "",
+    },
+  };
+}
+
 // ─── STATS ────────────────────────────────────────────────────────────────────
 router.get("/stats", async (req, res) => {
   try {
@@ -105,10 +148,16 @@ router.post("/products", async (req, res) => {
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
       status, isArchived, imageUrl, limitedStockNote, lowStockThreshold,
       recipes, sectionId, couponIds, preorderMode,
+      preorderAvailability,
     } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
     const validPreorderModes = new Set(["normal", "preorder_only"]);
     const normalizedPreorderMode = validPreorderModes.has(String(preorderMode)) ? String(preorderMode) : "normal";
+    const availabilityResult = normalizePreorderAvailability(preorderAvailability);
+    if (availabilityResult.error) {
+      res.status(400).json({ error: "ValidationError", message: availabilityResult.error });
+      return;
+    }
     const p = Number(price) || 0;
     const op = Number(originalPrice) || p;
     const doc = {
@@ -133,6 +182,7 @@ router.post("/products", async (req, res) => {
       limitedStockNote: limitedStockNote ?? "",
       lowStockThreshold: lowStockThreshold != null ? Number(lowStockThreshold) : 0,
       preorderMode: normalizedPreorderMode,
+      preorderAvailability: availabilityResult.value,
       recipes: Array.isArray(recipes) ? recipes : [],
       sectionId: normalizeIdList(sectionId),
       couponIds: normalizeIdList(couponIds),
@@ -158,6 +208,7 @@ router.put("/products/:productId", async (req, res) => {
       price, originalPrice, discountPct, unit, weight, grossWeight, netWeight, pieces, serves, quantity,
       status, isArchived, imageUrl, limitedStockNote, lowStockThreshold,
       recipes, sectionId, couponIds, preorderMode,
+      preorderAvailability,
     } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
@@ -187,6 +238,14 @@ router.put("/products/:productId", async (req, res) => {
         return;
       }
       update.preorderMode = String(preorderMode);
+    }
+    if (preorderAvailability !== undefined) {
+      const availabilityResult = normalizePreorderAvailability(preorderAvailability);
+      if (availabilityResult.error) {
+        res.status(400).json({ error: "ValidationError", message: availabilityResult.error });
+        return;
+      }
+      update.preorderAvailability = availabilityResult.value;
     }
     if (recipes !== undefined) update.recipes = Array.isArray(recipes) ? recipes : [];
     if (sectionId !== undefined) update.sectionId = normalizeIdList(sectionId);
@@ -271,11 +330,25 @@ router.post("/products/bulk-upsert", async (req, res) => {
           preorderMode: ["normal", "preorder_only"].includes(String(row.preorderMode))
             ? String(row.preorderMode)
             : "normal",
+          preorderAvailability: undefined as any,
           imageUrl: row.imageUrl ?? "",
           limitedStockNote: row.limitedStockNote ?? "",
           updatedAt: new Date(),
         };
         if (!fields.name) { errors.push(`Row skipped: missing name`); continue; }
+
+        const rawAvailability = row.preorderAvailability ?? {
+          type: row.preorderAvailabilityType ?? "all",
+          weekdays: row.preorderWeekdays,
+          startDate: row.preorderStartDate ?? "",
+          endDate: row.preorderEndDate ?? "",
+        };
+        const availabilityResult = normalizePreorderAvailability(rawAvailability);
+        if (availabilityResult.error) {
+          errors.push(`${fields.name}: ${availabilityResult.error}`);
+          continue;
+        }
+        fields.preorderAvailability = availabilityResult.value;
 
         const oid = row._id ? toId(String(row._id)) : null;
         if (oid) {

@@ -107,6 +107,12 @@ For the Preorder flow:
 
 - Show `preorder_only` products.
 - Do not show products that are `normal`.
+- Respect each product's optional `preorderAvailability` schedule:
+  - `type: "all"` means the product is available for every future date.
+  - `type: "weekdays"` means only dates whose weekday number is included in `weekdays` are eligible (`0` = Sunday through `6` = Saturday).
+  - `type: "date_range"` means only dates from `startDate` through `endDate`, inclusive, are eligible.
+- When the customer changes the preorder date, immediately hide products that are unavailable for the newly selected date.
+- A product with the same `startDate` and `endDate` is available on one specific date only.
 
 If the digital menu has a product mode filter already, reuse it instead of creating a second incompatible product classification.
 

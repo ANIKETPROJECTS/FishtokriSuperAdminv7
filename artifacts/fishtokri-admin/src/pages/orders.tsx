@@ -287,6 +287,31 @@ function isDayActive(activeDays: any[], dow: number): boolean {
   return (activeDays as number[]).includes(dow);
 }
 
+function isProductAvailableForPreorder(product: any, date: string): boolean {
+  const availability = product?.preorderAvailability;
+  if (!availability || typeof availability !== "object") return true;
+
+  const type = String(availability.type ?? "all");
+  if (type === "date_range") {
+    const startDate = String(availability.startDate ?? "");
+    const endDate = String(availability.endDate ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return false;
+    return date >= startDate && date <= endDate;
+  }
+
+  if (type === "weekdays") {
+    const targetDow = /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? new Date(`${date}T00:00:00Z`).getUTCDay()
+      : new Date().getDay();
+    const weekdays = Array.isArray(availability.weekdays)
+      ? availability.weekdays.map(Number)
+      : [];
+    return weekdays.includes(targetDow);
+  }
+
+  return true;
+}
+
 function formatDate(d: any) {
   if (!d) return "—";
   return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -1162,9 +1187,22 @@ export default function Orders() {
 
   const productsForMode = useMemo(() => {
     return subHubProducts.filter((p) => posProductMode === "preorder"
-      ? p.preorderMode === "preorder_only"
+      ? p.preorderMode === "preorder_only" && isProductAvailableForPreorder(p, orderDate)
       : p.preorderMode !== "preorder_only");
-  }, [subHubProducts, posProductMode]);
+  }, [subHubProducts, posProductMode, orderDate]);
+
+  // A product may be in the cart when the preorder date changes. Keep the
+  // cart aligned with the availability schedule configured on the product.
+  useEffect(() => {
+    if (posProductMode !== "preorder") return;
+    setSelectedProducts((current) => {
+      const next = current.filter((selected) => {
+        const product = subHubProducts.find((item) => String(item._id) === String(selected.productId));
+        return !product || isProductAvailableForPreorder(product, orderDate);
+      });
+      return next.length === current.length ? current : next;
+    });
+  }, [posProductMode, orderDate, subHubProducts]);
 
   const productCategories = useMemo(() => {
     const map = new Map<string, number>();

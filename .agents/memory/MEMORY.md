@@ -5,4 +5,4 @@
 - [Wallet deduction per order-type payment path](wallet-deduction-per-order-type.md) — per-order-type payment overrides must derive from wallet-aware `paymentEntries`, not rebuild from `mainPaymentMode` alone.
 - [Two delivery-charge fields on orders](order-delivery-charge-fields.md) — admin orders use `deliveryCharge`, storefront/FTW orders use `slotCharge`; UI must check both, not just one.
 - [Admark media sending contract](admark-media-sending.md) — upload returns top-level `url`/`cloudUrl`; send attachments through documented `/api/send/bymedia` query parameters, not `/send-chat-message`.
-- [Product sales modes](product-sales-modes.md) — product sales mode is limited to normal or preorder-only; the combined mode is retired.
+- [Product sales modes](product-sales-modes.md) — product sales mode is limited to normal or preorder-only; preorder products may have date/day availability.

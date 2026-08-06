@@ -10,7 +10,7 @@ import {
   Database, AlertCircle, CheckCircle, XCircle, Image,
   LayoutList, ShoppingBag, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripVertical,
   LayoutGrid, List, SlidersHorizontal, ArrowUpDown, Clock,
-  Download, Upload, FilePen,
+  Download, Upload, FilePen, CalendarDays,
 } from "lucide-react";
 import recycleIcon from "@/assets/recycling-symbol.png";
 import iconMenuProducts from "@/assets/icon-menu-products.png";
@@ -49,6 +49,48 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
+
+type PreorderAvailabilityType = "all" | "weekdays" | "date_range";
+type PreorderAvailability = {
+  type: PreorderAvailabilityType;
+  weekdays: number[];
+  startDate: string;
+  endDate: string;
+};
+
+const PREORDER_WEEKDAYS = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+];
+
+const defaultPreorderAvailability = (): PreorderAvailability => ({
+  type: "all",
+  weekdays: [0, 1, 2, 3, 4, 5, 6],
+  startDate: "",
+  endDate: "",
+});
+
+function normalizePreorderAvailability(raw: any): PreorderAvailability {
+  const type: PreorderAvailabilityType = ["all", "weekdays", "date_range"].includes(String(raw?.type))
+    ? raw.type
+    : "all";
+  const weekdays = Array.from(new Set(
+    (Array.isArray(raw?.weekdays) ? raw.weekdays : [])
+      .map((day: any) => Number(day))
+      .filter((day: number) => Number.isInteger(day) && day >= 0 && day <= 6),
+  )).sort((a, b) => a - b);
+  return {
+    type,
+    weekdays: weekdays.length > 0 ? weekdays : [0, 1, 2, 3, 4, 5, 6],
+    startDate: type === "date_range" ? String(raw?.startDate ?? "") : "",
+    endDate: type === "date_range" ? String(raw?.endDate ?? "") : "",
+  };
+}
 
 function SortableItem({ id, children }: { id: string; children: (handle: React.ReactNode, isDragging: boolean) => React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -920,6 +962,10 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
       { header: "Status (available/out_of_stock)", key: "status",           width: 30 },
       { header: "Archived (yes/no)",               key: "archived",         width: 16 },
       { header: "Preorder Mode",                   key: "preorderMode",     width: 24 },
+      { header: "Preorder Availability",           key: "preorderAvailabilityType", width: 24 },
+      { header: "Preorder Weekdays (0=Sun)",       key: "preorderWeekdays",  width: 26 },
+      { header: "Preorder Start Date",             key: "preorderStartDate", width: 20 },
+      { header: "Preorder End Date",               key: "preorderEndDate",   width: 20 },
       { header: "Image URL",                       key: "imageUrl",         width: 40 },
     ];
 
@@ -946,6 +992,10 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
         status: p.status ?? "available",
         archived: p.isArchived ? "yes" : "no",
         preorderMode: p.preorderMode ?? "normal",
+        preorderAvailabilityType: normalizePreorderAvailability(p.preorderAvailability).type,
+        preorderWeekdays: normalizePreorderAvailability(p.preorderAvailability).weekdays.join(","),
+        preorderStartDate: normalizePreorderAvailability(p.preorderAvailability).startDate,
+        preorderEndDate: normalizePreorderAvailability(p.preorderAvailability).endDate,
         imageUrl: p.imageUrl ?? "",
       });
     });
@@ -997,6 +1047,17 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
         errorTitle: "Invalid Preorder Mode",
         error: "Choose normal or preorder_only.",
         formulae: ['"normal,preorder_only"'],
+      };
+
+      // Preorder availability dropdown — column O
+      ws.getCell(`O${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        showErrorMessage: true,
+        errorStyle: "warning",
+        errorTitle: "Invalid Preorder Availability",
+        error: "Choose all, weekdays, or date_range.",
+        formulae: ['"all,weekdays,date_range"'],
       };
 
       // Category dropdown — column C (uses hidden sheet reference to avoid 255-char limit)
@@ -1111,6 +1172,13 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
           status: r["Status (available/out_of_stock)"] ?? r["status"] ?? "available",
           isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? "no",
           preorderMode: r["Preorder Mode"] ?? r["preorderMode"] ?? "normal",
+          preorderAvailability: {
+            type: r["Preorder Availability"] ?? r["preorderAvailabilityType"] ?? "all",
+            weekdays: String(r["Preorder Weekdays (0=Sun)"] ?? r["preorderWeekdays"] ?? "")
+              .split(",").map((v: string) => Number(v.trim())).filter((v: number) => Number.isInteger(v)),
+            startDate: r["Preorder Start Date"] ?? r["preorderStartDate"] ?? "",
+            endDate: r["Preorder End Date"] ?? r["preorderEndDate"] ?? "",
+          },
           imageUrl: r["Image URL"] ?? r["imageUrl"] ?? "",
         }))
         .filter((r) => r.name);
@@ -1152,6 +1220,13 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
             status: r["Status (available/out_of_stock)"] ?? r["status"] ?? orig?.status ?? "available",
             isArchived: r["Archived (yes/no)"] ?? r["isArchived"] ?? (orig?.isArchived ? "yes" : "no"),
             preorderMode: r["Preorder Mode"] ?? r["preorderMode"] ?? orig?.preorderMode ?? "normal",
+            preorderAvailability: {
+              type: r["Preorder Availability"] ?? r["preorderAvailabilityType"] ?? normalizePreorderAvailability(orig?.preorderAvailability).type,
+              weekdays: String(r["Preorder Weekdays (0=Sun)"] ?? r["preorderWeekdays"] ?? normalizePreorderAvailability(orig?.preorderAvailability).weekdays.join(","))
+                .split(",").map((v: string) => Number(v.trim())).filter((v: number) => Number.isInteger(v)),
+              startDate: r["Preorder Start Date"] ?? r["preorderStartDate"] ?? normalizePreorderAvailability(orig?.preorderAvailability).startDate,
+              endDate: r["Preorder End Date"] ?? r["preorderEndDate"] ?? normalizePreorderAvailability(orig?.preorderAvailability).endDate,
+            },
             imageUrl: r["Image URL"] ?? r["imageUrl"] ?? orig?.imageUrl ?? "",
           };
           if (!row._id || !orig) return null;
@@ -1167,6 +1242,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
             row.status !== (orig.status ?? "available") ||
             (String(row.isArchived).toLowerCase() === "yes") !== (orig.isArchived === true) ||
             row.preorderMode !== (orig.preorderMode ?? "normal") ||
+            JSON.stringify(normalizePreorderAvailability(row.preorderAvailability)) !== JSON.stringify(normalizePreorderAvailability(orig.preorderAvailability)) ||
             row.imageUrl !== (orig.imageUrl ?? "");
           return changed ? row : null;
         })
@@ -2592,7 +2668,8 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [quantity, setQuantity] = useState("0");
   const [status, setStatus] = useState("available");
   const [isArchived, setIsArchived] = useState(false);
-   const [preorderMode, setPreorderMode] = useState<"normal" | "preorder_only">("normal");
+  const [preorderMode, setPreorderMode] = useState<"normal" | "preorder_only">("normal");
+  const [preorderAvailability, setPreorderAvailability] = useState<PreorderAvailability>(defaultPreorderAvailability);
   const [imageUrl, setProductImageUrl] = useState("");
   const [productImageMode, setProductImageMode] = useState<"url" | "upload">("url");
   const [productImageUploading, setProductImageUploading] = useState(false);
@@ -2632,7 +2709,8 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setQuantity(String(product.quantity ?? 0));
       setStatus(product.status ?? "available");
       setIsArchived(product.isArchived === true);
-       setPreorderMode(product.preorderMode === "preorder_only" ? "preorder_only" : "normal");
+      setPreorderMode(product.preorderMode === "preorder_only" ? "preorder_only" : "normal");
+      setPreorderAvailability(normalizePreorderAvailability(product.preorderAvailability));
       setProductImageUrl(product.imageUrl ?? "");
       setRecipes(Array.isArray(product.recipes) ? product.recipes.map((r: any) => ({
         title: r.title ?? "", description: r.description ?? "", image: r.image ?? "",
@@ -2666,6 +2744,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setGrossWeight(""); setNetWeight(""); setPieces(""); setServes(""); setQuantity("0"); setStatus("available");
       setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
       setPreorderMode("normal");
+      setPreorderAvailability(defaultPreorderAvailability());
       setCouponIds([]);
       setLowStockThreshold("0");
       setBatches([]);
@@ -2701,6 +2780,22 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (preorderMode === "preorder_only") {
+      if (preorderAvailability.type === "weekdays" && preorderAvailability.weekdays.length === 0) {
+        toast({ title: "Select at least one weekday", description: "Choose the days when this preorder product should be available.", variant: "destructive" });
+        return;
+      }
+      if (preorderAvailability.type === "date_range") {
+        if (!preorderAvailability.startDate || !preorderAvailability.endDate) {
+          toast({ title: "Choose a preorder date range", description: "Select both a start date and an end date.", variant: "destructive" });
+          return;
+        }
+        if (preorderAvailability.startDate > preorderAvailability.endDate) {
+          toast({ title: "Invalid preorder date range", description: "The end date must be on or after the start date.", variant: "destructive" });
+          return;
+        }
+      }
+    }
     setSaving(true);
     const cleanedRecipes = recipes.map((r) => ({
       ...r,
@@ -2717,6 +2812,9 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       status, isArchived, imageUrl,
       lowStockThreshold: Number(lowStockThreshold) || 0,
       preorderMode,
+      preorderAvailability: preorderMode === "preorder_only"
+        ? preorderAvailability
+        : defaultPreorderAvailability(),
       recipes: cleanedRecipes,
       couponIds,
     };
@@ -2825,8 +2923,93 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     <SelectItem value="preorder_only">Preorder Only Product</SelectItem>
                   </SelectContent>
                 </Select>
-                 <p className="text-[11px] text-gray-400">Controls whether this product appears in the normal POS or preorder POS.</p>
+                <p className="text-[11px] text-gray-400">Controls whether this product appears in the normal POS or preorder POS.</p>
               </div>
+              {preorderMode === "preorder_only" && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-3 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <CalendarDays className="w-4 h-4 text-orange-600 mt-0.5 shrink-0" />
+                    <div>
+                      <Label className="text-xs font-semibold text-orange-900">Preorder Availability</Label>
+                      <p className="text-[11px] text-orange-700 mt-0.5">Choose which future dates this product can be ordered for.</p>
+                    </div>
+                  </div>
+                  <Select
+                    value={preorderAvailability.type}
+                    onValueChange={(value) => setPreorderAvailability((current) => ({
+                      ...current,
+                      type: value as PreorderAvailabilityType,
+                    }))}
+                  >
+                    <SelectTrigger className="h-9 text-sm bg-white border-orange-200"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All dates</SelectItem>
+                      <SelectItem value="weekdays">Selected weekdays</SelectItem>
+                      <SelectItem value="date_range">Specific date or date range</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {preorderAvailability.type === "weekdays" && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-orange-800 mb-1.5">Available on</p>
+                      <div className="grid grid-cols-7 gap-1">
+                        {PREORDER_WEEKDAYS.map((day) => {
+                          const selected = preorderAvailability.weekdays.includes(day.value);
+                          return (
+                            <button
+                              key={day.value}
+                              type="button"
+                              onClick={() => setPreorderAvailability((current) => ({
+                                ...current,
+                                weekdays: selected
+                                  ? current.weekdays.filter((value) => value !== day.value)
+                                  : [...current.weekdays, day.value].sort((a, b) => a - b),
+                              }))}
+                              className={`h-8 rounded-md border text-[11px] font-semibold transition-colors ${
+                                selected
+                                  ? "border-orange-500 bg-orange-500 text-white"
+                                  : "border-orange-200 bg-white text-orange-700 hover:bg-orange-100"
+                              }`}
+                            >
+                              {day.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {preorderAvailability.weekdays.length === 0 && (
+                        <p className="text-[11px] text-red-600 mt-1.5">Select at least one weekday.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {preorderAvailability.type === "date_range" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-semibold text-orange-800">Start date</Label>
+                        <Input
+                          type="date"
+                          value={preorderAvailability.startDate}
+                          onChange={(e) => setPreorderAvailability((current) => ({ ...current, startDate: e.target.value }))}
+                          className="h-9 bg-white border-orange-200"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-semibold text-orange-800">End date</Label>
+                        <Input
+                          type="date"
+                          min={preorderAvailability.startDate || undefined}
+                          value={preorderAvailability.endDate}
+                          onChange={(e) => setPreorderAvailability((current) => ({ ...current, endDate: e.target.value }))}
+                          className="h-9 bg-white border-orange-200"
+                        />
+                      </div>
+                      <p className="col-span-2 text-[11px] text-orange-700">
+                        Use the same start and end date for one specific date.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
