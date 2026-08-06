@@ -1239,13 +1239,21 @@ export default function Orders() {
   // A preorder date must be valid for every product already in the cart.
   // Before anything is selected, use the union of preorder product schedules
   // so the cashier can first choose a date on which at least one product can
-  // be sold. Selecting a product narrows the calendar to that product.
-  const preorderDateProducts = useMemo(() => {
-    const preorderProducts = subHubProducts.filter(isPreorderOnlyProduct);
-    if (selectedProducts.length === 0) return preorderProducts;
-    const selectedIds = new Set(selectedProducts.map((item) => String(item.productId)));
-    return preorderProducts.filter((product) => selectedIds.has(String(product._id)));
+  // be sold. Once products are selected, only those products participate in
+  // the calendar and their schedules are intersected.
+  const selectedPreorderProducts = useMemo(() => {
+    const productsById = new Map(
+      subHubProducts.map((product) => [String(product._id), product]),
+    );
+    return selectedProducts
+      .map((item) => productsById.get(String(item.productId)))
+      .filter((product): product is any => Boolean(product) && isPreorderOnlyProduct(product));
   }, [subHubProducts, selectedProducts]);
+
+  const preorderDateProducts = useMemo(() => {
+    if (selectedProducts.length > 0) return selectedPreorderProducts;
+    return subHubProducts.filter(isPreorderOnlyProduct);
+  }, [subHubProducts, selectedPreorderProducts, selectedProducts.length]);
 
   const preorderDisabledDays = useMemo<Matcher[]>(() => {
     const tomorrow = new Date(`${getTomorrowIST()}T00:00:00`);
@@ -1254,9 +1262,13 @@ export default function Orders() {
       (date: Date) => {
         const isoDate = dateToISODate(date);
         if (preorderDateProducts.length === 0) return true;
-        return selectedProducts.length > 0
-          ? !preorderDateProducts.every((product) => isProductAvailableForPreorder(product, isoDate))
-          : !preorderDateProducts.some((product) => isProductAvailableForPreorder(product, isoDate));
+        if (selectedProducts.length > 0) {
+          // A missing product record must not accidentally make every date
+          // look valid; all selected cart products must be represented.
+          if (preorderDateProducts.length !== selectedProducts.length) return true;
+          return !preorderDateProducts.every((product) => isProductAvailableForPreorder(product, isoDate));
+        }
+        return !preorderDateProducts.some((product) => isProductAvailableForPreorder(product, isoDate));
       },
     ];
   }, [preorderDateProducts, selectedProducts.length]);
