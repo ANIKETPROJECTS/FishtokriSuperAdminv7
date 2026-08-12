@@ -12,6 +12,7 @@ module.exports = {
         NODE_ENV: "production",
         PORT: 3015,
         BASE_URL: "http://187.127.174.48:3015",
+        MONGODB_URI: "",
         SESSION_SECRET: "N+sLoTPRIVALoyG9KZg8BEhKC9NNxOSlqfNCDEyxEMIej55cNCHOE1bjIaGh+VFlDXgg9Oh8Wbtgr73PTjkfDQ==",
         WABA_API_KEY: "f14bbabd-3245-44e3-ad2a-0ef632747400",
         WABA_PHONE_ID: "1103117459561700",
