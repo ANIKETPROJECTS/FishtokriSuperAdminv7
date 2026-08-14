@@ -21,7 +21,7 @@ function buildDateFilter(from: string, to: string): Record<string, any> {
 
 const ORDER_PROJECTION = {
   _id: 1, orderId: 1, orderNumber: 1, customerName: 1, phone: 1, total: 1,
-  paidAmount: 1, dueAmount: 1, payments: 1, paymentStatus: 1, status: 1,
+  paidAmount: 1, dueAmount: 1, payments: 1, paymentMode: 1, paymentStatus: 1, status: 1,
   deliveryType: 1, assignedDeliveryPersonId: 1, assignedDeliveryPersonName: 1,
   createdAt: 1, deliveryDate: 1, subHubName: 1, deliveryArea: 1, items: 1, isExpress: 1,
   walletUsed: 1,
@@ -63,16 +63,30 @@ function processOrders(orders: any[]) {
     person.orderCount++;
     person.dueAmount += Number(order.dueAmount) || 0;
 
-    const payments: any[] = Array.isArray(order.payments) ? order.payments : [];
     const orderTotal = Number(order.total) || 0;
 
     // Wallet amount used by customer: prefer payments[] wallet entries,
     // fall back to order.walletUsed (the field set at order creation).
     // Mirrors the Day-end report cash calculation so numbers stay consistent.
-    const walletFromPays = payments
+    const rawPayments: any[] = Array.isArray(order.payments) ? order.payments : [];
+    const walletFromPays = rawPayments
       .filter(p => (p.mode || "").toLowerCase() === "wallet")
       .reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const walletUsed = walletFromPays > 0 ? walletFromPays : (Number(order.walletUsed) || 0);
+
+    // Older takeaway orders may store the collection only in the top-level
+    // paymentMode/paidAmount fields, with no payments[] entries. Normalize
+    // that legacy shape so cash collections are reported just like UPI.
+    const payments: any[] = rawPayments.length > 0
+      ? rawPayments
+      : (() => {
+          const mode = String(order.paymentMode || "").toLowerCase();
+          const paid = Number(order.paidAmount);
+          const isUnpaid = String(order.paymentStatus || "").toLowerCase() === "unpaid";
+          if (isUnpaid || !["cash", "cod", "upi", "card"].includes(mode)) return [];
+          const amount = Number.isFinite(paid) ? paid : Math.max(0, orderTotal - walletUsed);
+          return amount > 0 ? [{ mode: mode === "cod" ? "cash" : mode, amount }] : [];
+        })();
 
     const nonWalletPays = payments.filter(p => (p.mode || "").toLowerCase() !== "wallet");
     const nonWalletPaid = nonWalletPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
