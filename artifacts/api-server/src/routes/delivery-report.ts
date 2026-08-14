@@ -37,13 +37,16 @@ function processOrders(orders: any[]) {
     // Express orders that have been re-assigned to a real in-house delivery person
     // should appear under that person instead.
     const isPorter = String(order.assignedDeliveryPersonId || "") === "porter_delivery";
+    const isTakeaway = order.deliveryType === "takeaway" || order.status === "takeaway";
     const personId = isPorter
       ? "porter_delivery"
-      : String(order.assignedDeliveryPersonId || "unassigned");
+      : isTakeaway
+        ? "unassigned"
+        : String(order.assignedDeliveryPersonId || "unassigned");
     const personName = isPorter
       ? "Porter Delivery"
       : order.assignedDeliveryPersonName ||
-        (order.deliveryType === "takeaway" ? "Takeaway (Counter)" : "Unassigned");
+        (isTakeaway ? "Takeaway (Counter)" : "Unassigned");
 
     if (!personMap.has(personId)) {
       personMap.set(personId, {
@@ -186,7 +189,7 @@ router.get("/", async (req: ScopedRequest, res) => {
       // visible because their due amount is part of the report.
       $and: [
         { status: { $ne: "cancelled" } },
-        { $or: [{ status: { $in: ["delivered", "out_for_delivery"] } }, { deliveryType: "takeaway" }] },
+        { $or: [{ status: { $in: ["delivered", "out_for_delivery", "takeaway"] } }, { deliveryType: "takeaway" }] },
       ],
       ...scopeFilter,
       ...buildDateFilter(from, to),
@@ -252,7 +255,7 @@ router.get("/person/:id", async (req: ScopedRequest, res) => {
       // cancelled orders, while retaining unpaid orders for due totals.
       $and: [
         { status: { $ne: "cancelled" } },
-        { $or: [{ status: { $in: ["delivered", "out_for_delivery"] } }, { deliveryType: "takeaway" }] },
+        { $or: [{ status: { $in: ["delivered", "out_for_delivery", "takeaway"] } }, { deliveryType: "takeaway" }] },
       ],
       ...scopeFilter,
       ...buildDateFilter(from, to),
