@@ -186,7 +186,7 @@ router.get("/", async (req: ScopedRequest, res) => {
       // visible because their due amount is part of the report.
       $and: [
         { status: { $ne: "cancelled" } },
-        { $or: [{ status: "delivered" }, { deliveryType: "takeaway" }] },
+        { $or: [{ status: { $in: ["delivered", "out_for_delivery"] } }, { deliveryType: "takeaway" }] },
       ],
       ...scopeFilter,
       ...buildDateFilter(from, to),
@@ -252,7 +252,7 @@ router.get("/person/:id", async (req: ScopedRequest, res) => {
       // cancelled orders, while retaining unpaid orders for due totals.
       $and: [
         { status: { $ne: "cancelled" } },
-        { $or: [{ status: "delivered" }, { deliveryType: "takeaway" }] },
+        { $or: [{ status: { $in: ["delivered", "out_for_delivery"] } }, { deliveryType: "takeaway" }] },
       ],
       ...scopeFilter,
       ...buildDateFilter(from, to),
