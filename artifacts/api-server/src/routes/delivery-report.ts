@@ -167,7 +167,14 @@ router.get("/", async (req: ScopedRequest, res) => {
     }
 
     const filter: any = {
-      $or: [{ status: "delivered" }, { deliveryType: "takeaway" }],
+      // Delivery reports only include completed, paid collections.
+      // Takeaway orders are included for counter collections, but cancelled
+      // and unpaid orders must never appear or affect report totals.
+      $and: [
+        { status: { $ne: "cancelled" } },
+        { paymentStatus: { $ne: "unpaid" } },
+        { $or: [{ status: "delivered" }, { deliveryType: "takeaway" }] },
+      ],
       ...scopeFilter,
       ...buildDateFilter(from, to),
     };
@@ -228,7 +235,13 @@ router.get("/person/:id", async (req: ScopedRequest, res) => {
     }
 
     const filter: any = {
-      $or: [{ status: "delivered" }, { deliveryType: "takeaway" }],
+      // Keep the person report consistent with the summary report: exclude
+      // cancelled and unpaid orders before processing totals.
+      $and: [
+        { status: { $ne: "cancelled" } },
+        { paymentStatus: { $ne: "unpaid" } },
+        { $or: [{ status: "delivered" }, { deliveryType: "takeaway" }] },
+      ],
       ...scopeFilter,
       ...buildDateFilter(from, to),
     };
