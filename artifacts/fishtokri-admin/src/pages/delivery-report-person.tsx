@@ -245,9 +245,17 @@ export default function DeliveryReportPersonPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [from, setFrom] = useState(today());
-  const [to, setTo] = useState(today());
-  const [applied, setApplied] = useState({ from: today(), to: today() });
+  // Preserve the range selected on the summary page when opening a person
+  // detail report. Without this, the detail page silently reset to today.
+  const initialRange = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromParam = params.get("from") || today();
+    const toParam = params.get("to") || today();
+    return { from: fromParam, to: toParam };
+  }, []);
+  const [from, setFrom] = useState(initialRange.from);
+  const [to, setTo] = useState(initialRange.to);
+  const [applied, setApplied] = useState(initialRange);
   const handleApply = (f?: string, t?: string) => setApplied({ from: f ?? from, to: t ?? to });
 
   const [search, setSearch] = useState("");
@@ -354,6 +362,18 @@ export default function DeliveryReportPersonPage() {
 
   return (
     <div className="space-y-4 max-w-2xl mx-auto w-full" style={{ fontFamily: FONT }}>
+      <div className="flex items-center justify-between gap-3">
+        <button
+          onClick={() => setLocation(`/delivery-report?from=${encodeURIComponent(applied.from)}&to=${encodeURIComponent(applied.to)}`)}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:text-brand-primary"
+        >
+          <ArrowLeft className="w-4 h-4" /> Delivery Report
+        </button>
+        <div className="text-right">
+          <h1 className="text-lg font-bold text-black">{displayName}</h1>
+          <p className="text-xs text-black/45">Delivery person detail</p>
+        </div>
+      </div>
       {/* Date filter */}
       <DateFilterBar from={from} to={to} setFrom={setFrom} setTo={setTo} applied={applied} onApply={handleApply} />
 

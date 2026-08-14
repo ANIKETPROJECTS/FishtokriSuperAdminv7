@@ -397,7 +397,10 @@ export default function DeliveryReportPage() {
                 key={person.personId}
                 person={person}
                 userProfile={usersById[person.personId]}
-                onView={() => setLocation(`/delivery-report/person/${person.personId}`)}
+                onView={() => {
+                  const params = new URLSearchParams({ from: applied.from, to: applied.to });
+                  setLocation(`/delivery-report/person/${person.personId}?${params.toString()}`);
+                }}
               />
             ))}
           </div>
