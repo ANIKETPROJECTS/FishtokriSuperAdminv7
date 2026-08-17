@@ -1820,8 +1820,12 @@ export default function Orders() {
         timeslotStart: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : selectedTimeslot?.startTime,
         timeslotEnd: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : selectedTimeslot?.endTime,
       };
-      const url = editingOrderId ? `/api/orders/${editingOrderId}` : "/api/orders";
-      const method = editingOrderId ? "PUT" : "POST";
+      // The edit route is authoritative while the order/customer data is
+      // loading. Fall back to its URL id so an edit can never become a new
+      // order if React state has not finished settling.
+      const activeEditingOrderId = editingOrderId || editIdFromUrl;
+      const url = activeEditingOrderId ? `/api/orders/${activeEditingOrderId}` : "/api/orders";
+      const method = activeEditingOrderId ? "PUT" : "POST";
       await apiFetch(url, { method, body: JSON.stringify(payload) });
 
       // If a saved address was used and may have been edited, sync it back to the customer record
@@ -1861,7 +1865,7 @@ export default function Orders() {
       load();
       loadStats();
     } catch (err: any) {
-      toast({ title: "Failed to create order", description: err.message, variant: "destructive" });
+      toast({ title: editingOrderId || editIdFromUrl ? "Failed to update order" : "Failed to create order", description: err.message, variant: "destructive" });
     } finally {
       setCreatingSaving(false);
     }
