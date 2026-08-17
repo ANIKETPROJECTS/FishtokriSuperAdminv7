@@ -91,8 +91,8 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
   const extraDiscAmt = Number(order.extraDiscount) || 0;
   const couponAmt = Math.max(0, discount - extraDiscAmt);
   const extraDiscType: string = order.extraDiscountType || "flat";
-  const paidAmt = Number(order.paidAmount) || 0;
-  const dueAmt = Number(order.dueAmount) || Math.max(0, grandTotal - paidAmt);
+  const paidAmt = grandTotal === 0 ? 0 : (Number(order.paidAmount) || 0);
+  const dueAmt = grandTotal === 0 ? 0 : (Number(order.dueAmount) || Math.max(0, grandTotal - paidAmt));
   const invPays: any[] = Array.isArray(order.payments) ? order.payments : [];
   const walletAmt = (() => {
     const w = invPays.find((p: any) => String(p?.mode || "").toLowerCase() === "wallet");

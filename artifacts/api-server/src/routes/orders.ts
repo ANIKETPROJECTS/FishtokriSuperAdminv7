@@ -1500,7 +1500,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         .filter((p: any) => p.mode && p.amount > 0);
     }
     if (paidAmount !== undefined) {
-      const paidNum = Math.max(0, Number(paidAmount) || 0);
+      const requestedPaidNum = Math.max(0, Number(paidAmount) || 0);
       update.paidAmount = paidNum;
       // recompute due against existing total (fall back to items sum for legacy orders)
       const conn0 = await getOrdersDb();
@@ -1521,7 +1521,17 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         const o = await (await getOrdersDb()).db.collection(COLLECTION).findOne({ _id: oid }, { projection: { paymentStatus: 1 } });
         return o?.paymentStatus ?? "unpaid";
       })());
-      update.dueAmount = String(effectivePaymentStatus) === "paid" ? 0 : Math.max(0, totalNum - paidNum);
+      // A fully discounted/zero-total order cannot have a collected payment.
+      const paidNum = totalNum === 0 ? 0 : requestedPaidNum;
+      update.paidAmount = paidNum;
+      if (totalNum === 0) {
+        update.payments = [];
+        update.paymentMode = "";
+        update.paymentStatus = "paid";
+      }
+      update.dueAmount = totalNum === 0 || String(effectivePaymentStatus) === "paid"
+        ? 0
+        : Math.max(0, totalNum - paidNum);
     } else if (total !== undefined) {
       // Total changed (e.g. discount or delivery charge edited) but paidAmount was not sent —
       // recalculate dueAmount against the existing paidAmount so the invoice stays accurate.
@@ -1530,8 +1540,14 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         { _id: oid },
         { projection: { paidAmount: 1, paymentStatus: 1 } }
       );
-      const existingPaid = Math.max(0, Number(existing?.paidAmount) || 0);
+      const existingPaid = Number(total) === 0 ? 0 : Math.max(0, Number(existing?.paidAmount) || 0);
       const effectivePaymentStatus = update.paymentStatus ?? existing?.paymentStatus ?? "unpaid";
+      if (Number(total) === 0) {
+        update.paidAmount = 0;
+        update.payments = [];
+        update.paymentMode = "";
+        update.paymentStatus = "paid";
+      }
       update.dueAmount = String(effectivePaymentStatus) === "paid" ? 0 : Math.max(0, (Number(total) || 0) - existingPaid);
     }
     const conn = await getOrdersDb();

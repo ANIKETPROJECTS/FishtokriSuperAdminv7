@@ -1603,9 +1603,11 @@ function OrderCard({ order, index }: { order: any; index: number }) {
   const billPhone = order.phone ?? order.customerPhone ?? order.mobile ?? "";
   const billAddr = getOrderBillAddress(order);
   const paymentStatus = order.paymentStatus ?? "";
-  const paidAmount = Number(order.paidAmount ?? order.paid ?? 0);
   const totalAmt = Number(grandTotal ?? getOrderTotal(order));
-  const dueAmount = order.dueAmount != null ? Number(order.dueAmount) : Math.max(0, totalAmt - paidAmount);
+   const paidAmount = totalAmt === 0 ? 0 : Number(order.paidAmount ?? order.paid ?? 0);
+   const dueAmount = totalAmt === 0
+     ? 0
+     : (order.dueAmount != null ? Number(order.dueAmount) : Math.max(0, totalAmt - paidAmount));
   const subHubName = order.subHubName ?? order.subHub ?? order.location ?? "";
   const isPaid = paymentStatus && normalize(paymentStatus) === "paid";
   const isUnpaid = paymentStatus && ["unpaid", "pending", "due"].includes(normalize(paymentStatus));
