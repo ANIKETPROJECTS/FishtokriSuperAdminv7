@@ -1708,7 +1708,9 @@ export default function Orders() {
     }
 
     // Validate payment (takeaway orders are always paid at pickup — skip validation)
-    if (orderDeliveryType !== "takeaway" && paymentStatus !== "unpaid") {
+    // A fully discounted order has no payable amount, so stale payment
+    // entries from the original order must not block saving the edit.
+    if (newOrderTotal > 0 && orderDeliveryType !== "takeaway" && paymentStatus !== "unpaid") {
       const validEntries = paymentEntries.filter((p) => p.mode && Number(p.amount) > 0);
       if (validEntries.length === 0) {
         toast({ title: "Add payment details", description: "Enter at least one payment with mode and amount.", variant: "destructive" });
