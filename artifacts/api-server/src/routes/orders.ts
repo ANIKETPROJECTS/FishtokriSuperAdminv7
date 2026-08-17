@@ -1501,7 +1501,6 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     }
     if (paidAmount !== undefined) {
       const requestedPaidNum = Math.max(0, Number(paidAmount) || 0);
-      update.paidAmount = paidNum;
       // recompute due against existing total (fall back to items sum for legacy orders)
       const conn0 = await getOrdersDb();
       const existing = await conn0.db.collection(COLLECTION).findOne(
