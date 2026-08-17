@@ -5193,10 +5193,14 @@ export default function Orders() {
                   );
                   // For unpaid orders, never fall back to summing the payments[] array —
                   // those entries represent the intended payment method, not collected cash.
-                  const paid = status === "unpaid"
-                    ? (Number(selectedOrder.paidAmount) || 0)
-                    : (Number(selectedOrder.paidAmount) || pays.reduce((s, p) => s + (Number(p?.amount) || 0), 0));
-                  const due = status === "paid" ? 0 : (Number(selectedOrder.dueAmount) || Math.max(0, _grand - paid));
+                   const paid = _grand === 0
+                     ? 0
+                     : status === "unpaid"
+                       ? (Number(selectedOrder.paidAmount) || 0)
+                       : (Number(selectedOrder.paidAmount) || pays.reduce((s, p) => s + (Number(p?.amount) || 0), 0));
+                   const due = _grand === 0
+                     ? 0
+                     : status === "paid" ? 0 : (Number(selectedOrder.dueAmount) || Math.max(0, _grand - paid));
                   if (!pays.length && !status && !paid) return null;
                   const statusStyle = status === "paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : status === "partial" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-600 border-red-200";
                   const statusLabel = status === "paid" ? "Fully Paid" : status === "partial" ? "Partial" : "Unpaid";
