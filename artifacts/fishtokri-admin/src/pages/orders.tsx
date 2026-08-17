@@ -2671,8 +2671,25 @@ export default function Orders() {
     const savedDeliveryCharge = Number(o.deliveryCharge);
     setDeliveryChargeInput(savedDeliveryCharge > 0 ? String(savedDeliveryCharge) : "");
     const savedExtraDiscount = Number(o.extraDiscount);
-    setExtraDiscount(savedExtraDiscount > 0 ? String(savedExtraDiscount) : "");
-    setExtraDiscountType("flat");
+    const savedExtraDiscountType = o.extraDiscountType === "percentage" ? "percentage" : "flat";
+    setExtraDiscountType(savedExtraDiscountType);
+    if (savedExtraDiscount > 0 && savedExtraDiscountType === "percentage") {
+      // The API stores the calculated discount amount, while the edit control
+      // expects the original percentage input. Reconstruct it from the saved
+      // subtotal and coupon discount so the toggle and value remain equivalent.
+      const savedSubtotal = Number(o.subtotal) || (o.items ?? []).reduce(
+        (sum: number, item: any) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 1),
+        0,
+      );
+      const savedCouponDiscount = Math.max(0, (Number(o.discount) || 0) - savedExtraDiscount);
+      const percentageBase = Math.max(0, savedSubtotal - savedCouponDiscount);
+      const savedPercentage = percentageBase > 0
+        ? Math.round((savedExtraDiscount / percentageBase) * 10000) / 100
+        : 0;
+      setExtraDiscount(savedPercentage > 0 ? String(savedPercentage) : "");
+    } else {
+      setExtraDiscount(savedExtraDiscount > 0 ? String(savedExtraDiscount) : "");
+    }
   }, [allCustomers]);
 
   const openEditOrder = (o: any) => {
