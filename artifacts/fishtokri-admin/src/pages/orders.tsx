@@ -80,6 +80,21 @@ function getBase() {
   return import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 }
 
+// POS edit state can contain hydrated Mongo/React objects from legacy order
+// data. Keep request serialization defensive: the API only needs the plain
+// fields assembled in the payload, and a circular metadata reference must not
+// prevent an otherwise valid order update from being sent.
+function stringifyRequestBody(value: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_key, nestedValue) => {
+    if (nestedValue && typeof nestedValue === "object") {
+      if (seen.has(nestedValue)) return undefined;
+      seen.add(nestedValue);
+    }
+    return nestedValue;
+  });
+}
+
 async function apiFetch(path: string, opts: RequestInit = {}) {
   const res = await fetch(`${getBase()}${path}`, {
     ...opts,
@@ -1826,7 +1841,7 @@ export default function Orders() {
       const activeEditingOrderId = editingOrderId || editIdFromUrl;
       const url = activeEditingOrderId ? `/api/orders/${activeEditingOrderId}` : "/api/orders";
       const method = activeEditingOrderId ? "PUT" : "POST";
-      await apiFetch(url, { method, body: JSON.stringify(payload) });
+      await apiFetch(url, { method, body: stringifyRequestBody(payload) });
 
       // If a saved address was used and may have been edited, sync it back to the customer record
       if (customerId && orderDeliveryType === "delivery" && orderAddressMode === "saved" && selectedAddressIdx !== null && chosenCustomer) {
