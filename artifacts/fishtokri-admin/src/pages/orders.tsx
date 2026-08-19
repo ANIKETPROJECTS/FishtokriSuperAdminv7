@@ -3219,7 +3219,7 @@ export default function Orders() {
                     const pincodes = [...new Set(zoneOrders.map((order) => order.zonePincode).filter(Boolean))];
                     const rank = zoneOrders.reduce((max, order) => Math.max(max, Number(order.zoneRank) || 0), 0);
                     return [
-                      <tr key={`zone-header-${zoneKey}`} className="border-y" style={{ backgroundColor: color.bg, borderColor: color.border }}>
+                      ...(activeTab === "current" ? [<tr key={`zone-header-${zoneKey}`} className="border-y" style={{ backgroundColor: color.bg, borderColor: color.border }}>
                         <td colSpan={10} className="px-4 py-2.5">
                           <div className="flex items-center gap-3" style={{ color: color.text }}>
                             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color.dot }} />
@@ -3229,7 +3229,7 @@ export default function Orders() {
                             {pincodes.length > 0 && <span className="text-xs opacity-80">Pincodes: {pincodes.join(", ")}</span>}
                           </div>
                         </td>
-                      </tr>,
+                      </tr>] : []),
                       ...zoneOrders.map((o) => {
                   const total = effectiveOrderTotal(o);
                   const items: any[] = Array.isArray(o.items) ? o.items : [];
