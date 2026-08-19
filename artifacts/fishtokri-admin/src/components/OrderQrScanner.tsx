@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import QrScanner from "qr-scanner";
+import { Html5Qrcode } from "html5-qrcode";
 import { Camera, Loader2, RefreshCw, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+
+const SCANNER_ID = "fishtokri-order-qr-reader";
 
 export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
-  const { toast } = useToast();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const scannerRef = useRef<QrScanner | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const activeRef = useRef(false);
   const handlingRef = useRef(false);
   const onOpenChangeRef = useRef(onOpenChange);
   const onSuccessRef = useRef(onSuccess);
-  const toastRef = useRef(toast);
+  const toastRef = useRef<ReturnType<typeof useToast>["toast"]>();
+  const { toast } = useToast();
   const [starting, setStarting] = useState(true);
   const [cameraError, setCameraError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -28,68 +29,82 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   toastRef.current = toast;
 
   useEffect(() => {
-    if (!open || !videoRef.current) return;
+    if (!open) return;
     let active = true;
     activeRef.current = true;
     handlingRef.current = false;
     setStarting(true);
     setCameraError("");
     setSubmitting(false);
-    const scanner = new QrScanner(videoRef.current, async (result) => {
+
+    const scanner = new Html5Qrcode(SCANNER_ID, { verbose: false });
+    scannerRef.current = scanner;
+    const startupTimeout = window.setTimeout(() => {
+      if (!active) return;
+      active = false;
+      scanner.stop().catch(() => undefined).finally(() => scanner.clear());
+      scannerRef.current = null;
+      setStarting(false);
+      setCameraError("Camera startup timed out. Allow camera access, then try again.");
+    }, 8000);
+
+    const handleDecoded = async (decodedText: string) => {
       if (!active || handlingRef.current) return;
       handlingRef.current = true;
-      scanner.stop();
       setSubmitting(true);
+      await scanner.stop().catch(() => undefined);
       try {
         const token = localStorage.getItem("fishtokri_token") || "";
         const base = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
         const res = await fetch(`${base}/api/orders/dispatch-by-qr`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ token: result.data }),
+          body: JSON.stringify({ token: decodedText }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.message || "Could not dispatch this order");
-        toastRef.current({ title: "Order dispatched", description: "The order is now out for delivery." });
+        toastRef.current?.({ title: "Order dispatched", description: "The order is now out for delivery." });
+        active = false;
         onOpenChangeRef.current(false);
         onSuccessRef.current();
       } catch (error: any) {
-        toastRef.current({ title: "Scan failed", description: error.message, variant: "destructive" });
-        handlingRef.current = false;
-        setSubmitting(false);
-        if (active) scanner.start().catch(() => {
-          setCameraError("The camera stopped. Tap Try again to restart it.");
-        });
-      }
-    }, {
-      preferredCamera: "environment",
-      maxScansPerSecond: 5,
-      highlightScanRegion: true,
-      highlightCodeOutline: true,
-    });
-    scannerRef.current = scanner;
-    const startupTimeout = window.setTimeout(() => {
-      if (!active) return;
-      scanner.stop();
-      scanner.destroy();
-      scannerRef.current = null;
-      setStarting(false);
-      setCameraError("Camera startup is taking too long. Check camera permission and try again.");
-    }, 10000);
-    scanner.start()
-      .then(() => { if (active) { window.clearTimeout(startupTimeout); setStarting(false); } })
-      .catch(() => {
+        toastRef.current?.({ title: "Scan failed", description: error.message, variant: "destructive" });
         if (active) {
-          window.clearTimeout(startupTimeout);
-          setStarting(false);
-          setCameraError("Camera access was blocked or is unavailable on this device.");
+          handlingRef.current = false;
+          setSubmitting(false);
+          scanner.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1 },
+            handleDecoded,
+            () => undefined,
+          ).catch(() => setCameraError("The camera stopped. Tap Try again to restart it."));
         }
-      });
+      }
+    };
+
+    scanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1 },
+      handleDecoded,
+      () => undefined,
+    ).then(() => {
+      if (active) {
+        window.clearTimeout(startupTimeout);
+        setStarting(false);
+      }
+    }).catch(() => {
+      if (active) {
+        window.clearTimeout(startupTimeout);
+        setStarting(false);
+        setCameraError("Camera access was blocked or is unavailable on this device.");
+      }
+    });
+
     return () => {
       active = false;
       activeRef.current = false;
       window.clearTimeout(startupTimeout);
-      scanner.destroy();
+      scanner.stop().catch(() => undefined).finally(() => scanner.clear());
       scannerRef.current = null;
     };
   }, [open, retry]);
@@ -98,13 +113,20 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-0 overflow-hidden">
         <DialogHeader className="px-5 pt-5">
-          <DialogTitle className="flex items-center gap-2"><Camera className="w-5 h-5 text-[#1A56DB]" /> Scan order QR</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Camera className="w-5 h-5 text-[#1A56DB]" /> Scan order QR
+          </DialogTitle>
         </DialogHeader>
         <div className="relative mx-5 mt-2 aspect-square overflow-hidden rounded-2xl bg-black">
-          <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
-          {starting && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white"><Loader2 className="h-7 w-7 animate-spin" /><span className="text-sm">Starting camera…</span></div>}
+          <div id={SCANNER_ID} className="h-full w-full [& video]:h-full [& video]:w-full [& video]:object-cover" />
+          {starting && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black text-white">
+              <Loader2 className="h-7 w-7 animate-spin" />
+              <span className="text-sm">Opening camera…</span>
+            </div>
+          )}
           {!starting && cameraError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 px-8 text-center text-white">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/90 px-8 text-center text-white">
               <Camera className="h-9 w-9 text-white/80" />
               <p className="text-sm">{cameraError}</p>
               <Button onClick={() => setRetry((value) => value + 1)} className="gap-2 bg-white text-black hover:bg-white/90">
@@ -119,9 +141,13 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
             </div>
           )}
         </div>
-        <p className="px-5 py-3 text-center text-sm text-black/55">Point the camera at the QR code printed at the bottom of the customer invoice.</p>
+        <p className="px-5 py-3 text-center text-sm text-black/55">
+          Point the camera at the QR code printed at the bottom of the customer invoice.
+        </p>
         <div className="flex justify-end border-t px-5 py-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)}><X className="mr-1.5 h-4 w-4" />Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <X className="mr-1.5 h-4 w-4" />Cancel
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
