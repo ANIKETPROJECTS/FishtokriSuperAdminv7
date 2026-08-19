@@ -3189,7 +3189,6 @@ export default function Orders() {
                   <th className="px-3 py-4 text-center">Total</th>
                   <th className="px-3 py-4 text-center">Payment</th>
                   <th className="px-3 py-4 text-center">Sub Hub</th>
-                  <th className="px-3 py-4 text-center">Zone</th>
                   <th className="px-3 py-4 text-center">Time Slot</th>
                   <th className="px-3 py-4 text-center">Location</th>
                   <th className="px-3 py-4 text-center">Status</th>
@@ -3221,7 +3220,7 @@ export default function Orders() {
                     const rank = zoneOrders.reduce((max, order) => Math.max(max, Number(order.zoneRank) || 0), 0);
                     return [
                       <tr key={`zone-header-${zoneKey}`} className="border-y" style={{ backgroundColor: color.bg, borderColor: color.border }}>
-                        <td colSpan={11} className="px-4 py-2.5">
+                        <td colSpan={10} className="px-4 py-2.5">
                           <div className="flex items-center gap-3" style={{ color: color.text }}>
                             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color.dot }} />
                             <span className="text-sm font-bold">{zoneKey === "__unassigned__" ? "Unassigned Zone" : zoneKey}</span>
@@ -3307,11 +3306,6 @@ export default function Orders() {
                       <td className="px-3 py-4">
                         {o.subHubName
                           ? <span className="text-sm font-medium text-black">{o.subHubName}</span>
-                          : <span className="text-sm text-black">—</span>}
-                      </td>
-                      <td className="px-3 py-4">
-                        {o.zoneName
-                          ? <div><span className="text-sm font-medium text-black">{o.zoneName}</span><span className="block text-[10px] text-gray-400">{o.zonePincode || "—"} · rank {o.zonePincodeRank}</span></div>
                           : <span className="text-sm text-black">—</span>}
                       </td>
                       <td className="px-3 py-4">
