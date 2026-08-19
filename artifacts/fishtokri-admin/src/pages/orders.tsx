@@ -824,6 +824,8 @@ export default function Orders() {
   const [subHubs, setSubHubs] = useState<any[]>([]);
   const [loadingSubHubs, setLoadingSubHubs] = useState(false);
   const [selectedSubHubId, setSelectedSubHubId] = useState<string>("");
+  const [selectedSubHubZones, setSelectedSubHubZones] = useState<any[]>([]);
+  const [loadingSubHubZones, setLoadingSubHubZones] = useState(false);
   const [subHubProducts, setSubHubProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -1049,10 +1051,15 @@ export default function Orders() {
   // Load products, coupons, timeslots when sub-hub changes
   useEffect(() => {
     if (!selectedSubHubId) {
-      setSubHubProducts([]); setCoupons([]); setTimeslots([]);
+      setSubHubProducts([]); setCoupons([]); setTimeslots([]); setSelectedSubHubZones([]);
       setAppliedCouponIds([]); setSelectedTimeslotId("");
       return;
     }
+    setLoadingSubHubZones(true);
+    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/zones`)
+      .then((d) => setSelectedSubHubZones(Array.isArray(d.zones) ? d.zones : []))
+      .catch(() => setSelectedSubHubZones([]))
+      .finally(() => setLoadingSubHubZones(false));
     setLoadingProducts(true);
     apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/products`)
       .then((d) => setSubHubProducts(d.products ?? []))
@@ -1414,8 +1421,26 @@ export default function Orders() {
     if (!deliveryPincode || !selectedSubHubId) return null;
     const sub = subHubs.find((h: any) => h.id === selectedSubHubId);
     if (!sub) return null;
+    if (loadingSubHubZones) return undefined;
+    const matches = selectedSubHubZones.flatMap((zone: any) => {
+      const membership = Array.isArray(zone.pincodes)
+        ? zone.pincodes.find((entry: any) => String(entry?.pincode ?? entry) === deliveryPincode)
+        : null;
+      return membership ? [{ zone, membership }] : [];
+    }).sort((a: any, b: any) =>
+      Number(b.zone?.rank ?? 0) - Number(a.zone?.rank ?? 0) ||
+      Number(b.membership?.rank ?? 0) - Number(a.membership?.rank ?? 0)
+    );
+    if (matches.length > 0) {
+      const match = matches[0];
+      return {
+        pincode: deliveryPincode,
+        charge: match.membership?.charge ?? 0,
+        timeDelay: match.membership?.timeDelay ?? 0,
+      };
+    }
     return (sub.pincodes || []).find((p: any) => p.pincode === deliveryPincode) || null;
-  }, [deliveryPincode, selectedSubHubId, subHubs]);
+  }, [deliveryPincode, selectedSubHubId, subHubs, selectedSubHubZones, loadingSubHubZones]);
 
   const pincodeDeliveryCharge = useMemo(() => {
     if (orderDeliveryType !== "delivery") return 0;
@@ -1428,8 +1453,8 @@ export default function Orders() {
   }, [pincodeEntry, orderDeliveryType]);
 
   const isOutstationNeeded = useMemo(() =>
-    orderDeliveryType === "delivery" && deliveryPincode.length === 6 && pincodeEntry === null,
-    [orderDeliveryType, deliveryPincode, pincodeEntry]
+    orderDeliveryType === "delivery" && deliveryPincode.length === 6 && !loadingSubHubZones && pincodeEntry === null,
+    [orderDeliveryType, deliveryPincode, pincodeEntry, loadingSubHubZones]
   );
 
   // Auto-reset outstation toggle when pincode becomes serviceable or is cleared
