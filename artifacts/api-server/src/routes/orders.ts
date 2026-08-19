@@ -22,6 +22,7 @@ router.use(requireAuth as any);
 router.use(loadScope as any);
 
 const zoneCache = new Map<string, { expires: number; zones: any[] }>();
+const TEST_SEED_TAG = "zone-ranking-test-seed";
 
 function orderPincode(order: any): string {
   const candidates = [
@@ -100,6 +101,123 @@ async function enrichOrdersWithZones(orders: any[]): Promise<any[]> {
     };
   });
 }
+
+router.post("/test-seed-zone-data", async (req: ScopedRequest, res) => {
+  try {
+    const subHubId = String(req.body?.subHubId ?? "");
+    if (!subHubId || !mongoose.isValidObjectId(subHubId)) {
+      res.status(400).json({ error: "ValidationError", message: "A valid sub hub is required" });
+      return;
+    }
+    if (req.scope && !req.scope.isMaster && !req.scope.subHubIds.includes(subHubId)) {
+      res.status(403).json({ error: "Forbidden", message: "You can only seed data for your assigned sub hubs." });
+      return;
+    }
+    const subHub = await SubHub.findById(subHubId).lean();
+    if (!subHub?.dbName) {
+      res.status(404).json({ error: "NotFound", message: "Sub hub database not found" });
+      return;
+    }
+    const subConn = await getSubHubDbConnection(String(subHub.dbName));
+    const ordersConn = await getOrdersDb();
+    const customersConn = await getCustomersConnection();
+    const now = new Date();
+    const pincodeGroups = [
+      { name: "TEST Zone Near", rank: 1, pincodes: ["401001", "401002", "401003", "401004", "401005"] },
+      { name: "TEST Zone Middle", rank: 2, pincodes: ["401003", "401004", "401005", "401006", "401007"] },
+      { name: "TEST Zone Far", rank: 3, pincodes: ["401006", "401007", "401008", "401009", "401010"] },
+    ];
+    const allPincodes = [...new Set(pincodeGroups.flatMap((group) => group.pincodes))];
+
+    await subConn.db.collection("zones").deleteMany({ seedTag: TEST_SEED_TAG });
+    await subConn.db.collection("pincodes").deleteMany({ seedTag: TEST_SEED_TAG });
+    await ordersConn.db.collection(COLLECTION).deleteMany({ seedTag: TEST_SEED_TAG });
+    await customersConn.db.collection("customers").deleteMany({ seedTag: TEST_SEED_TAG });
+
+    await subConn.db.collection("pincodes").insertMany(allPincodes.map((pincode, index) => ({
+      pincode,
+      charge: 20 + index * 5,
+      timeDelay: 10 + index * 5,
+      seedTag: TEST_SEED_TAG,
+      createdAt: now,
+      updatedAt: now,
+    })));
+    await subConn.db.collection("zones").insertMany(pincodeGroups.map((group) => ({
+      name: group.name,
+      description: "Generated delivery-zone ranking test data",
+      rank: group.rank,
+      seedTag: TEST_SEED_TAG,
+      pincodes: group.pincodes.map((pincode, index) => ({
+        pincode,
+        rank: group.pincodes.length - index,
+        charge: 20 + allPincodes.indexOf(pincode) * 5,
+        timeDelay: 10 + allPincodes.indexOf(pincode) * 5,
+      })),
+      createdAt: now,
+      updatedAt: now,
+    })));
+
+    const customers = Array.from({ length: 15 }, (_, index) => {
+      const pincode = allPincodes[index % allPincodes.length];
+      const name = `TEST Customer ${String(index + 1).padStart(2, "0")}`;
+      const phone = `90000${String(10000 + index).slice(-5)}`;
+      return {
+        name,
+        email: `zone-test-${index + 1}@example.invalid`,
+        phone,
+        addresses: [{ label: "Home", name, phone, building: `TEST Building ${index + 1}`, area: "Zone Ranking Test", pincode, isDefault: true }],
+        orders: [],
+        usedCoupons: [],
+        activeCoupons: [],
+        seedTag: TEST_SEED_TAG,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    const customerResult = await customersConn.db.collection("customers").insertMany(customers);
+    const customerIds = Object.values(customerResult.insertedIds);
+    const orderDocs = await Promise.all(customers.map(async (customer, index) => ({
+      customerId: String(customerIds[index]),
+      customerName: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      items: [{ name: "TEST Zone Ranking Item", price: 100 + index * 10, quantity: 1, unit: "piece" }],
+      subtotal: 100 + index * 10,
+      discount: 0,
+      slotCharge: 0,
+      deliveryCharge: 20 + index * 5,
+      extraDiscount: 0,
+      extraDiscountType: "flat",
+      total: 120 + index * 15,
+      deliveryType: "delivery",
+      orderType: "normal",
+      address: `TEST Building ${index + 1}, Zone Ranking Test, ${customers[index].addresses[0].pincode}`,
+      deliveryArea: "Zone Ranking Test",
+      deliveryAddressDetail: customers[index].addresses[0],
+      notes: "Generated zone-ranking test order",
+      status: "pending",
+      source: "test_seed",
+      seedTag: TEST_SEED_TAG,
+      subHubId,
+      subHubName: subHub.name,
+      paymentStatus: "unpaid",
+      payments: [],
+      paidAmount: 0,
+      dueAmount: 120 + index * 15,
+      paymentMode: "cod",
+      scheduleType: "instant",
+      createdAt: new Date(now.getTime() + index),
+      updatedAt: now,
+      orderId: await generateOrderId(ordersConn.db),
+    })));
+    await ordersConn.db.collection(COLLECTION).insertMany(orderDocs);
+    zoneCache.delete(`${subHubId}|${subHub.name}`);
+    res.status(201).json({ ok: true, zones: pincodeGroups.length, pincodes: allPincodes.length, orders: orderDocs.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to seed zone ranking test data");
+    res.status(500).json({ error: "InternalError", message: "Failed to seed zone ranking test data" });
+  }
+});
 
 const VALID_ORDER_STATUSES = new Set([
   "pending",
