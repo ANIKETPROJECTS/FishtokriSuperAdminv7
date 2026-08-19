@@ -135,6 +135,15 @@ const MASTER_ONLY = ["master_admin"];
 const SUB_HUB_ONLY = ["sub_hub"];
 
 function App() {
+  useEffect(() => {
+    // Public QR links carry a token only long enough to open FishTokri.
+    // Remove it from the address bar immediately after navigation.
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("order_qr")) {
+      window.history.replaceState({}, document.title, window.location.pathname || "/");
+    }
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

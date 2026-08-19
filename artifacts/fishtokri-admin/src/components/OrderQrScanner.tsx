@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { Camera, Loader2, RefreshCw, X } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertTriangle, Camera, Loader2, RefreshCw, X } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,6 +33,7 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   const [cameraError, setCameraError] = useState("");
   const [retry, setRetry] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [assignedMessage, setAssignedMessage] = useState("");
 
   onOpenChangeRef.current = onOpenChange;
   onSuccessRef.current = onSuccess;
@@ -82,7 +83,20 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
           body: JSON.stringify({ token: extractOrderQrToken(decodedText) }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.message || "Could not dispatch this order");
+        if (!res.ok) {
+          if (data.error === "AlreadyAssigned") {
+            active = false;
+            setSubmitting(false);
+            onOpenChangeRef.current(false);
+            window.setTimeout(() => {
+              setAssignedMessage(
+                data.message || `This order is already assigned to ${data.assignedDeliveryPersonName || "another delivery partner"}`,
+              );
+            }, 180);
+            return;
+          }
+          throw new Error(data.message || "Could not dispatch this order");
+        }
         toastRef.current?.({ title: "Order dispatched", description: "The order is now out for delivery." });
         active = false;
         onOpenChangeRef.current(false);
@@ -135,7 +149,8 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   }, [open, retry]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-0 overflow-hidden">
         <DialogHeader className="px-5 pt-5">
           <DialogTitle className="flex items-center gap-2">
@@ -175,6 +190,31 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
           </Button>
         </div>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <Dialog
+        open={Boolean(assignedMessage)}
+        onOpenChange={(nextOpen) => { if (!nextOpen) setAssignedMessage(""); }}
+      >
+        <DialogContent className="max-w-sm overflow-hidden rounded-2xl border-0 p-0 shadow-2xl">
+          <div className="bg-gradient-to-br from-amber-50 via-white to-orange-50 px-6 pb-6 pt-7 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 ring-8 ring-amber-50">
+              <AlertTriangle className="h-7 w-7 text-amber-600" />
+            </div>
+            <DialogHeader className="space-y-2">
+              <DialogTitle className="text-xl font-bold text-gray-900">Order already assigned</DialogTitle>
+              <DialogDescription className="text-base leading-6 text-gray-600">
+                {assignedMessage}
+              </DialogDescription>
+            </DialogHeader>
+            <Button
+              className="mt-5 w-full rounded-xl bg-[#1A56DB] py-5 font-semibold hover:bg-[#1447B4]"
+              onClick={() => setAssignedMessage("")}
+            >
+              Okay, got it
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
