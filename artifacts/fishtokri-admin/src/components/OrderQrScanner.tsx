@@ -29,6 +29,13 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
 
   useEffect(() => {
     if (!open) return;
+    // Radix renders DialogContent through a portal. On the first effect pass
+    // the scanner host may not exist yet, so wait for the portal before
+    // constructing Html5Qrcode (it throws if the element ID is missing).
+    if (!document.getElementById(SCANNER_ID)) {
+      const mountRetry = window.setTimeout(() => setRetry((value) => value + 1), 50);
+      return () => window.clearTimeout(mountRetry);
+    }
     let active = true;
     handlingRef.current = false;
     setStarting(true);
