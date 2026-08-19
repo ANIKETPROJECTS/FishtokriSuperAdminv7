@@ -47,8 +47,10 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
     const startupTimeout = window.setTimeout(() => {
       if (!active) return;
       active = false;
-      scanner.stop().catch(() => undefined).finally(() => scanner.clear());
       scannerRef.current = null;
+      scanner.stop().catch(() => undefined).then(() => {
+        try { if (document.getElementById(SCANNER_ID)) scanner.clear(); } catch { /* already unmounted */ }
+      });
       setStarting(false);
       setCameraError("Camera startup timed out. Allow camera access, then try again.");
     }, 8000);
@@ -58,6 +60,8 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
       handlingRef.current = true;
       setSubmitting(true);
       await scanner.stop().catch(() => undefined);
+      if (scannerRef.current === scanner) scannerRef.current = null;
+      try { if (document.getElementById(SCANNER_ID)) scanner.clear(); } catch { /* dialog may be closing */ }
       try {
         const token = localStorage.getItem("fishtokri_token") || "";
         const base = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
@@ -71,7 +75,8 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
         toastRef.current?.({ title: "Order dispatched", description: "The order is now out for delivery." });
         active = false;
         onOpenChangeRef.current(false);
-        onSuccessRef.current();
+        // Let Radix finish unmounting the camera portal before refreshing the list.
+        window.setTimeout(() => onSuccessRef.current(), 0);
       } catch (error: any) {
         toastRef.current?.({ title: "Scan failed", description: error.message, variant: "destructive" });
         if (active) {
@@ -108,8 +113,10 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
     return () => {
       active = false;
       window.clearTimeout(startupTimeout);
-      scanner.stop().catch(() => undefined).finally(() => scanner.clear());
-      scannerRef.current = null;
+      if (scannerRef.current === scanner) scannerRef.current = null;
+      scanner.stop().catch(() => undefined).then(() => {
+        try { if (document.getElementById(SCANNER_ID)) scanner.clear(); } catch { /* already unmounted */ }
+      });
     };
   }, [open, retry]);
 
