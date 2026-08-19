@@ -35,6 +35,7 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   const [submitting, setSubmitting] = useState(false);
   const [assignedMessage, setAssignedMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   onOpenChangeRef.current = onOpenChange;
   onSuccessRef.current = onSuccess;
@@ -105,13 +106,26 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
             }, 180);
             return;
           }
+          if (data.error === "Pending" || data.orderStatus === "pending") {
+            active = false;
+            setSubmitting(false);
+            onOpenChangeRef.current(false);
+            window.setTimeout(() => {
+              setStatusMessage(data.message || "This order is currently pending.");
+            }, 180);
+            return;
+          }
           throw new Error(data.message || "Could not dispatch this order");
         }
-        toastRef.current?.({ title: "Order dispatched", description: "The order is now out for delivery." });
         active = false;
+        setSubmitting(false);
         onOpenChangeRef.current(false);
-        // Let Radix finish unmounting the camera portal before refreshing the list.
-        window.setTimeout(() => onSuccessRef.current(), 0);
+        // Let Radix finish unmounting the camera portal before showing the result
+        // and refreshing the delivery list.
+        window.setTimeout(() => {
+          setSuccessMessage("The order has been assigned successfully and is now out for delivery.");
+          onSuccessRef.current();
+        }, 180);
       } catch (error: any) {
         toastRef.current?.({ title: "Scan failed", description: error.message, variant: "destructive" });
         if (active) {
@@ -200,6 +214,30 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
           </Button>
         </div>
       </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(successMessage)}
+        onOpenChange={(nextOpen) => { if (!nextOpen) setSuccessMessage(""); }}
+      >
+        <DialogContent className="max-w-sm overflow-hidden rounded-2xl border-0 p-0 shadow-2xl">
+          <div className="bg-gradient-to-br from-emerald-50 via-white to-green-50 px-6 pb-6 pt-7 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 ring-8 ring-emerald-50">
+              <span className="text-3xl font-bold text-emerald-600">✓</span>
+            </div>
+            <DialogHeader className="space-y-2">
+              <DialogTitle className="text-xl font-bold text-gray-900">Order assigned successfully</DialogTitle>
+              <DialogDescription className="text-base leading-6 text-gray-600">
+                {successMessage}
+              </DialogDescription>
+            </DialogHeader>
+            <Button
+              className="mt-5 w-full rounded-xl bg-[#1A56DB] py-5 font-semibold hover:bg-[#1447B4]"
+              onClick={() => setSuccessMessage("")}
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog>
       <Dialog
         open={Boolean(assignedMessage)}

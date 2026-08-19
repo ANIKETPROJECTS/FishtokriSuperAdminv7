@@ -1474,6 +1474,14 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
       res.status(409).json({ error: "Unavailable", message: "Takeaway orders cannot be dispatched for delivery" });
       return;
     }
+    if (orderStatus === "pending") {
+      res.status(409).json({
+        error: "Pending",
+        orderStatus,
+        message: "This order is currently pending.",
+      });
+      return;
+    }
     const currentAssignee = String(existing.assignedDeliveryPersonId ?? "");
     if (currentAssignee) {
       const assignedName = String(
