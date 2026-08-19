@@ -33,7 +33,21 @@ function orderPincode(order: any): string {
     order?.deliveryAddress?.pincode,
     order?.selectedAddress?.pincode,
   ];
-  return candidates.map((value) => String(value ?? "").trim()).find((value) => /^\d{6}$/.test(value)) || "";
+  const exact = candidates.map((value) => String(value ?? "").trim()).find((value) => /^\d{6}$/.test(value));
+  if (exact) return exact;
+  const textFields = [
+    order?.address,
+    order?.deliveryArea,
+    order?.customerAddress,
+    order?.deliveryAddress,
+    order?.selectedAddress,
+  ];
+  for (const value of textFields) {
+    if (typeof value !== "string") continue;
+    const match = value.match(/\b\d{6}\b/);
+    if (match) return match[0];
+  }
+  return "";
 }
 
 async function getZonesForSubHub(subHubId: string, subHubName?: string): Promise<any[]> {
