@@ -977,15 +977,15 @@ function RankedPincodesTab({ subHubId, onCountChange }: { subHubId: string; onCo
               </div>
               <Button variant="outline" size="sm" onClick={() => saveZone(selected, { name: zoneName, description: zoneDescription })}>Save Zone Details</Button>
               <div className="divide-y rounded-lg border mt-3">
-                <div className="grid grid-cols-[1fr_120px_140px_auto] gap-3 px-3 py-2 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500"><span>Pincode</span><span>Charge (₹)</span><span>Time delay (min)</span><span>Rank</span></div>
+                <div className="grid grid-cols-[1fr_120px_140px_55px_90px] gap-3 px-3 py-2 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500"><span>Pincode</span><span>Charge (₹)</span><span>Time delay (min)</span><span>Rank</span><span>Action</span></div>
                 {selected.pincodes.map((entry) => {
                   const detail = pins.find((pin) => pin.pincode === entry.pincode);
-                  return <div key={entry.pincode} draggable onDragStart={() => setDragId(`pin-${entry.pincode}`)} onDragOver={(e) => e.preventDefault()} onDrop={() => { void reorder(dragId, `pin-${entry.pincode}`, "pin"); setDragId(""); }} className="grid grid-cols-[1fr_120px_140px_auto] gap-3 items-center px-3 py-2 text-sm">
+                  return <div key={entry.pincode} draggable onDragStart={() => setDragId(`pin-${entry.pincode}`)} onDragOver={(e) => e.preventDefault()} onDrop={() => { void reorder(dragId, `pin-${entry.pincode}`, "pin"); setDragId(""); }} className="grid grid-cols-[1fr_120px_140px_55px_90px] gap-3 items-center px-3 py-2 text-sm">
                     <Input defaultValue={entry.pincode} onBlur={(e) => void updatePin(detail ?? { pincode: entry.pincode }, "pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} className="h-7 text-xs font-semibold text-blue-700" />
                     <Input defaultValue={String(detail?.charge ?? 0)} onBlur={(e) => void updatePin(detail ?? { pincode: entry.pincode }, "charge", e.target.value)} className="h-7 text-xs" />
                     <Input defaultValue={String(detail?.timeDelay ?? 0)} onBlur={(e) => void updatePin(detail ?? { pincode: entry.pincode }, "timeDelay", e.target.value)} className="h-7 text-xs" />
                     <span className="text-[10px] text-gray-400">{entry.rank}</span>
-                    <button type="button" title="Remove from this zone" onClick={() => void removePinFromZone(entry.pincode)} className="text-gray-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+                    <button type="button" title="Remove from this zone" onClick={() => void removePinFromZone(entry.pincode)} className="inline-flex h-7 items-center justify-center gap-1 rounded-md border border-red-200 px-2 text-[11px] font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" />Remove</button>
                   </div>;
                 })}
               </div>
