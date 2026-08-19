@@ -34,6 +34,7 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   const [retry, setRetry] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [assignedMessage, setAssignedMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
 
   onOpenChangeRef.current = onOpenChange;
   onSuccessRef.current = onSuccess;
@@ -92,6 +93,15 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
               setAssignedMessage(
                 data.message || `This order is already assigned to ${data.assignedDeliveryPersonName || "another delivery partner"}`,
               );
+            }, 180);
+            return;
+          }
+          if (data.error === "Unavailable" && data.orderStatus) {
+            active = false;
+            setSubmitting(false);
+            onOpenChangeRef.current(false);
+            window.setTimeout(() => {
+              setStatusMessage(data.message || `This order is already ${data.orderStatus}.`);
             }, 180);
             return;
           }
@@ -209,6 +219,30 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
             <Button
               className="mt-5 w-full rounded-xl bg-[#1A56DB] py-5 font-semibold hover:bg-[#1447B4]"
               onClick={() => setAssignedMessage("")}
+            >
+              Okay, got it
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(statusMessage)}
+        onOpenChange={(nextOpen) => { if (!nextOpen) setStatusMessage(""); }}
+      >
+        <DialogContent className="max-w-sm overflow-hidden rounded-2xl border-0 p-0 shadow-2xl">
+          <div className="bg-gradient-to-br from-red-50 via-white to-rose-50 px-6 pb-6 pt-7 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 ring-8 ring-red-50">
+              <AlertTriangle className="h-7 w-7 text-red-600" />
+            </div>
+            <DialogHeader className="space-y-2">
+              <DialogTitle className="text-xl font-bold text-gray-900">Order unavailable</DialogTitle>
+              <DialogDescription className="text-base leading-6 text-gray-600">
+                {statusMessage}
+              </DialogDescription>
+            </DialogHeader>
+            <Button
+              className="mt-5 w-full rounded-xl bg-[#1A56DB] py-5 font-semibold hover:bg-[#1447B4]"
+              onClick={() => setStatusMessage("")}
             >
               Okay, got it
             </Button>

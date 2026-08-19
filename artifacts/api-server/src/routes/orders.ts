@@ -1456,8 +1456,18 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
       res.status(404).json({ error: "NotFound", message: "Order not found" });
       return;
     }
-    if (["cancelled", "delivered"].includes(String(existing.status))) {
-      res.status(409).json({ error: "Unavailable", message: "This order is already completed or cancelled" });
+    const orderStatus = String(existing.status ?? "").toLowerCase();
+    if (["cancelled", "canceled", "delivered", "rejected"].includes(orderStatus)) {
+      const statusLabel = orderStatus === "delivered"
+        ? "delivered"
+        : orderStatus === "rejected"
+          ? "rejected"
+          : "cancelled";
+      res.status(409).json({
+        error: "Unavailable",
+        orderStatus,
+        message: `This order is already ${statusLabel}.`,
+      });
       return;
     }
     if (String(existing.deliveryType ?? "").toLowerCase() === "takeaway" || existing.status === "takeaway") {
