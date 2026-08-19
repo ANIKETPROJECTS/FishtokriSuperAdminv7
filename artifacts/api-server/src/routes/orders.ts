@@ -1542,6 +1542,24 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
       });
       return;
     }
+
+    // Keep QR dispatch behavior identical to manually marking an order
+    // "Out for Delivery" from the admin panel.
+    (async () => {
+      try {
+        let dpPhone = "";
+        try {
+          const dp = await HubUser.findById(String(req.admin.adminId), { phone: 1 }).lean();
+          dpPhone = String((dp as any)?.phone ?? "").trim();
+        } catch (e) {
+          req.log.warn({ err: e }, "[WhatsApp] Could not fetch delivery person phone for QR dispatch");
+        }
+        await sendOutForDelivery(updated, dpPhone, req.log);
+      } catch (e) {
+        req.log.error({ err: e }, "[WhatsApp] QR out-for-delivery notification error");
+      }
+    })();
+
     res.json({ order: updated, message: "Order assigned and marked out for delivery" });
   } catch (err) {
     req.log.error({ err }, "Failed to dispatch order by QR");
