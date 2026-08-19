@@ -13,7 +13,6 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   onSuccess: () => void;
 }) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const activeRef = useRef(false);
   const handlingRef = useRef(false);
   const onOpenChangeRef = useRef(onOpenChange);
   const onSuccessRef = useRef(onSuccess);
@@ -31,7 +30,6 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   useEffect(() => {
     if (!open) return;
     let active = true;
-    activeRef.current = true;
     handlingRef.current = false;
     setStarting(true);
     setCameraError("");
@@ -102,7 +100,6 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
 
     return () => {
       active = false;
-      activeRef.current = false;
       window.clearTimeout(startupTimeout);
       scanner.stop().catch(() => undefined).finally(() => scanner.clear());
       scannerRef.current = null;
