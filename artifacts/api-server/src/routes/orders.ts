@@ -1,5 +1,6 @@
 import { Router } from "express";
 import mongoose from "mongoose";
+import crypto from "node:crypto";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { getCustomersConnection } from "../db/customers-connection.js";
 import { syncOrderBankPayments } from "./banking.js";
@@ -105,6 +106,32 @@ async function pushWalletTx(
 
 function toId(id: string): mongoose.mongo.BSON.ObjectId | null {
   try { return new mongoose.mongo.ObjectId(id); } catch { return null; }
+}
+
+const ORDER_QR_PREFIX = "fishtokri-order-v1";
+
+function createOrderQrToken(orderId: string): string {
+  const payload = `${ORDER_QR_PREFIX}.${orderId}`;
+  const signature = crypto
+    .createHmac("sha256", process.env.SESSION_SECRET!)
+    .update(payload)
+    .digest("hex");
+  return `${payload}.${signature}`;
+}
+
+function verifyOrderQrToken(token: unknown): string | null {
+  const parts = String(token ?? "").split(".");
+  if (parts.length !== 4 || `${parts[0]}.${parts[1]}` !== ORDER_QR_PREFIX) return null;
+  const orderId = parts[2];
+  const signature = parts[3];
+  if (!mongoose.isValidObjectId(orderId) || !/^[a-f0-9]{64}$/i.test(signature)) return null;
+  const expected = crypto
+    .createHmac("sha256", process.env.SESSION_SECRET!)
+    .update(`${ORDER_QR_PREFIX}.${orderId}`)
+    .digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"))
+    ? orderId
+    : null;
 }
 
 /**
@@ -1383,6 +1410,100 @@ router.post("/", async (req: ScopedRequest, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to create order");
     res.status(500).json({ error: "InternalError", message: "Failed to create order" });
+  }
+});
+
+// GET /api/orders/:id/qr-token — generate the server-signed value printed on invoices.
+router.get("/:id/qr-token", async (req: ScopedRequest, res) => {
+  try {
+    const oid = toId(req.params.id);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
+    const conn = await getOrdersDb();
+    const order = await conn.db.collection(COLLECTION).findOne({ _id: oid });
+    if (!order || !isOrderInScope(req.scope, order, req)) {
+      res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
+    }
+    res.json({ token: createOrderQrToken(String(order._id)) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create order QR token");
+    res.status(500).json({ error: "InternalError", message: "Failed to create order QR token" });
+  }
+});
+
+// POST /api/orders/dispatch-by-qr — claim an order for the authenticated delivery partner.
+router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
+  try {
+    if (req.scope?.role !== "delivery_person" || !req.admin?.adminId) {
+      res.status(403).json({ error: "Forbidden", message: "Only delivery partners can scan order QR codes" });
+      return;
+    }
+    const orderId = verifyOrderQrToken(req.body?.token);
+    const oid = orderId ? toId(orderId) : null;
+    if (!oid) {
+      res.status(400).json({ error: "InvalidQr", message: "This is not a valid FishTokri order QR code" });
+      return;
+    }
+
+    const conn = await getOrdersDb();
+    const collection = conn.db.collection(COLLECTION);
+    const existing = await collection.findOne({ _id: oid });
+    if (!existing) {
+      res.status(404).json({ error: "NotFound", message: "Order not found" });
+      return;
+    }
+    if (["cancelled", "delivered"].includes(String(existing.status))) {
+      res.status(409).json({ error: "Unavailable", message: "This order is already completed or cancelled" });
+      return;
+    }
+    if (String(existing.deliveryType ?? "").toLowerCase() === "takeaway" || existing.status === "takeaway") {
+      res.status(409).json({ error: "Unavailable", message: "Takeaway orders cannot be dispatched for delivery" });
+      return;
+    }
+    const currentAssignee = String(existing.assignedDeliveryPersonId ?? "");
+    if (currentAssignee && currentAssignee !== String(req.admin.adminId)) {
+      res.status(409).json({ error: "AlreadyAssigned", message: "This order is assigned to another delivery partner" });
+      return;
+    }
+    if (!["pending", "confirmed", "out_for_delivery"].includes(String(existing.status))) {
+      res.status(409).json({ error: "Unavailable", message: "This order is not ready for delivery dispatch" });
+      return;
+    }
+
+    const person = await HubUser.findById(req.admin.adminId).lean();
+    if (!person) {
+      res.status(403).json({ error: "Forbidden", message: "Delivery partner account not found" });
+      return;
+    }
+    const name = String((person as any).name ?? (person as any).fullName ?? req.admin.email ?? "Delivery Partner");
+    const updated = await collection.findOneAndUpdate(
+      {
+        _id: oid,
+        status: { $in: ["pending", "confirmed", "out_for_delivery"] },
+        $or: [
+          { assignedDeliveryPersonId: { $exists: false } },
+          { assignedDeliveryPersonId: null },
+          { assignedDeliveryPersonId: "" },
+          { assignedDeliveryPersonId: String(req.admin.adminId) },
+        ],
+      },
+      {
+        $set: {
+          assignedDeliveryPersonId: String(req.admin.adminId),
+          assignedDeliveryPersonName: name,
+          status: "out_for_delivery",
+          updatedAt: new Date(),
+        },
+      },
+      { returnDocument: "after" },
+    );
+    if (!updated) {
+      res.status(409).json({ error: "AlreadyAssigned", message: "The order changed before it could be assigned" });
+      return;
+    }
+    res.json({ order: updated, message: "Order assigned and marked out for delivery" });
+  } catch (err) {
+    req.log.error({ err }, "Failed to dispatch order by QR");
+    res.status(500).json({ error: "InternalError", message: "Failed to dispatch order" });
   }
 });
 

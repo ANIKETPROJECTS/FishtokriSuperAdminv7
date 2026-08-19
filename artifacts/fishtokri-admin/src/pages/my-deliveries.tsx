@@ -6,7 +6,7 @@ import {
   ShoppingBag, History, CalendarDays, CircleDollarSign, Eye,
   Mail, Home, Hash, Tag, Wallet, Receipt, FileText, Store,
   Banknote, Smartphone, CreditCard, Landmark, Plus, Trash,
-  MapPin, Phone,
+  MapPin, Phone, QrCode,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { usePaginated } from "@/hooks/use-paginated";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { OrderQrScanner } from "@/components/OrderQrScanner";
 
 function getAdminData() {
   try { return JSON.parse(localStorage.getItem("fishtokri_admin") || "null"); } catch { return null; }
@@ -1101,6 +1102,7 @@ export default function MyDeliveries() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeCount, setActiveCount] = useState<number | null>(null);
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useEffect(() => {
     const el = document.getElementById("page-header-slot");
@@ -1184,6 +1186,20 @@ export default function MyDeliveries() {
           ? <OrdersList mode="active" refreshKey={refreshKey} silentRefreshKey={silentPollKey} onCountChange={setActiveCount} />
           : <OrdersList mode="history" refreshKey={refreshKey} silentRefreshKey={silentPollKey} />}
       </div>
+      <button
+        type="button"
+        onClick={() => setScannerOpen(true)}
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#1A56DB] text-white shadow-xl transition-transform hover:bg-[#1447B4] active:scale-95"
+        aria-label="Scan order QR"
+        title="Scan order QR"
+      >
+        <QrCode className="h-7 w-7" />
+      </button>
+      <OrderQrScanner
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onSuccess={() => { setRefreshKey((k) => k + 1); setSilentPollKey((k) => k + 1); }}
+      />
     </>
   );
 }
