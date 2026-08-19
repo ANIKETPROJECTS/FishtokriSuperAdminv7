@@ -1033,7 +1033,32 @@ router.delete("/legacy-pincodes", async (req, res) => {
     if (!ctx) return;
     const sub = await SubHub.findById(req.params.id);
     if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
-    const count = Array.isArray(sub.pincodes) ? sub.pincodes.length : 0;
+    const legacyPincodes = Array.isArray(sub.pincodes) ? sub.pincodes : [];
+    const count = legacyPincodes.length;
+    // Preserve the old charge/delay settings in the shared menu collection
+    // before removing the legacy SubHub array.
+    for (const legacy of legacyPincodes as any[]) {
+      const pincode = String(legacy?.pincode ?? "").trim();
+      if (!/^\d{6}$/.test(pincode)) continue;
+      const values = {
+        charge: Math.max(0, Number(legacy?.charge) || 0),
+        timeDelay: Math.max(0, Number(legacy?.timeDelay) || 0),
+        updatedAt: new Date(),
+      };
+      const existing = await ctx.conn.db.collection("pincodes").findOne({ pincode });
+      if (existing) {
+        await ctx.conn.db.collection("pincodes").updateOne({ _id: existing._id }, { $set: values });
+      } else {
+        await ctx.conn.db.collection("pincodes").insertOne({
+          pincode,
+          area: legacy?.area ?? "",
+          city: legacy?.city ?? "",
+          isActive: legacy?.isActive !== false,
+          ...values,
+          createdAt: new Date(),
+        });
+      }
+    }
     if (count > 0) {
       sub.pincodes = [];
       await sub.save();

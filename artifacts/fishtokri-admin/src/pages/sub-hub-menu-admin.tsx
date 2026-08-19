@@ -847,11 +847,11 @@ function RankedPincodesTab({ subHubId, onCountChange }: { subHubId: string; onCo
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([apiFetch(`${base}/legacy-pincodes`, { method: "DELETE" }), apiFetch(`${base}/zones`), apiFetch(`${base}/pincodes`)]).then(([, zoneData, pinData]) => {
+    apiFetch(`${base}/legacy-pincodes`, { method: "DELETE" }).then(() => Promise.all([apiFetch(`${base}/zones`), apiFetch(`${base}/pincodes`)]).then(([zoneData, pinData]) => {
       const merged: Pin[] = pinData.pincodes ?? [];
       const loaded = (zoneData.zones ?? []).map((zone: any) => ({ ...zone, _id: String(zone._id), pincodes: Array.isArray(zone.pincodes) ? zone.pincodes : [] }));
       setPins(merged); onCountChange(merged.length); setZones(loaded); setSelectedId(loaded[0]?._id ?? "");
-    }).catch((err) => toast({ title: "Could not load zones", description: err.message, variant: "destructive" })).finally(() => setLoading(false));
+    })).catch((err) => toast({ title: "Could not load zones", description: err.message, variant: "destructive" })).finally(() => setLoading(false));
   }, [subHubId]);
 
   useEffect(() => {
