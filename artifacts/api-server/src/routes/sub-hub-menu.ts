@@ -1032,6 +1032,110 @@ router.delete("/pincodes/:pincodeId", async (req, res) => {
   }
 });
 
+// ─── DELIVERY ZONES ───────────────────────────────────────────────────────────
+// Zones are intentionally separate from legacy pincodes so existing charge and
+// time-delay records remain compatible. A pincode may be referenced by many zones.
+function normalizeZonePincodes(values: any[]) {
+  const seen = new Set<string>();
+  return (Array.isArray(values) ? values : [])
+    .map((entry: any, index: number) => ({
+      pincode: String(typeof entry === "string" ? entry : entry?.pincode ?? "").trim(),
+      rank: Number.isFinite(Number(entry?.rank)) ? Number(entry.rank) : values.length - index,
+    }))
+    .filter((entry) => /^\d{6}$/.test(entry.pincode) && !seen.has(entry.pincode) && seen.add(entry.pincode))
+    .map((entry, index, all) => ({ pincode: entry.pincode, rank: all.length - index }));
+}
+
+router.get("/zones", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
+    if (!ctx) return;
+    const zones = await ctx.conn.db.collection("zones").find({}).sort({ rank: -1, name: 1 }).toArray();
+    res.json({ zones, total: zones.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get delivery zones");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch delivery zones" });
+  }
+});
+
+router.post("/zones", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
+    if (!ctx) return;
+    const name = String(req.body?.name ?? "").trim();
+    if (!name) { res.status(400).json({ error: "ValidationError", message: "Zone name is required" }); return; }
+    const existing = await ctx.conn.db.collection("zones").findOne({ name });
+    if (existing) { res.status(400).json({ error: "Duplicate", message: "A zone with this name already exists" }); return; }
+    const max = await ctx.conn.db.collection("zones").findOne({}, { sort: { rank: -1 } });
+    const doc = {
+      name,
+      description: String(req.body?.description ?? "").trim(),
+      rank: Number(max?.rank ?? 0) + 1,
+      pincodes: normalizeZonePincodes(req.body?.pincodes ?? []),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const result = await ctx.conn.db.collection("zones").insertOne(doc);
+    res.status(201).json({ zone: { ...doc, _id: result.insertedId } });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create delivery zone");
+    res.status(500).json({ error: "InternalError", message: "Failed to create delivery zone" });
+  }
+});
+
+router.put("/zones/reorder", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
+    if (!ctx) return;
+    const ids = Array.isArray(req.body?.zoneIds) ? req.body.zoneIds.map(String) : [];
+    await Promise.all(ids.map((id, index) => {
+      const oid = toId(id);
+      return oid ? ctx.conn.db.collection("zones").updateOne({ _id: oid }, { $set: { rank: ids.length - index, updatedAt: new Date() } }) : null;
+    }));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to reorder delivery zones");
+    res.status(500).json({ error: "InternalError", message: "Failed to reorder delivery zones" });
+  }
+});
+
+router.put("/zones/:zoneId", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
+    if (!ctx) return;
+    const oid = toId(req.params.zoneId);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid zone ID" }); return; }
+    const update: any = { updatedAt: new Date() };
+    if (req.body?.name !== undefined) {
+      const name = String(req.body.name).trim();
+      if (!name) { res.status(400).json({ error: "ValidationError", message: "Zone name is required" }); return; }
+      update.name = name;
+    }
+    if (req.body?.description !== undefined) update.description = String(req.body.description).trim();
+    if (req.body?.pincodes !== undefined) update.pincodes = normalizeZonePincodes(req.body.pincodes);
+    const result = await ctx.conn.db.collection("zones").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
+    if (!result) { res.status(404).json({ error: "NotFound", message: "Zone not found" }); return; }
+    res.json({ zone: result });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update delivery zone");
+    res.status(500).json({ error: "InternalError", message: "Failed to update delivery zone" });
+  }
+});
+
+router.delete("/zones/:zoneId", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
+    if (!ctx) return;
+    const oid = toId(req.params.zoneId);
+    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid zone ID" }); return; }
+    await ctx.conn.db.collection("zones").deleteOne({ _id: oid });
+    res.json({ message: "Zone deleted" });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete delivery zone");
+    res.status(500).json({ error: "InternalError", message: "Failed to delete delivery zone" });
+  }
+});
+
 // ─── TIMESLOTS ─────────────────────────────────────────────────────────────────
 
 /** Returns today's date in YYYY-MM-DD format using IST (UTC+5:30). */

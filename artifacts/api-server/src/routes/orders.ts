@@ -14,11 +14,77 @@ import {
 import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { HubUser } from "../db/models/hub-user.js";
+import { SubHub } from "../db/models/sub-hub.js";
 import { sendOrderConfirmed, sendOutForDelivery, sendOrderCancelled } from "../services/whatsapp.js";
 
 const router = Router();
 router.use(requireAuth as any);
 router.use(loadScope as any);
+
+const zoneCache = new Map<string, { expires: number; zones: any[] }>();
+
+function orderPincode(order: any): string {
+  const candidates = [
+    order?.pincode,
+    order?.zipCode,
+    order?.address?.pincode,
+    order?.customerAddress?.pincode,
+    order?.deliveryAddress?.pincode,
+    order?.selectedAddress?.pincode,
+  ];
+  return candidates.map((value) => String(value ?? "").trim()).find((value) => /^\d{6}$/.test(value)) || "";
+}
+
+async function getZonesForSubHub(subHubId: string, subHubName?: string): Promise<any[]> {
+  const cacheKey = subHubId || `name:${subHubName || ""}`;
+  const cached = zoneCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.zones;
+  try {
+    let dbName = "";
+    if (subHubId && mongoose.isValidObjectId(subHubId)) {
+      const sub = await SubHub.findById(subHubId, { dbName: 1 }).lean();
+      dbName = String((sub as any)?.dbName ?? "");
+    }
+    if (!dbName) dbName = String(subHubName ?? "");
+    if (!dbName) return [];
+    const connection = await getSubHubDbConnection(dbName);
+    const zones = await connection.db.collection("zones").find({}).toArray();
+    zoneCache.set(cacheKey, { expires: Date.now() + 30_000, zones });
+    return zones;
+  } catch {
+    return [];
+  }
+}
+
+async function enrichOrdersWithZones(orders: any[]): Promise<any[]> {
+  const keys = [...new Set(orders.map((order) => `${String(order.subHubId ?? "")}|${String(order.subHubName ?? "")}`))];
+  const zoneMap = new Map<string, any[]>();
+  await Promise.all(keys.map(async (key) => {
+    const [subHubId, subHubName] = key.split("|");
+    zoneMap.set(key, await getZonesForSubHub(subHubId, subHubName));
+  }));
+  return orders.map((order) => {
+    const pincode = orderPincode(order);
+    const zones = zoneMap.get(`${String(order.subHubId ?? "")}|${String(order.subHubName ?? "")}`) ?? [];
+    const matches = zones.flatMap((zone) => {
+      const membership = Array.isArray(zone.pincodes)
+        ? zone.pincodes.find((entry: any) => String(entry?.pincode ?? entry) === pincode)
+        : null;
+      return membership ? [{ zone, membership }] : [];
+    }).sort((a, b) =>
+      Number(b.zone.rank ?? 0) - Number(a.zone.rank ?? 0) ||
+      Number(b.membership.rank ?? 0) - Number(a.membership.rank ?? 0)
+    );
+    const match = matches[0];
+    return {
+      ...order,
+      zoneName: match?.zone?.name ?? "",
+      zoneRank: match ? Number(match.zone.rank ?? 0) : -1,
+      zonePincodeRank: match ? Number(match.membership.rank ?? 0) : -1,
+      zonePincode: match ? pincode : "",
+    };
+  });
+}
 
 const VALID_ORDER_STATUSES = new Set([
   "pending",
@@ -588,7 +654,7 @@ router.get("/", async (req: ScopedRequest, res) => {
 
     const sortDir = order === "asc" ? 1 : -1;
     const sortObj: any = {};
-    const allowedSorts = ["createdAt", "customerName", "status"];
+    const allowedSorts = ["createdAt", "customerName", "status", "zone"];
     sortObj[allowedSorts.includes(sort) ? sort : "createdAt"] = sortDir;
 
     const pageNum = Math.max(1, Number(page) || 1);
@@ -601,10 +667,28 @@ router.get("/", async (req: ScopedRequest, res) => {
       return;
     }
 
-    const [orders, total] = await Promise.all([
-      db.collection(COLLECTION).find(scopedFilter).sort(sortObj).skip(skip).limit(limitNum).toArray(),
-      db.collection(COLLECTION).countDocuments(scopedFilter),
-    ]);
+    let orders: any[];
+    let total: number;
+    if (sort === "zone") {
+      const allOrders = await db.collection(COLLECTION).find(scopedFilter).toArray();
+      const enriched = await enrichOrdersWithZones(allOrders);
+      enriched.sort((a, b) =>
+        sortDir * (
+          Number(a.zoneRank ?? -1) - Number(b.zoneRank ?? -1) ||
+          Number(a.zonePincodeRank ?? -1) - Number(b.zonePincodeRank ?? -1) ||
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        )
+      );
+      total = enriched.length;
+      orders = enriched.slice(skip, skip + limitNum);
+    } else {
+      const result = await Promise.all([
+        db.collection(COLLECTION).find(scopedFilter).sort(sortObj).skip(skip).limit(limitNum).toArray(),
+        db.collection(COLLECTION).countDocuments(scopedFilter),
+      ]);
+      orders = await enrichOrdersWithZones(result[0] as any[]);
+      total = result[1];
+    }
 
     res.json({ orders, total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) });
 
