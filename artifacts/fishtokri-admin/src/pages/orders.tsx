@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Search, X, RefreshCw, ClipboardList, Clock, CheckCircle2, XCircle,
@@ -3198,7 +3198,40 @@ export default function Orders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {displayedOrders.map((o) => {
+                {(() => {
+                  const grouped = Array.from(displayedOrders.reduce((map, order) => {
+                    const key = order.zoneName || "__unassigned__";
+                    const group = map.get(key) ?? [];
+                    group.push(order);
+                    map.set(key, group);
+                    return map;
+                  }, new Map<string, any[]>()).entries());
+                  const zoneColors = [
+                    { bg: "#E8F1FF", border: "#8DB7FF", text: "#1A56DB", dot: "#3678E5" },
+                    { bg: "#EAF8F0", border: "#8BD5A7", text: "#197044", dot: "#2EAA60" },
+                    { bg: "#FFF3E5", border: "#F4B46A", text: "#A85C00", dot: "#E58A1F" },
+                    { bg: "#F4EDFF", border: "#BBA0F5", text: "#6936B8", dot: "#8B5CD6" },
+                    { bg: "#FFF0F2", border: "#F2A0AC", text: "#A52B40", dot: "#D64B62" },
+                  ];
+                  return grouped.flatMap(([zoneKey, zoneOrders], groupIndex) => {
+                    const color = zoneKey === "__unassigned__"
+                      ? { bg: "#F7F7F8", border: "#D7D7DC", text: "#66666F", dot: "#9999A3" }
+                      : zoneColors[groupIndex % zoneColors.length];
+                    const pincodes = [...new Set(zoneOrders.map((order) => order.zonePincode).filter(Boolean))];
+                    const rank = zoneOrders.reduce((max, order) => Math.max(max, Number(order.zoneRank) || 0), 0);
+                    return [
+                      <tr key={`zone-header-${zoneKey}`} className="border-y" style={{ backgroundColor: color.bg, borderColor: color.border }}>
+                        <td colSpan={11} className="px-4 py-2.5">
+                          <div className="flex items-center gap-3" style={{ color: color.text }}>
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color.dot }} />
+                            <span className="text-sm font-bold">{zoneKey === "__unassigned__" ? "Unassigned Zone" : zoneKey}</span>
+                            <span className="text-xs font-medium opacity-80">{zoneOrders.length} order{zoneOrders.length !== 1 ? "s" : ""}</span>
+                            {rank > 0 && <span className="text-xs opacity-80">Zone rank {rank}</span>}
+                            {pincodes.length > 0 && <span className="text-xs opacity-80">Pincodes: {pincodes.join(", ")}</span>}
+                          </div>
+                        </td>
+                      </tr>,
+                      ...zoneOrders.map((o) => {
                   const total = effectiveOrderTotal(o);
                   const items: any[] = Array.isArray(o.items) ? o.items : [];
                   const slot = formatTimeSlot(o);
@@ -3404,7 +3437,10 @@ export default function Orders() {
                       </td>
                     </tr>
                   );
-                })}
+                      }),
+                    ];
+                  });
+                })()}
               </tbody>
             </table>
           </div>
