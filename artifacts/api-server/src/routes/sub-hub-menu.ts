@@ -1086,8 +1086,20 @@ router.delete("/pincodes/:pincodeId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.pincodeId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid pincode ID" }); return; }
+    const existing = await ctx.conn.db.collection("pincodes").findOne({ _id: oid });
+    if (!existing) { res.status(404).json({ error: "NotFound", message: "Pincode not found" }); return; }
     await ctx.conn.db.collection("pincodes").deleteOne({ _id: oid });
-    res.json({ message: "Pincode deleted" });
+    const zones = await ctx.conn.db.collection("zones").find({ "pincodes.pincode": String(existing.pincode) }).toArray();
+    await Promise.all(zones.map((zone: any) => {
+      const pincodes = (zone.pincodes ?? [])
+        .filter((entry: any) => entry.pincode !== String(existing.pincode))
+        .map((entry: any, index: number, all: any[]) => ({ ...entry, rank: all.length - index }));
+      return ctx.conn.db.collection("zones").updateOne(
+        { _id: zone._id },
+        { $set: { pincodes, updatedAt: new Date() } },
+      );
+    }));
+    res.json({ message: "Pincode permanently deleted", deletedFromZones: zones.length });
   } catch (err) {
     req.log.error({ err }, "Failed to delete pincode");
     res.status(500).json({ error: "InternalError", message: "Failed to delete pincode" });

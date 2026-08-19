@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "wouter";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -949,6 +949,25 @@ function RankedPincodesTab({ subHubId, onCountChange }: { subHubId: string; onCo
     }
   };
 
+  const permanentlyDeletePin = async (pin: Pin) => {
+    if (!pin._id || !window.confirm(`Permanently delete ${pin.pincode}? It will be removed from every zone.`)) return;
+    try {
+      await apiFetch(`${base}/pincodes/${pin._id}`, { method: "DELETE" });
+      setPins((current) => current.filter((item) => item._id !== pin._id));
+      setZones((current) => current.map((zone) => ({
+        ...zone,
+        pincodes: zone.pincodes
+          .filter((entry) => entry.pincode !== pin.pincode)
+          .map((entry, index, all) => ({ ...entry, rank: all.length - index })),
+      })));
+      setPinInput("");
+      onCountChange(Math.max(0, pins.length - 1));
+      toast({ title: "Pincode permanently deleted" });
+    } catch (err: any) {
+      toast({ title: "Could not delete pincode", description: err.message, variant: "destructive" });
+    }
+  };
+
   if (loading) return <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>;
   return (
     <div className="space-y-4">
@@ -970,7 +989,7 @@ function RankedPincodesTab({ subHubId, onCountChange }: { subHubId: string; onCo
                 <Button variant="outline" size="sm" className="text-red-600" onClick={deleteZone}><Trash2 className="w-3.5 h-3.5 mr-1" />Delete</Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_120px_auto] gap-2 items-end mb-4">
-                <div><Label className="text-xs">Pincode</Label>{newPinMode ? <Input value={pinInput} onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="400601" inputMode="numeric" className="h-9" /> : <Select value={pinInput || "_choose"} onValueChange={(value) => { if (value === "_new") { setNewPinMode(true); setPinInput(""); } else { setPinInput(value); } }}><SelectTrigger className="h-9"><SelectValue placeholder="Choose existing pincode" /></SelectTrigger><SelectContent><SelectItem value="_choose" disabled>Choose existing pincode</SelectItem>{pins.filter((pin) => !selected.pincodes.some((entry) => entry.pincode === pin.pincode)).map((pin) => <SelectItem key={pin.pincode} value={pin.pincode}>{pin.pincode}</SelectItem>)}<SelectItem value="_new">+ Add new pincode</SelectItem></SelectContent></Select>}</div>
+                <div><Label className="text-xs">Pincode</Label>{newPinMode ? <Input value={pinInput} onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="400601" inputMode="numeric" className="h-9" /> : <Select value={pinInput || "_choose"} onValueChange={(value) => { if (value === "_new") { setNewPinMode(true); setPinInput(""); } else if (value.startsWith("_delete_")) { const pin = pins.find((item) => item._id === value.replace("_delete_", "")); if (pin) void permanentlyDeletePin(pin); } else { setPinInput(value); } }}><SelectTrigger className="h-9"><SelectValue placeholder="Choose existing pincode" /></SelectTrigger><SelectContent><SelectItem value="_choose" disabled>Choose existing pincode</SelectItem>{pins.filter((pin) => !selected.pincodes.some((entry) => entry.pincode === pin.pincode)).map((pin) => <Fragment key={pin._id ?? pin.pincode}><SelectItem value={pin.pincode}>{pin.pincode}</SelectItem>{pin._id && <SelectItem value={`_delete_${pin._id}`} className="text-red-600">Delete {pin.pincode} permanently</SelectItem>}</Fragment>)}<SelectItem value="_new">+ Add new pincode</SelectItem></SelectContent></Select>}</div>
                 <div><Label className="text-xs">Charge (₹)</Label><Input value={pinCharge} onChange={(e) => setPinCharge(e.target.value)} type="number" className="h-9" /></div>
                 <div><Label className="text-xs">Time delay (min)</Label><Input value={pinDelay} onChange={(e) => setPinDelay(e.target.value)} type="number" className="h-9" /></div>
                 <Button onClick={addPin} className="h-9">Add Pincode</Button>
