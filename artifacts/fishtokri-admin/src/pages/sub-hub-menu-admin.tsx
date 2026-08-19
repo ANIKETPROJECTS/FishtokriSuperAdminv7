@@ -936,6 +936,19 @@ function RankedPincodesTab({ subHubId, onCountChange }: { subHubId: string; onCo
     const next = zones.filter((zone) => zone._id !== selected._id); setZones(next); setSelectedId(next[0]?._id ?? "");
   };
 
+  const removePinFromZone = async (pincode: string) => {
+    if (!selected) return;
+    const pincodes = selected.pincodes
+      .filter((entry) => entry.pincode !== pincode)
+      .map((entry, index, all) => ({ ...entry, rank: all.length - index }));
+    try {
+      await saveZone(selected, { pincodes });
+      toast({ title: "Pincode removed from zone" });
+    } catch (err: any) {
+      toast({ title: "Could not remove pincode", description: err.message, variant: "destructive" });
+    }
+  };
+
   if (loading) return <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>;
   return (
     <div className="space-y-4">
@@ -972,6 +985,7 @@ function RankedPincodesTab({ subHubId, onCountChange }: { subHubId: string; onCo
                     <Input defaultValue={String(detail?.charge ?? 0)} onBlur={(e) => void updatePin(detail ?? { pincode: entry.pincode }, "charge", e.target.value)} className="h-7 text-xs" />
                     <Input defaultValue={String(detail?.timeDelay ?? 0)} onBlur={(e) => void updatePin(detail ?? { pincode: entry.pincode }, "timeDelay", e.target.value)} className="h-7 text-xs" />
                     <span className="text-[10px] text-gray-400">{entry.rank}</span>
+                    <button type="button" title="Remove from this zone" onClick={() => void removePinFromZone(entry.pincode)} className="text-gray-400 hover:text-red-600"><X className="h-4 w-4" /></button>
                   </div>;
                 })}
               </div>
