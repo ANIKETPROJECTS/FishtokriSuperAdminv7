@@ -3024,6 +3024,22 @@ export default function Orders() {
             </SelectContent>
           </Select>
 
+          <Select value={`${sortField}:${sortDir}`} onValueChange={(v) => {
+            const [field, direction] = v.split(":");
+            setSortField(field);
+            setSortDir(direction as "asc" | "desc");
+          }}>
+            <SelectTrigger className="h-9 w-40 text-sm text-black rounded-full border-gray-200">
+              <SelectValue placeholder="Sort orders" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="createdAt:desc">Newest first</SelectItem>
+              <SelectItem value="createdAt:asc">Oldest first</SelectItem>
+              <SelectItem value="zone:desc">Farthest zone first</SelectItem>
+              <SelectItem value="zone:asc">Nearest zone first</SelectItem>
+            </SelectContent>
+          </Select>
+
           {/* Date range picker — only shown on the All Orders tab */}
           {activeTab === "all" && (
             <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
@@ -3173,6 +3189,7 @@ export default function Orders() {
                   <th className="px-3 py-4 text-center">Total</th>
                   <th className="px-3 py-4 text-center">Payment</th>
                   <th className="px-3 py-4 text-center">Sub Hub</th>
+                  <th className="px-3 py-4 text-center">Zone</th>
                   <th className="px-3 py-4 text-center">Time Slot</th>
                   <th className="px-3 py-4 text-center">Location</th>
                   <th className="px-3 py-4 text-center">Status</th>
@@ -3257,6 +3274,11 @@ export default function Orders() {
                       <td className="px-3 py-4">
                         {o.subHubName
                           ? <span className="text-sm font-medium text-black">{o.subHubName}</span>
+                          : <span className="text-sm text-black">—</span>}
+                      </td>
+                      <td className="px-3 py-4">
+                        {o.zoneName
+                          ? <div><span className="text-sm font-medium text-black">{o.zoneName}</span><span className="block text-[10px] text-gray-400">{o.zonePincode || "—"} · rank {o.zonePincodeRank}</span></div>
                           : <span className="text-sm text-black">—</span>}
                       </td>
                       <td className="px-3 py-4">

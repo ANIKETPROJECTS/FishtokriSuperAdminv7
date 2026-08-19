@@ -648,7 +648,7 @@ export default function SubHubMenuAdmin() {
           {!statsError && tab === "carousels" && <CarouselsTab subHubId={subHubId} />}
           {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
           {!statsError && tab === "timeslots" && <TimeSlotsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
-          {tab === "pincodes" && <PincodesTab subHubId={subHubId} onCountChange={setPincodesCount} />}
+          {tab === "pincodes" && <RankedPincodesTab subHubId={subHubId} onCountChange={setPincodesCount} />}
           {statsError && tab !== "pincodes" && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
         </div>
       </div>
@@ -822,6 +822,113 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
         ) : (
           <p className="text-xs text-gray-400">No pincodes added yet. Add pincodes to define the service area.</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function RankedPincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange: (n: number) => void }) {
+  const { toast } = useToast();
+  type Pin = { pincode: string; charge?: number; timeDelay?: number };
+  type Zone = { _id: string; name: string; description?: string; rank: number; pincodes: { pincode: string; rank: number }[] };
+  const base = `/api/sub-hubs/${subHubId}/menu`;
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [pins, setPins] = useState<Pin[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [zoneName, setZoneName] = useState("");
+  const [zoneDescription, setZoneDescription] = useState("");
+  const [pinInput, setPinInput] = useState("");
+  const [pinCharge, setPinCharge] = useState("0");
+  const [pinDelay, setPinDelay] = useState("0");
+  const [dragId, setDragId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const selected = zones.find((zone) => zone._id === selectedId);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([apiFetch("/api/sub-hubs"), apiFetch(`${base}/zones`), apiFetch(`${base}/pincodes`)]).then(([hubData, zoneData, pinData]) => {
+      const hub = hubData.subHubs?.find((item: any) => item.id === subHubId);
+      const merged = [...(hub?.pincodes ?? []), ...(pinData.pincodes ?? [])].filter((pin: Pin, index: number, all: Pin[]) => all.findIndex((item) => item.pincode === pin.pincode) === index);
+      const loaded = (zoneData.zones ?? []).map((zone: any) => ({ ...zone, _id: String(zone._id), pincodes: Array.isArray(zone.pincodes) ? zone.pincodes : [] }));
+      setPins(merged); onCountChange(merged.length); setZones(loaded); setSelectedId(loaded[0]?._id ?? "");
+    }).catch((err) => toast({ title: "Could not load zones", description: err.message, variant: "destructive" })).finally(() => setLoading(false));
+  }, [subHubId]);
+
+  useEffect(() => {
+    setZoneName(selected?.name ?? "");
+    setZoneDescription(selected?.description ?? "");
+  }, [selectedId, selected?.name, selected?.description]);
+
+  const saveZone = async (zone: Zone, patch: Partial<Zone> = {}) => {
+    const next = { ...zone, ...patch };
+    const data = await apiFetch(`${base}/zones/${zone._id}`, { method: "PUT", body: JSON.stringify({ name: next.name, description: next.description, pincodes: next.pincodes }) });
+    setZones((current) => current.map((item) => item._id === zone._id ? { ...item, ...data.zone } : item));
+  };
+
+  const createZone = async () => {
+    if (!zoneName.trim()) return;
+    try {
+      const data = await apiFetch(`${base}/zones`, { method: "POST", body: JSON.stringify({ name: zoneName, description: zoneDescription }) });
+      const zone = { ...data.zone, _id: String(data.zone._id), pincodes: [] };
+      setZones((current) => [zone, ...current]); setSelectedId(zone._id); setZoneName(""); setZoneDescription("");
+      toast({ title: "Zone created" });
+    } catch (err: any) { toast({ title: "Could not create zone", description: err.message, variant: "destructive" }); }
+  };
+
+  const reorder = async (fromId: string, toId: string, kind: "zone" | "pin") => {
+    if (fromId === toId) return;
+    if (kind === "zone") {
+      const next = [...zones]; const from = next.findIndex((item) => item._id === fromId); const to = next.findIndex((item) => item._id === toId);
+      const [item] = next.splice(from, 1); next.splice(to, 0, item);
+      const ranked = next.map((zone, index, all) => ({ ...zone, rank: all.length - index }));
+      setZones(ranked);
+      await apiFetch(`${base}/zones/reorder`, { method: "PUT", body: JSON.stringify({ zoneIds: ranked.map((zone) => zone._id) }) });
+    } else if (selected) {
+      const next = [...selected.pincodes]; const from = next.findIndex((item) => `pin-${item.pincode}` === fromId); const to = next.findIndex((item) => `pin-${item.pincode}` === toId);
+      const [item] = next.splice(from, 1); next.splice(to, 0, item);
+      const ranked = next.map((entry, index, all) => ({ ...entry, rank: all.length - index }));
+      setZones((current) => current.map((zone) => zone._id === selected._id ? { ...zone, pincodes: ranked } : zone));
+      await saveZone({ ...selected, pincodes: ranked });
+    }
+  };
+
+  const addPin = async () => {
+    if (!selected || !/^\d{6}$/.test(pinInput)) { toast({ title: "Enter a six-digit pincode", variant: "destructive" }); return; }
+    if (selected.pincodes.some((entry) => entry.pincode === pinInput)) { toast({ title: "Pincode already belongs to this zone", variant: "destructive" }); return; }
+    try {
+      if (!pins.some((pin) => pin.pincode === pinInput)) {
+        await apiFetch(`${base}/pincodes`, { method: "POST", body: JSON.stringify({ pincode: pinInput, isActive: true }) });
+        const legacy = [...pins, { pincode: pinInput, charge: Number(pinCharge) || 0, timeDelay: Number(pinDelay) || 0 }];
+        await apiFetch(`/api/sub-hubs/${subHubId}`, { method: "PUT", body: JSON.stringify({ pincodes: legacy }) });
+        setPins(legacy); onCountChange(legacy.length);
+      }
+      await saveZone({ ...selected, pincodes: [...selected.pincodes, { pincode: pinInput, rank: selected.pincodes.length + 1 }] });
+      setPinInput(""); setPinCharge("0"); setPinDelay("0");
+    } catch (err: any) { toast({ title: "Could not add pincode", description: err.message, variant: "destructive" }); }
+  };
+
+  const deleteZone = async () => {
+    if (!selected || !window.confirm(`Delete ${selected.name}? Pincodes will remain available for other zones.`)) return;
+    await apiFetch(`${base}/zones/${selected._id}`, { method: "DELETE" });
+    const next = zones.filter((zone) => zone._id !== selected._id); setZones(next); setSelectedId(next[0]?._id ?? "");
+  };
+
+  if (loading) return <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>;
+  return (
+    <div className="space-y-4">
+      <div><p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Delivery Zones</p><p className="text-xs text-gray-400 mt-1">Drag zones and pincodes to rank distance. Higher rank is considered farther away. A pincode may belong to multiple zones.</p></div>
+      <div className="grid grid-cols-1 lg:grid-cols-[290px_1fr] gap-4">
+        <div className="rounded-xl border bg-gray-50/60 p-3 space-y-3">
+          <Input value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="Zone name" className="h-9 bg-white" />
+          <Input value={zoneDescription} onChange={(e) => setZoneDescription(e.target.value)} placeholder="Description" className="h-9 bg-white" />
+          <Button onClick={createZone} className="w-full h-9 bg-[#1A56DB] hover:bg-[#1447B4]">Add Zone</Button>
+          <div className="space-y-2">
+            {zones.map((zone) => <button key={zone._id} type="button" draggable onDragStart={() => setDragId(zone._id)} onDragOver={(e) => e.preventDefault()} onDrop={() => { void reorder(dragId, zone._id, "zone"); setDragId(""); }} onClick={() => setSelectedId(zone._id)} className={`w-full rounded-lg border px-3 py-2 text-left ${selectedId === zone._id ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-white"}`}><div className="flex items-center gap-2"><GripVertical className="h-4 w-4 text-gray-400" /><span className="font-semibold text-sm">{zone.name}</span><span className="ml-auto text-[10px] text-gray-400">Rank {zone.rank}</span></div><p className="ml-6 text-[11px] text-gray-500 truncate">{zone.description || "No description"} · {zone.pincodes.length} pincodes</p></button>)}
+          </div>
+        </div>
+        <div className="rounded-xl border p-4">
+          {!selected ? <p className="py-10 text-center text-sm text-gray-400">Create or select a zone to manage its pincodes.</p> : <><div className="flex items-start justify-between gap-3 mb-4"><div><h3 className="font-bold">{selected.name}</h3><p className="text-xs text-gray-500">{selected.description || "Add a description above."}</p></div><Button variant="outline" size="sm" className="text-red-600" onClick={deleteZone}><Trash2 className="w-3.5 h-3.5 mr-1" />Delete</Button></div><div className="grid grid-cols-1 md:grid-cols-[1fr_120px_120px_auto] gap-2 items-end mb-4"><div><Label className="text-xs">Pincode</Label><Input value={pinInput} onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="400601" inputMode="numeric" className="h-9" /></div><div><Label className="text-xs">Charge ₹</Label><Input value={pinCharge} onChange={(e) => setPinCharge(e.target.value)} type="number" className="h-9" /></div><div><Label className="text-xs">Delay min</Label><Input value={pinDelay} onChange={(e) => setPinDelay(e.target.value)} type="number" className="h-9" /></div><Button onClick={addPin} className="h-9">Add Pincode</Button></div><Button variant="outline" size="sm" onClick={() => saveZone(selected, { name: zoneName, description: zoneDescription })}>Save Zone Details</Button><div className="divide-y rounded-lg border mt-3">{selected.pincodes.map((entry) => { const detail = pins.find((pin) => pin.pincode === entry.pincode); return <div key={entry.pincode} draggable onDragStart={() => setDragId(`pin-${entry.pincode}`)} onDragOver={(e) => e.preventDefault()} onDrop={() => { void reorder(dragId, `pin-${entry.pincode}`, "pin"); setDragId(""); }} className="flex items-center gap-3 px-3 py-2 text-sm"><GripVertical className="h-4 w-4 text-gray-400" /><span className="font-semibold text-blue-700">{entry.pincode}</span><span className="text-xs text-gray-500">₹{detail?.charge ?? 0}</span><span className="text-xs text-gray-500">{detail?.timeDelay ?? 0} min delay</span><span className="ml-auto text-[10px] text-gray-400">Rank {entry.rank}</span><button type="button" className="text-gray-400 hover:text-red-600" onClick={() => { if (selected) void saveZone(selected, { pincodes: selected.pincodes.filter((item) => item.pincode !== entry.pincode) }); }}><X className="h-4 w-4" /></button></div>; })}</div></>}
+        </div>
       </div>
     </div>
   );

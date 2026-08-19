@@ -26,6 +26,7 @@ const zoneCache = new Map<string, { expires: number; zones: any[] }>();
 function orderPincode(order: any): string {
   const candidates = [
     order?.pincode,
+    order?.deliveryPincode,
     order?.zipCode,
     order?.address?.pincode,
     order?.customerAddress?.pincode,
