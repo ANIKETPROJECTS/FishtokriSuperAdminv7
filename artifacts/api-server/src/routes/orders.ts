@@ -208,7 +208,7 @@ router.post("/test-seed-zone-data", async (req: ScopedRequest, res) => {
       scheduleType: "instant",
       createdAt: new Date(now.getTime() + index),
       updatedAt: now,
-      orderId: await generateOrderId(ordersConn.db),
+      orderId: `TEST-ZONE-${String(index + 1).padStart(2, "0")}-${now.getTime()}`,
     })));
     await ordersConn.db.collection(COLLECTION).insertMany(orderDocs);
     zoneCache.delete(`${subHubId}|${subHub.name}`);

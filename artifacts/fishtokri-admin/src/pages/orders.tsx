@@ -798,6 +798,7 @@ export default function Orders() {
   // Create order
   // Create-order open state is driven by URL (/orders/new)
   const [creatingSaving, setCreatingSaving] = useState(false);
+  const [seedingZoneTestData, setSeedingZoneTestData] = useState(false);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">("existing");
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -1886,6 +1887,27 @@ export default function Orders() {
     }
   };
 
+  const seedZoneTestData = async () => {
+    if (!selectedSubHubId) {
+      toast({ title: "Select a sub hub first", description: "Choose the Thane Sub Hub before generating test data.", variant: "destructive" });
+      return;
+    }
+    if (!window.confirm("Create 3 test zones, shared pincodes, and 15 labeled TEST orders for this sub hub?")) return;
+    setSeedingZoneTestData(true);
+    try {
+      const result = await apiFetch("/api/orders/test-seed-zone-data", {
+        method: "POST",
+        body: JSON.stringify({ subHubId: selectedSubHubId }),
+      });
+      toast({ title: "Zone test data created", description: `${result.zones} zones, ${result.pincodes} pincodes, and ${result.orders} orders added.` });
+      await Promise.all([load(), loadStats()]);
+    } catch (err: any) {
+      toast({ title: "Could not create test data", description: err.message, variant: "destructive" });
+    } finally {
+      setSeedingZoneTestData(false);
+    }
+  };
+
   useEffect(() => {
     apiFetch("/api/users?role=delivery_person&limit=100")
       .then((d) => setDeliveryPersons(d.users ?? []))
@@ -2946,6 +2968,13 @@ export default function Orders() {
             className="flex-shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold bg-[#1A56DB] hover:bg-[#1447B4] text-white shadow-sm transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> New Order
+          </button>
+          <button
+            onClick={() => void seedZoneTestData()}
+            disabled={seedingZoneTestData}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-[#1A56DB] text-[#1A56DB] hover:bg-blue-50 disabled:opacity-50 transition-colors"
+          >
+            {seedingZoneTestData ? "Generating…" : "Generate Zone Test Data"}
           </button>
         </div>
 
