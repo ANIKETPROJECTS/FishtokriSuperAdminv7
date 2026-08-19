@@ -110,7 +110,7 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
     if (!orderId) return;
     let active = true;
     apiFetch(`/api/orders/${orderId}/qr-token`)
-      .then((data) => QRCode.toDataURL(String(data.token), { width: 180, margin: 1, errorCorrectionLevel: "M" }))
+      .then((data) => QRCode.toDataURL(String(data.url || data.token), { width: 180, margin: 1, errorCorrectionLevel: "M" }))
       .then((url) => { if (active) setQrDataUrl(url); })
       .catch(() => {
         if (active) toast({ title: "QR unavailable", description: "The invoice loaded, but its delivery QR could not be generated.", variant: "destructive" });
@@ -221,7 +221,7 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
       `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:4px 0;"><span>Grand Total:</span><span>${grandTotal.toFixed(2)}</span></div>` +
       walletRow + paidDueRow + upiTxnRow +
       (qrDataUrl
-        ? `<div style="text-align:center;margin-top:14px;"><div style="font-size:13px;font-weight:700;margin-bottom:4px;">Scan to dispatch order</div><img src="${qrDataUrl}" alt="Order dispatch QR" width="180" height="180" style="display:block;margin:0 auto;" /></div>`
+        ? `<div style="text-align:center;margin-top:14px;"><div style="font-size:13px;font-weight:700;margin-bottom:4px;">Delivery partner QR</div><img src="${qrDataUrl}" alt="Delivery partner order QR" width="180" height="180" style="display:block;margin:0 auto;" /><div style="font-size:11px;font-weight:700;color:#555;margin-top:5px;">This QR is only for delivery person to scan.</div></div>`
         : "") +
       `<div style="text-align:center;font-size:15px;color:#555;line-height:1.8;margin-top:14px;">Thank you for your business!<br/>For any query - 9220200100</div></div>`;
 
@@ -414,12 +414,15 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
                 </div>
               )}
               <div className="text-center mt-4">
-                <div className="text-[13px] font-bold mb-1">Scan to dispatch order</div>
+                <div className="text-[13px] font-bold mb-1">Delivery partner QR</div>
                 {qrDataUrl ? (
                   <img src={qrDataUrl} alt="Order dispatch QR" width={180} height={180} className="mx-auto" />
                 ) : (
                   <div className="h-[180px] flex items-center justify-center text-xs text-gray-400">Generating QR…</div>
                 )}
+                <div className="text-[11px] font-semibold text-gray-500 mt-1">
+                  This QR is only for delivery person to scan.
+                </div>
               </div>
               <div className="text-center text-[15px] text-gray-600 mt-3">
                 Thank you for your business!<br />

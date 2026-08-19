@@ -7,6 +7,17 @@ import { useToast } from "@/hooks/use-toast";
 
 const SCANNER_ID = "fishtokri-order-qr-reader";
 
+function extractOrderQrToken(decodedText: string): string {
+  const text = decodedText.trim();
+  try {
+    const url = new URL(text);
+    return url.searchParams.get("order_qr") || text;
+  } catch {
+    // Keep accepting previously printed token-only QR codes.
+    return text;
+  }
+}
+
 export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -68,7 +79,7 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
         const res = await fetch(`${base}/api/orders/dispatch-by-qr`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ token: decodedText }),
+          body: JSON.stringify({ token: extractOrderQrToken(decodedText) }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.message || "Could not dispatch this order");

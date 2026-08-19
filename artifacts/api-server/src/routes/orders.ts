@@ -109,6 +109,7 @@ function toId(id: string): mongoose.mongo.BSON.ObjectId | null {
 }
 
 const ORDER_QR_PREFIX = "fishtokri-order-v1";
+const ORDER_QR_PUBLIC_URL = "https://fishtokri.com/";
 
 function createOrderQrToken(orderId: string): string {
   const payload = `${ORDER_QR_PREFIX}.${orderId}`;
@@ -1423,7 +1424,11 @@ router.get("/:id/qr-token", async (req: ScopedRequest, res) => {
     if (!order || !isOrderInScope(req.scope, order, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
     }
-    res.json({ token: createOrderQrToken(String(order._id)) });
+    const token = createOrderQrToken(String(order._id));
+    res.json({
+      token,
+      url: `${ORDER_QR_PUBLIC_URL}?order_qr=${encodeURIComponent(token)}`,
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to create order QR token");
     res.status(500).json({ error: "InternalError", message: "Failed to create order QR token" });
@@ -1460,8 +1465,17 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
       return;
     }
     const currentAssignee = String(existing.assignedDeliveryPersonId ?? "");
-    if (currentAssignee && currentAssignee !== String(req.admin.adminId)) {
-      res.status(409).json({ error: "AlreadyAssigned", message: "This order is assigned to another delivery partner" });
+    if (currentAssignee) {
+      const assignedName = String(
+        existing.assignedDeliveryPersonName ||
+        existing.deliveryPersonName ||
+        "another delivery partner",
+      );
+      res.status(409).json({
+        error: "AlreadyAssigned",
+        assignedDeliveryPersonName: assignedName,
+        message: `This order is already assigned to ${assignedName}`,
+      });
       return;
     }
     if (!["pending", "confirmed", "out_for_delivery"].includes(String(existing.status))) {
@@ -1497,7 +1511,17 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
       { returnDocument: "after" },
     );
     if (!updated) {
-      res.status(409).json({ error: "AlreadyAssigned", message: "The order changed before it could be assigned" });
+      const latest = await collection.findOne({ _id: oid });
+      const assignedName = String(
+        latest?.assignedDeliveryPersonName ||
+        latest?.deliveryPersonName ||
+        "another delivery partner",
+      );
+      res.status(409).json({
+        error: "AlreadyAssigned",
+        assignedDeliveryPersonName: assignedName,
+        message: `This order is already assigned to ${assignedName}`,
+      });
       return;
     }
     res.json({ order: updated, message: "Order assigned and marked out for delivery" });
