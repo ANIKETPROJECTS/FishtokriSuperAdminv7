@@ -121,9 +121,9 @@ function createOrderQrToken(orderId: string): string {
 
 function verifyOrderQrToken(token: unknown): string | null {
   const parts = String(token ?? "").split(".");
-  if (parts.length !== 4 || `${parts[0]}.${parts[1]}` !== ORDER_QR_PREFIX) return null;
-  const orderId = parts[2];
-  const signature = parts[3];
+  if (parts.length !== 3 || parts[0] !== ORDER_QR_PREFIX) return null;
+  const orderId = parts[1];
+  const signature = parts[2];
   if (!mongoose.isValidObjectId(orderId) || !/^[a-f0-9]{64}$/i.test(signature)) return null;
   const expected = crypto
     .createHmac("sha256", process.env.SESSION_SECRET!)
