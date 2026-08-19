@@ -10,6 +10,7 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
+  const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QrScanner | null>(null);
   const activeRef = useRef(false);
@@ -21,7 +22,6 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
   const [cameraError, setCameraError] = useState("");
   const [retry, setRetry] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const { toast } = useToast();
 
   onOpenChangeRef.current = onOpenChange;
   onSuccessRef.current = onSuccess;
