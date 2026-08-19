@@ -1198,7 +1198,7 @@ export default function MyDeliveries() {
       <OrderQrScanner
         open={scannerOpen}
         onOpenChange={setScannerOpen}
-        onSuccess={() => { setRefreshKey((k) => k + 1); setSilentPollKey((k) => k + 1); }}
+        onSuccess={() => { setRefreshKey((k) => k + 1); }}
       />
     </>
   );

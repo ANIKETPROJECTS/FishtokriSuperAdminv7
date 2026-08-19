@@ -113,7 +113,10 @@ export function OrderQrScanner({ open, onOpenChange, onSuccess }: {
     return () => {
       active = false;
       window.clearTimeout(startupTimeout);
-      if (scannerRef.current === scanner) scannerRef.current = null;
+      // A successful decode already stopped and disposed this instance.
+      // Do not call html5-qrcode cleanup a second time during portal unmount.
+      if (scannerRef.current !== scanner) return;
+      scannerRef.current = null;
       scanner.stop().catch(() => undefined).then(() => {
         try { if (document.getElementById(SCANNER_ID)) scanner.clear(); } catch { /* already unmounted */ }
       });
