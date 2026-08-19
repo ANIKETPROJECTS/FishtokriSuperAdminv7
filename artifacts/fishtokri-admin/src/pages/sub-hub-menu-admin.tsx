@@ -550,7 +550,9 @@ export default function SubHubMenuAdmin() {
       if (sub) {
         setSubHubName(sub.name);
         setDbName(sub.dbName);
-        setPincodesCount((sub.pincodes ?? []).length);
+        // The zone editor owns the count now; legacy SubHub.pincodes is cleared
+        // during zone loading and must not drive this card.
+        setPincodesCount(0);
       }
     }).catch(() => {});
     loadStats();

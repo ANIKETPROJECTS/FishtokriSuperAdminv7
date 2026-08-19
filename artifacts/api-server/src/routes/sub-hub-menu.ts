@@ -1007,8 +1007,12 @@ router.put("/pincodes/:pincodeId", async (req, res) => {
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid pincode ID" }); return; }
     const { pincode, area, city, isActive, charge, timeDelay } = req.body;
     const update: any = { updatedAt: new Date() };
+    const current = await ctx.conn.db.collection("pincodes").findOne({ _id: oid });
+    if (!current) { res.status(404).json({ error: "NotFound", message: "Pincode not found" }); return; }
     if (pincode !== undefined) {
       if (!/^\d{6}$/.test(String(pincode))) { res.status(400).json({ error: "ValidationError", message: "A valid six-digit pincode is required" }); return; }
+      const duplicate = await ctx.conn.db.collection("pincodes").findOne({ pincode: String(pincode), _id: { $ne: oid } });
+      if (duplicate) { res.status(400).json({ error: "Duplicate", message: "Pincode already exists" }); return; }
       update.pincode = String(pincode);
     }
     if (area !== undefined) update.area = area;
@@ -1017,7 +1021,13 @@ router.put("/pincodes/:pincodeId", async (req, res) => {
     if (charge !== undefined) update.charge = Math.max(0, Number(charge) || 0);
     if (timeDelay !== undefined) update.timeDelay = Math.max(0, Number(timeDelay) || 0);
     const result = await ctx.conn.db.collection("pincodes").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
-    if (!result) { res.status(404).json({ error: "NotFound", message: "Pincode not found" }); return; }
+    if (pincode !== undefined && String(current.pincode) !== String(pincode)) {
+      const zones = await ctx.conn.db.collection("zones").find({ "pincodes.pincode": String(current.pincode) }).toArray();
+      await Promise.all(zones.map((zone: any) => ctx.conn.db.collection("zones").updateOne(
+        { _id: zone._id },
+        { $set: { pincodes: (zone.pincodes ?? []).map((entry: any) => entry.pincode === String(current.pincode) ? { ...entry, pincode: String(pincode) } : entry), updatedAt: new Date() } },
+      )));
+    }
     res.json({ pincode: result });
   } catch (err) {
     req.log.error({ err }, "Failed to update pincode");
