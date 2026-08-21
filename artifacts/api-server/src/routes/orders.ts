@@ -696,11 +696,12 @@ router.get("/", async (req: ScopedRequest, res) => {
       db.collection(COLLECTION).countDocuments(scopedFilter),
     ]);
 
-    res.json({ orders, total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) });
+    const displayOrders = await enrichOrderTimeslots(orders as any[], req.log);
+    res.json({ orders: displayOrders, total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) });
 
     // Fire-and-forget: deduct inventory for any active orders that arrived without
     // going through applyOrderInventoryOnCreate (e.g. customer-app-created orders).
-    autoDeductUndedcutedOrders(conn.db, orders as any[]).catch((e) =>
+    autoDeductUndedcutedOrders(conn.db, displayOrders as any[]).catch((e) =>
       req.log.error({ err: e }, "autoDeductUndedcutedOrders failed")
     );
   } catch (err) {
