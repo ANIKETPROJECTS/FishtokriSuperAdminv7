@@ -824,6 +824,7 @@ export default function Orders() {
   const [subHubs, setSubHubs] = useState<any[]>([]);
   const [loadingSubHubs, setLoadingSubHubs] = useState(false);
   const [selectedSubHubId, setSelectedSubHubId] = useState<string>("");
+  const [subHubPincodes, setSubHubPincodes] = useState<any[]>([]);
   const [subHubProducts, setSubHubProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -1050,6 +1051,7 @@ export default function Orders() {
   useEffect(() => {
     if (!selectedSubHubId) {
       setSubHubProducts([]); setCoupons([]); setTimeslots([]);
+      setSubHubPincodes([]);
       setAppliedCouponIds([]); setSelectedTimeslotId("");
       return;
     }
@@ -1072,6 +1074,18 @@ export default function Orders() {
     setSelectedProducts([]);
     setAppliedCouponIds([]); setCouponCode(""); setCouponError("");
     setSelectedTimeslotId("");
+  }, [selectedSubHubId]);
+
+  // Service areas live in the sub-hub database. The legacy subHubs[].pincodes
+  // field may be stale or absent after the database-backed migration.
+  useEffect(() => {
+    if (!selectedSubHubId) {
+      setSubHubPincodes([]);
+      return;
+    }
+    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/pincodes`)
+      .then((d) => setSubHubPincodes(Array.isArray(d.pincodes) ? d.pincodes : []))
+      .catch(() => setSubHubPincodes([]));
   }, [selectedSubHubId]);
 
   // Reload slot availability whenever the delivery date changes. The API
@@ -1412,10 +1426,9 @@ export default function Orders() {
 
   const pincodeEntry = useMemo(() => {
     if (!deliveryPincode || !selectedSubHubId) return null;
-    const sub = subHubs.find((h: any) => h.id === selectedSubHubId);
-    if (!sub) return null;
-    return (sub.pincodes || []).find((p: any) => p.pincode === deliveryPincode) || null;
-  }, [deliveryPincode, selectedSubHubId, subHubs]);
+    const normalizedPincode = String(deliveryPincode).trim();
+    return subHubPincodes.find((p: any) => String(p?.pincode ?? "").trim() === normalizedPincode) || null;
+  }, [deliveryPincode, selectedSubHubId, subHubPincodes]);
 
   const pincodeDeliveryCharge = useMemo(() => {
     if (orderDeliveryType !== "delivery") return 0;
