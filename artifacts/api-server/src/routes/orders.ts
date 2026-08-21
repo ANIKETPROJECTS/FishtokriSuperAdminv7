@@ -75,6 +75,96 @@ async function getOrdersDb() {
   return getSubHubDbConnection(ORDERS_DB);
 }
 
+function extractOrderPincode(order: any): string {
+  const detail = order?.deliveryAddressDetail;
+  const candidates = [
+    detail?.pincode,
+    detail?.zipCode,
+    detail?.zip,
+    order?.deliveryPincode,
+    order?.pincode,
+  ];
+  for (const value of candidates) {
+    const match = String(value ?? "").match(/\b\d{6}\b/);
+    if (match) return match[0];
+  }
+  const addressText = [
+    order?.address,
+    order?.deliveryArea,
+    typeof detail === "string" ? detail : "",
+    detail && typeof detail === "object" ? JSON.stringify(detail) : "",
+  ].join(" ");
+  return addressText.match(/\b\d{6}\b/)?.[0] ?? "";
+}
+
+function addMinutesToTimeString(timeString: string, minutes: number): string {
+  if (!timeString || !minutes) return timeString;
+  const match = String(timeString).match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return timeString;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const period = match[3].toUpperCase();
+  if (period === "PM" && hour !== 12) hour += 12;
+  if (period === "AM" && hour === 12) hour = 0;
+  const total = hour * 60 + minute + minutes;
+  const nextHour = Math.floor(total / 60) % 24;
+  const nextMinute = total % 60;
+  const nextPeriod = nextHour >= 12 ? "PM" : "AM";
+  const displayHour = nextHour === 0 ? 12 : nextHour > 12 ? nextHour - 12 : nextHour;
+  return `${displayHour}:${String(nextMinute).padStart(2, "0")} ${nextPeriod}`;
+}
+
+/**
+ * Rebuild a slot's displayed range from the current sub-hub configuration.
+ * Orders created before pincode delays were persisted still have the original
+ * end time, so reading only the order document makes the table and invoice
+ * under-report the delivery window.
+ */
+async function enrichOrderTimeslots(orders: any[], log: any): Promise<any[]> {
+  const dbPromises = new Map<string, Promise<any>>();
+  const getDb = (name: string) => {
+    if (!dbPromises.has(name)) dbPromises.set(name, getSubHubDbConnection(name));
+    return dbPromises.get(name)!;
+  };
+
+  return Promise.all(orders.map(async (order) => {
+    if (
+      order?.scheduleType !== "slot" ||
+      !order?.timeslotId ||
+      !order?.subHubName ||
+      order?.deliveryType === "takeaway"
+    ) return order;
+
+    try {
+      const db = await getDb(String(order.subHubName));
+      const timeslotId = toId(String(order.timeslotId));
+      if (!timeslotId) return order;
+      const [slot, pincode] = await Promise.all([
+        db.db.collection("timeslots").findOne({ _id: timeslotId }),
+        db.db.collection("pincodes").findOne({ pincode: extractOrderPincode(order) }),
+      ]);
+      if (!slot?.startTime || !slot?.endTime) return order;
+
+      const delay = Math.max(0, Number(pincode?.timeDelay) || 0);
+      const adjustedEnd = addMinutesToTimeString(String(slot.endTime), delay);
+      const label = String(slot.label ?? order.timeslotLabel ?? "");
+      const adjustedLabel = label && slot.endTime
+        ? label.replace(String(slot.endTime), adjustedEnd)
+        : label;
+
+      return {
+        ...order,
+        timeslotStart: String(slot.startTime),
+        timeslotEnd: adjustedEnd,
+        ...(adjustedLabel ? { timeslotLabel: adjustedLabel } : {}),
+      };
+    } catch (err) {
+      log.warn({ err, orderId: order?.orderId, subHubName: order?.subHubName }, "Failed to enrich order timeslot");
+      return order;
+    }
+  }));
+}
+
 /**
  * Atomically adjusts a customer's walletBalance and appends a transaction record.
  * Use this instead of bare `$inc: { walletBalance }` so the wallet tracker has full history.
