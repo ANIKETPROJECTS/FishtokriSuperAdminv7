@@ -1856,7 +1856,16 @@ export default function Orders() {
           ? getTodayIST()
           : orderDate,
         timeslotId: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : (selectedTimeslot ? String(selectedTimeslot._id) : undefined),
-        timeslotLabel: orderDeliveryType === "takeaway" ? undefined : isExpressOrder ? "Express order by Porter" : selectedTimeslot?.label,
+        timeslotLabel: orderDeliveryType === "takeaway"
+          ? undefined
+          : isExpressOrder
+            ? "Express order by Porter"
+            : selectedTimeslot?.label && selectedTimeslot?.endTime
+              ? selectedTimeslot.label.replace(
+                  selectedTimeslot.endTime,
+                  addMinutesToTimeStr(selectedTimeslot.endTime, pincodeTimeDelay),
+                )
+              : selectedTimeslot?.label,
         timeslotStart: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : selectedTimeslot?.startTime,
         timeslotEnd: (orderDeliveryType === "takeaway" || isExpressOrder)
           ? undefined
@@ -5346,10 +5355,10 @@ export default function Orders() {
                       <p className="text-xs font-bold tracking-wider text-black mb-1">DELIVERY DATE</p>
                       <p className="font-bold text-black">{formatDeliveryDate(selectedOrder.deliveryDate) || formatDate(selectedOrder.createdAt)}</p>
                     </div>
-                    {selectedOrder.timeslotLabel && (
+                    {formatTimeSlot(selectedOrder) && (
                       <div className="col-span-2">
                         <p className="text-xs font-bold tracking-wider text-black mb-1">TIME SLOT</p>
-                        <p className="font-bold text-black">{selectedOrder.timeslotLabel}</p>
+                        <p className="font-bold text-black">{formatTimeSlot(selectedOrder)}</p>
                       </div>
                     )}
                     {selectedOrder.superHubName && (
