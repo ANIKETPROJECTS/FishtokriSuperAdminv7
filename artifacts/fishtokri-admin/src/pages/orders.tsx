@@ -1858,7 +1858,11 @@ export default function Orders() {
         timeslotId: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : (selectedTimeslot ? String(selectedTimeslot._id) : undefined),
         timeslotLabel: orderDeliveryType === "takeaway" ? undefined : isExpressOrder ? "Express order by Porter" : selectedTimeslot?.label,
         timeslotStart: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : selectedTimeslot?.startTime,
-        timeslotEnd: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : selectedTimeslot?.endTime,
+        timeslotEnd: (orderDeliveryType === "takeaway" || isExpressOrder)
+          ? undefined
+          : selectedTimeslot?.endTime
+            ? addMinutesToTimeStr(selectedTimeslot.endTime, pincodeTimeDelay)
+            : undefined,
       };
       // The edit route is authoritative while the order/customer data is
       // loading. Fall back to its URL id so an edit can never become a new
