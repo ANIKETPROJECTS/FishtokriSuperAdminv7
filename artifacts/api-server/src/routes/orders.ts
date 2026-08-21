@@ -14,210 +14,11 @@ import {
 import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { HubUser } from "../db/models/hub-user.js";
-import { SubHub } from "../db/models/sub-hub.js";
 import { sendOrderConfirmed, sendOutForDelivery, sendOrderCancelled } from "../services/whatsapp.js";
 
 const router = Router();
 router.use(requireAuth as any);
 router.use(loadScope as any);
-
-const zoneCache = new Map<string, { expires: number; zones: any[] }>();
-const TEST_SEED_TAG = "zone-ranking-test-seed";
-
-function orderPincode(order: any): string {
-  const candidates = [
-    order?.pincode,
-    order?.deliveryPincode,
-    order?.zipCode,
-    order?.address?.pincode,
-    order?.customerAddress?.pincode,
-    order?.deliveryAddress?.pincode,
-    order?.selectedAddress?.pincode,
-  ];
-  const exact = candidates.map((value) => String(value ?? "").trim()).find((value) => /^\d{6}$/.test(value));
-  if (exact) return exact;
-  const textFields = [
-    order?.address,
-    order?.deliveryArea,
-    order?.customerAddress,
-    order?.deliveryAddress,
-    order?.selectedAddress,
-  ];
-  for (const value of textFields) {
-    if (typeof value !== "string") continue;
-    const match = value.match(/\b\d{6}\b/);
-    if (match) return match[0];
-  }
-  return "";
-}
-
-async function getZonesForSubHub(subHubId: string, subHubName?: string): Promise<any[]> {
-  const cacheKey = subHubId || `name:${subHubName || ""}`;
-  const cached = zoneCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) return cached.zones;
-  try {
-    let dbName = "";
-    if (subHubId && mongoose.isValidObjectId(subHubId)) {
-      const sub = await SubHub.findById(subHubId, { dbName: 1 }).lean();
-      dbName = String((sub as any)?.dbName ?? "");
-    }
-    if (!dbName) dbName = String(subHubName ?? "");
-    if (!dbName) return [];
-    const connection = await getSubHubDbConnection(dbName);
-    const zones = await connection.db.collection("zones").find({}).toArray();
-    zoneCache.set(cacheKey, { expires: Date.now() + 30_000, zones });
-    return zones;
-  } catch {
-    return [];
-  }
-}
-
-async function enrichOrdersWithZones(orders: any[]): Promise<any[]> {
-  const keys = [...new Set(orders.map((order) => `${String(order.subHubId ?? "")}|${String(order.subHubName ?? "")}`))];
-  const zoneMap = new Map<string, any[]>();
-  await Promise.all(keys.map(async (key) => {
-    const [subHubId, subHubName] = key.split("|");
-    zoneMap.set(key, await getZonesForSubHub(subHubId, subHubName));
-  }));
-  return orders.map((order) => {
-    const pincode = orderPincode(order);
-    const zones = zoneMap.get(`${String(order.subHubId ?? "")}|${String(order.subHubName ?? "")}`) ?? [];
-    const matches = zones.flatMap((zone) => {
-      const membership = Array.isArray(zone.pincodes)
-        ? zone.pincodes.find((entry: any) => String(entry?.pincode ?? entry) === pincode)
-        : null;
-      return membership ? [{ zone, membership }] : [];
-    }).sort((a, b) =>
-      Number(b.zone.rank ?? 0) - Number(a.zone.rank ?? 0) ||
-      Number(b.membership.rank ?? 0) - Number(a.membership.rank ?? 0)
-    );
-    const match = matches[0];
-    return {
-      ...order,
-      zoneName: match?.zone?.name ?? "",
-      zoneRank: match ? Number(match.zone.rank ?? 0) : -1,
-      zonePincodeRank: match ? Number(match.membership.rank ?? 0) : -1,
-      zonePincode: match ? pincode : "",
-    };
-  });
-}
-
-router.post("/test-seed-zone-data", async (req: ScopedRequest, res) => {
-  try {
-    const subHubId = String(req.body?.subHubId ?? "");
-    if (!subHubId || !mongoose.isValidObjectId(subHubId)) {
-      res.status(400).json({ error: "ValidationError", message: "A valid sub hub is required" });
-      return;
-    }
-    if (req.scope && !req.scope.isMaster && !req.scope.subHubIds.includes(subHubId)) {
-      res.status(403).json({ error: "Forbidden", message: "You can only seed data for your assigned sub hubs." });
-      return;
-    }
-    const subHub = await SubHub.findById(subHubId).lean();
-    if (!subHub?.dbName) {
-      res.status(404).json({ error: "NotFound", message: "Sub hub database not found" });
-      return;
-    }
-    const subConn = await getSubHubDbConnection(String(subHub.dbName));
-    const ordersConn = await getOrdersDb();
-    const customersConn = await getCustomersConnection();
-    const now = new Date();
-    const pincodeGroups = [
-      { name: "TEST Zone Near", rank: 1, pincodes: ["401001", "401002", "401003", "401004", "401005"] },
-      { name: "TEST Zone Middle", rank: 2, pincodes: ["401003", "401004", "401005", "401006", "401007"] },
-      { name: "TEST Zone Far", rank: 3, pincodes: ["401006", "401007", "401008", "401009", "401010"] },
-    ];
-    const allPincodes = [...new Set(pincodeGroups.flatMap((group) => group.pincodes))];
-
-    await subConn.db.collection("zones").deleteMany({ seedTag: TEST_SEED_TAG });
-    await subConn.db.collection("pincodes").deleteMany({ seedTag: TEST_SEED_TAG });
-    await ordersConn.db.collection(COLLECTION).deleteMany({ seedTag: TEST_SEED_TAG });
-    await customersConn.db.collection("customers").deleteMany({ seedTag: TEST_SEED_TAG });
-
-    await subConn.db.collection("pincodes").insertMany(allPincodes.map((pincode, index) => ({
-      pincode,
-      charge: 20 + index * 5,
-      timeDelay: 10 + index * 5,
-      seedTag: TEST_SEED_TAG,
-      createdAt: now,
-      updatedAt: now,
-    })));
-    await subConn.db.collection("zones").insertMany(pincodeGroups.map((group) => ({
-      name: group.name,
-      description: "Generated delivery-zone ranking test data",
-      rank: group.rank,
-      seedTag: TEST_SEED_TAG,
-      pincodes: group.pincodes.map((pincode, index) => ({
-        pincode,
-        rank: group.pincodes.length - index,
-        charge: 20 + allPincodes.indexOf(pincode) * 5,
-        timeDelay: 10 + allPincodes.indexOf(pincode) * 5,
-      })),
-      createdAt: now,
-      updatedAt: now,
-    })));
-
-    const customers = Array.from({ length: 15 }, (_, index) => {
-      const pincode = allPincodes[index % allPincodes.length];
-      const name = `TEST Customer ${String(index + 1).padStart(2, "0")}`;
-      const phone = `90000${String(10000 + index).slice(-5)}`;
-      return {
-        name,
-        email: `zone-test-${index + 1}@example.invalid`,
-        phone,
-        addresses: [{ label: "Home", name, phone, building: `TEST Building ${index + 1}`, area: "Zone Ranking Test", pincode, isDefault: true }],
-        orders: [],
-        usedCoupons: [],
-        activeCoupons: [],
-        seedTag: TEST_SEED_TAG,
-        createdAt: now,
-        updatedAt: now,
-      };
-    });
-    const customerResult = await customersConn.db.collection("customers").insertMany(customers);
-    const customerIds = Object.values(customerResult.insertedIds);
-    const orderDocs = await Promise.all(customers.map(async (customer, index) => ({
-      customerId: String(customerIds[index]),
-      customerName: customer.name,
-      phone: customer.phone,
-      email: customer.email,
-      items: [{ name: "TEST Zone Ranking Item", price: 100 + index * 10, quantity: 1, unit: "piece" }],
-      subtotal: 100 + index * 10,
-      discount: 0,
-      slotCharge: 0,
-      deliveryCharge: 20 + index * 5,
-      extraDiscount: 0,
-      extraDiscountType: "flat",
-      total: 120 + index * 15,
-      deliveryType: "delivery",
-      orderType: "normal",
-      address: `TEST Building ${index + 1}, Zone Ranking Test, ${customers[index].addresses[0].pincode}`,
-      deliveryArea: "Zone Ranking Test",
-      deliveryAddressDetail: customers[index].addresses[0],
-      notes: "Generated zone-ranking test order",
-      status: "pending",
-      source: "test_seed",
-      seedTag: TEST_SEED_TAG,
-      subHubId,
-      subHubName: subHub.name,
-      paymentStatus: "unpaid",
-      payments: [],
-      paidAmount: 0,
-      dueAmount: 120 + index * 15,
-      paymentMode: "cod",
-      scheduleType: "instant",
-      createdAt: new Date(now.getTime() + index),
-      updatedAt: now,
-      orderId: `TEST-ZONE-${String(index + 1).padStart(2, "0")}-${now.getTime()}`,
-    })));
-    await ordersConn.db.collection(COLLECTION).insertMany(orderDocs);
-    zoneCache.delete(`${subHubId}|${subHub.name}`);
-    res.status(201).json({ ok: true, zones: pincodeGroups.length, pincodes: allPincodes.length, orders: orderDocs.length });
-  } catch (err) {
-    req.log.error({ err }, "Failed to seed zone ranking test data");
-    res.status(500).json({ error: "InternalError", message: "Failed to seed zone ranking test data" });
-  }
-});
 
 const VALID_ORDER_STATUSES = new Set([
   "pending",
@@ -787,7 +588,7 @@ router.get("/", async (req: ScopedRequest, res) => {
 
     const sortDir = order === "asc" ? 1 : -1;
     const sortObj: any = {};
-    const allowedSorts = ["createdAt", "customerName", "status", "zone"];
+    const allowedSorts = ["createdAt", "customerName", "status"];
     sortObj[allowedSorts.includes(sort) ? sort : "createdAt"] = sortDir;
 
     const pageNum = Math.max(1, Number(page) || 1);
@@ -800,28 +601,10 @@ router.get("/", async (req: ScopedRequest, res) => {
       return;
     }
 
-    let orders: any[];
-    let total: number;
-    if (sort === "zone") {
-      const allOrders = await db.collection(COLLECTION).find(scopedFilter).toArray();
-      const enriched = await enrichOrdersWithZones(allOrders);
-      enriched.sort((a, b) =>
-        sortDir * (
-          Number(a.zoneRank ?? -1) - Number(b.zoneRank ?? -1) ||
-          Number(a.zonePincodeRank ?? -1) - Number(b.zonePincodeRank ?? -1) ||
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        )
-      );
-      total = enriched.length;
-      orders = enriched.slice(skip, skip + limitNum);
-    } else {
-      const result = await Promise.all([
-        db.collection(COLLECTION).find(scopedFilter).sort(sortObj).skip(skip).limit(limitNum).toArray(),
-        db.collection(COLLECTION).countDocuments(scopedFilter),
-      ]);
-      orders = await enrichOrdersWithZones(result[0] as any[]);
-      total = result[1];
-    }
+    const [orders, total] = await Promise.all([
+      db.collection(COLLECTION).find(scopedFilter).sort(sortObj).skip(skip).limit(limitNum).toArray(),
+      db.collection(COLLECTION).countDocuments(scopedFilter),
+    ]);
 
     res.json({ orders, total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) });
 

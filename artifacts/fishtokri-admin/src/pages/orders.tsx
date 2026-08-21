@@ -1,4 +1,4 @@
-import { Fragment, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Search, X, RefreshCw, ClipboardList, Clock, CheckCircle2, XCircle,
@@ -824,8 +824,6 @@ export default function Orders() {
   const [subHubs, setSubHubs] = useState<any[]>([]);
   const [loadingSubHubs, setLoadingSubHubs] = useState(false);
   const [selectedSubHubId, setSelectedSubHubId] = useState<string>("");
-  const [selectedSubHubZones, setSelectedSubHubZones] = useState<any[]>([]);
-  const [loadingSubHubZones, setLoadingSubHubZones] = useState(false);
   const [subHubProducts, setSubHubProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -1051,15 +1049,10 @@ export default function Orders() {
   // Load products, coupons, timeslots when sub-hub changes
   useEffect(() => {
     if (!selectedSubHubId) {
-      setSubHubProducts([]); setCoupons([]); setTimeslots([]); setSelectedSubHubZones([]);
+      setSubHubProducts([]); setCoupons([]); setTimeslots([]);
       setAppliedCouponIds([]); setSelectedTimeslotId("");
       return;
     }
-    setLoadingSubHubZones(true);
-    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/zones`)
-      .then((d) => setSelectedSubHubZones(Array.isArray(d.zones) ? d.zones : []))
-      .catch(() => setSelectedSubHubZones([]))
-      .finally(() => setLoadingSubHubZones(false));
     setLoadingProducts(true);
     apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/products`)
       .then((d) => setSubHubProducts(d.products ?? []))
@@ -1421,26 +1414,8 @@ export default function Orders() {
     if (!deliveryPincode || !selectedSubHubId) return null;
     const sub = subHubs.find((h: any) => h.id === selectedSubHubId);
     if (!sub) return null;
-    if (loadingSubHubZones) return undefined;
-    const matches = selectedSubHubZones.flatMap((zone: any) => {
-      const membership = Array.isArray(zone.pincodes)
-        ? zone.pincodes.find((entry: any) => String(entry?.pincode ?? entry) === deliveryPincode)
-        : null;
-      return membership ? [{ zone, membership }] : [];
-    }).sort((a: any, b: any) =>
-      Number(b.zone?.rank ?? 0) - Number(a.zone?.rank ?? 0) ||
-      Number(b.membership?.rank ?? 0) - Number(a.membership?.rank ?? 0)
-    );
-    if (matches.length > 0) {
-      const match = matches[0];
-      return {
-        pincode: deliveryPincode,
-        charge: match.membership?.charge ?? 0,
-        timeDelay: match.membership?.timeDelay ?? 0,
-      };
-    }
     return (sub.pincodes || []).find((p: any) => p.pincode === deliveryPincode) || null;
-  }, [deliveryPincode, selectedSubHubId, subHubs, selectedSubHubZones, loadingSubHubZones]);
+  }, [deliveryPincode, selectedSubHubId, subHubs]);
 
   const pincodeDeliveryCharge = useMemo(() => {
     if (orderDeliveryType !== "delivery") return 0;
@@ -1453,8 +1428,8 @@ export default function Orders() {
   }, [pincodeEntry, orderDeliveryType]);
 
   const isOutstationNeeded = useMemo(() =>
-    orderDeliveryType === "delivery" && deliveryPincode.length === 6 && !loadingSubHubZones && pincodeEntry === null,
-    [orderDeliveryType, deliveryPincode, pincodeEntry, loadingSubHubZones]
+    orderDeliveryType === "delivery" && deliveryPincode.length === 6 && pincodeEntry === null,
+    [orderDeliveryType, deliveryPincode, pincodeEntry]
   );
 
   // Auto-reset outstation toggle when pincode becomes serviceable or is cleared
@@ -1856,22 +1831,9 @@ export default function Orders() {
           ? getTodayIST()
           : orderDate,
         timeslotId: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : (selectedTimeslot ? String(selectedTimeslot._id) : undefined),
-        timeslotLabel: orderDeliveryType === "takeaway"
-          ? undefined
-          : isExpressOrder
-            ? "Express order by Porter"
-            : selectedTimeslot?.label && selectedTimeslot?.endTime
-              ? selectedTimeslot.label.replace(
-                  selectedTimeslot.endTime,
-                  addMinutesToTimeStr(selectedTimeslot.endTime, pincodeTimeDelay),
-                )
-              : selectedTimeslot?.label,
+        timeslotLabel: orderDeliveryType === "takeaway" ? undefined : isExpressOrder ? "Express order by Porter" : selectedTimeslot?.label,
         timeslotStart: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : selectedTimeslot?.startTime,
-        timeslotEnd: (orderDeliveryType === "takeaway" || isExpressOrder)
-          ? undefined
-          : selectedTimeslot?.endTime
-            ? addMinutesToTimeStr(selectedTimeslot.endTime, pincodeTimeDelay)
-            : undefined,
+        timeslotEnd: (orderDeliveryType === "takeaway" || isExpressOrder) ? undefined : selectedTimeslot?.endTime,
       };
       // The edit route is authoritative while the order/customer data is
       // loading. Fall back to its URL id so an edit can never become a new
@@ -3062,22 +3024,6 @@ export default function Orders() {
             </SelectContent>
           </Select>
 
-          <Select value={`${sortField}:${sortDir}`} onValueChange={(v) => {
-            const [field, direction] = v.split(":");
-            setSortField(field);
-            setSortDir(direction as "asc" | "desc");
-          }}>
-            <SelectTrigger className="h-9 w-40 text-sm text-black rounded-full border-gray-200">
-              <SelectValue placeholder="Sort orders" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="createdAt:desc">Newest first</SelectItem>
-              <SelectItem value="createdAt:asc">Oldest first</SelectItem>
-              <SelectItem value="zone:desc">Farthest zone first</SelectItem>
-              <SelectItem value="zone:asc">Nearest zone first</SelectItem>
-            </SelectContent>
-          </Select>
-
           {/* Date range picker — only shown on the All Orders tab */}
           {activeTab === "all" && (
             <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
@@ -3235,40 +3181,7 @@ export default function Orders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {(() => {
-                  const grouped = Array.from(displayedOrders.reduce((map, order) => {
-                    const key = order.zoneName || "__unassigned__";
-                    const group = map.get(key) ?? [];
-                    group.push(order);
-                    map.set(key, group);
-                    return map;
-                  }, new Map<string, any[]>()).entries());
-                  const zoneColors = [
-                    { bg: "#E8F1FF", border: "#8DB7FF", text: "#1A56DB", dot: "#3678E5" },
-                    { bg: "#EAF8F0", border: "#8BD5A7", text: "#197044", dot: "#2EAA60" },
-                    { bg: "#FFF3E5", border: "#F4B46A", text: "#A85C00", dot: "#E58A1F" },
-                    { bg: "#F4EDFF", border: "#BBA0F5", text: "#6936B8", dot: "#8B5CD6" },
-                    { bg: "#FFF0F2", border: "#F2A0AC", text: "#A52B40", dot: "#D64B62" },
-                  ];
-                  return grouped.flatMap(([zoneKey, zoneOrders], groupIndex) => {
-                    const color = zoneKey === "__unassigned__"
-                      ? { bg: "#F7F7F8", border: "#D7D7DC", text: "#66666F", dot: "#9999A3" }
-                      : zoneColors[groupIndex % zoneColors.length];
-                    const pincodes = [...new Set(zoneOrders.map((order) => order.zonePincode).filter(Boolean))];
-                    const rank = zoneOrders.reduce((max, order) => Math.max(max, Number(order.zoneRank) || 0), 0);
-                    return [
-                      ...(activeTab === "current" ? [<tr key={`zone-header-${zoneKey}`} className="border-y" style={{ backgroundColor: color.bg, borderColor: color.border }}>
-                        <td colSpan={10} className="px-4 py-2.5">
-                          <div className="flex items-center gap-3" style={{ color: color.text }}>
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color.dot }} />
-                            <span className="text-sm font-bold">{zoneKey === "__unassigned__" ? "Unassigned Zone" : zoneKey}</span>
-                            <span className="text-xs font-medium opacity-80">{zoneOrders.length} order{zoneOrders.length !== 1 ? "s" : ""}</span>
-                            {rank > 0 && <span className="text-xs opacity-80">Zone rank {rank}</span>}
-                            {pincodes.length > 0 && <span className="text-xs opacity-80">Pincodes: {pincodes.join(", ")}</span>}
-                          </div>
-                        </td>
-                      </tr>] : []),
-                      ...zoneOrders.map((o) => {
+                {displayedOrders.map((o) => {
                   const total = effectiveOrderTotal(o);
                   const items: any[] = Array.isArray(o.items) ? o.items : [];
                   const slot = formatTimeSlot(o);
@@ -3469,10 +3382,7 @@ export default function Orders() {
                       </td>
                     </tr>
                   );
-                      }),
-                    ];
-                  });
-                })()}
+                })}
               </tbody>
             </table>
           </div>
@@ -5355,10 +5265,10 @@ export default function Orders() {
                       <p className="text-xs font-bold tracking-wider text-black mb-1">DELIVERY DATE</p>
                       <p className="font-bold text-black">{formatDeliveryDate(selectedOrder.deliveryDate) || formatDate(selectedOrder.createdAt)}</p>
                     </div>
-                    {formatTimeSlot(selectedOrder) && (
+                    {selectedOrder.timeslotLabel && (
                       <div className="col-span-2">
                         <p className="text-xs font-bold tracking-wider text-black mb-1">TIME SLOT</p>
-                        <p className="font-bold text-black">{formatTimeSlot(selectedOrder)}</p>
+                        <p className="font-bold text-black">{selectedOrder.timeslotLabel}</p>
                       </div>
                     )}
                     {selectedOrder.superHubName && (

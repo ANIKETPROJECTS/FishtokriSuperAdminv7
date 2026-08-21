@@ -977,8 +977,8 @@ router.post("/pincodes", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
-    const { pincode, area, city, isActive, charge, timeDelay } = req.body;
-    if (!/^\d{6}$/.test(String(pincode ?? ""))) { res.status(400).json({ error: "ValidationError", message: "A valid six-digit pincode is required" }); return; }
+    const { pincode, area, city, isActive } = req.body;
+    if (!pincode) { res.status(400).json({ error: "ValidationError", message: "Pincode is required" }); return; }
     const existing = await ctx.conn.db.collection("pincodes").findOne({ pincode });
     if (existing) { res.status(400).json({ error: "Duplicate", message: "Pincode already exists" }); return; }
     const doc = {
@@ -986,8 +986,6 @@ router.post("/pincodes", async (req, res) => {
       area: area ?? "",
       city: city ?? "",
       isActive: isActive !== false,
-      charge: Math.max(0, Number(charge) || 0),
-      timeDelay: Math.max(0, Number(timeDelay) || 0),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -1005,78 +1003,18 @@ router.put("/pincodes/:pincodeId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.pincodeId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid pincode ID" }); return; }
-    const { pincode, area, city, isActive, charge, timeDelay } = req.body;
+    const { pincode, area, city, isActive } = req.body;
     const update: any = { updatedAt: new Date() };
-    const current = await ctx.conn.db.collection("pincodes").findOne({ _id: oid });
-    if (!current) { res.status(404).json({ error: "NotFound", message: "Pincode not found" }); return; }
-    if (pincode !== undefined) {
-      if (!/^\d{6}$/.test(String(pincode))) { res.status(400).json({ error: "ValidationError", message: "A valid six-digit pincode is required" }); return; }
-      const duplicate = await ctx.conn.db.collection("pincodes").findOne({ pincode: String(pincode), _id: { $ne: oid } });
-      if (duplicate) { res.status(400).json({ error: "Duplicate", message: "Pincode already exists" }); return; }
-      update.pincode = String(pincode);
-    }
+    if (pincode !== undefined) update.pincode = String(pincode);
     if (area !== undefined) update.area = area;
     if (city !== undefined) update.city = city;
     if (isActive !== undefined) update.isActive = isActive;
-    if (charge !== undefined) update.charge = Math.max(0, Number(charge) || 0);
-    if (timeDelay !== undefined) update.timeDelay = Math.max(0, Number(timeDelay) || 0);
     const result = await ctx.conn.db.collection("pincodes").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
-    if (pincode !== undefined && String(current.pincode) !== String(pincode)) {
-      const zones = await ctx.conn.db.collection("zones").find({ "pincodes.pincode": String(current.pincode) }).toArray();
-      await Promise.all(zones.map((zone: any) => ctx.conn.db.collection("zones").updateOne(
-        { _id: zone._id },
-        { $set: { pincodes: (zone.pincodes ?? []).map((entry: any) => entry.pincode === String(current.pincode) ? { ...entry, pincode: String(pincode) } : entry), updatedAt: new Date() } },
-      )));
-    }
+    if (!result) { res.status(404).json({ error: "NotFound", message: "Pincode not found" }); return; }
     res.json({ pincode: result });
   } catch (err) {
     req.log.error({ err }, "Failed to update pincode");
     res.status(500).json({ error: "InternalError", message: "Failed to update pincode" });
-  }
-});
-
-// Legacy service-area pincodes are no longer used by the zone editor. Keep this
-// explicit endpoint so the one-time cleanup does not delete shared menu records.
-router.delete("/legacy-pincodes", async (req, res) => {
-  try {
-    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
-    if (!ctx) return;
-    const sub = await SubHub.findById(req.params.id);
-    if (!sub) { res.status(404).json({ error: "NotFound", message: "Sub hub not found" }); return; }
-    const legacyPincodes = Array.isArray(sub.pincodes) ? sub.pincodes : [];
-    const count = legacyPincodes.length;
-    // Preserve the old charge/delay settings in the shared menu collection
-    // before removing the legacy SubHub array.
-    for (const legacy of legacyPincodes as any[]) {
-      const pincode = String(legacy?.pincode ?? "").trim();
-      if (!/^\d{6}$/.test(pincode)) continue;
-      const values = {
-        charge: Math.max(0, Number(legacy?.charge) || 0),
-        timeDelay: Math.max(0, Number(legacy?.timeDelay) || 0),
-        updatedAt: new Date(),
-      };
-      const existing = await ctx.conn.db.collection("pincodes").findOne({ pincode });
-      if (existing) {
-        await ctx.conn.db.collection("pincodes").updateOne({ _id: existing._id }, { $set: values });
-      } else {
-        await ctx.conn.db.collection("pincodes").insertOne({
-          pincode,
-          area: legacy?.area ?? "",
-          city: legacy?.city ?? "",
-          isActive: legacy?.isActive !== false,
-          ...values,
-          createdAt: new Date(),
-        });
-      }
-    }
-    if (count > 0) {
-      sub.pincodes = [];
-      await sub.save();
-    }
-    res.json({ ok: true, deleted: count });
-  } catch (err) {
-    req.log.error({ err }, "Failed to delete legacy pincodes");
-    res.status(500).json({ error: "InternalError", message: "Failed to delete legacy pincodes" });
   }
 });
 
@@ -1086,127 +1024,11 @@ router.delete("/pincodes/:pincodeId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.pincodeId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid pincode ID" }); return; }
-    const existing = await ctx.conn.db.collection("pincodes").findOne({ _id: oid });
-    if (!existing) { res.status(404).json({ error: "NotFound", message: "Pincode not found" }); return; }
     await ctx.conn.db.collection("pincodes").deleteOne({ _id: oid });
-    const zones = await ctx.conn.db.collection("zones").find({ "pincodes.pincode": String(existing.pincode) }).toArray();
-    await Promise.all(zones.map((zone: any) => {
-      const pincodes = (zone.pincodes ?? [])
-        .filter((entry: any) => entry.pincode !== String(existing.pincode))
-        .map((entry: any, index: number, all: any[]) => ({ ...entry, rank: all.length - index }));
-      return ctx.conn.db.collection("zones").updateOne(
-        { _id: zone._id },
-        { $set: { pincodes, updatedAt: new Date() } },
-      );
-    }));
-    res.json({ message: "Pincode permanently deleted", deletedFromZones: zones.length });
+    res.json({ message: "Pincode deleted" });
   } catch (err) {
     req.log.error({ err }, "Failed to delete pincode");
     res.status(500).json({ error: "InternalError", message: "Failed to delete pincode" });
-  }
-});
-
-// ─── DELIVERY ZONES ───────────────────────────────────────────────────────────
-// Zones are intentionally separate from legacy pincodes so existing charge and
-// time-delay records remain compatible. A pincode may be referenced by many zones.
-function normalizeZonePincodes(values: any[]) {
-  const seen = new Set<string>();
-  return (Array.isArray(values) ? values : [])
-    .map((entry: any, index: number) => ({
-      pincode: String(typeof entry === "string" ? entry : entry?.pincode ?? "").trim(),
-      rank: Number.isFinite(Number(entry?.rank)) ? Number(entry.rank) : values.length - index,
-    }))
-    .filter((entry) => /^\d{6}$/.test(entry.pincode) && !seen.has(entry.pincode) && seen.add(entry.pincode))
-    .map((entry, index, all) => ({ pincode: entry.pincode, rank: all.length - index }));
-}
-
-router.get("/zones", async (req, res) => {
-  try {
-    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
-    if (!ctx) return;
-    const zones = await ctx.conn.db.collection("zones").find({}).sort({ rank: -1, name: 1 }).toArray();
-    res.json({ zones, total: zones.length });
-  } catch (err) {
-    req.log.error({ err }, "Failed to get delivery zones");
-    res.status(500).json({ error: "InternalError", message: "Failed to fetch delivery zones" });
-  }
-});
-
-router.post("/zones", async (req, res) => {
-  try {
-    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
-    if (!ctx) return;
-    const name = String(req.body?.name ?? "").trim();
-    if (!name) { res.status(400).json({ error: "ValidationError", message: "Zone name is required" }); return; }
-    const existing = await ctx.conn.db.collection("zones").findOne({ name });
-    if (existing) { res.status(400).json({ error: "Duplicate", message: "A zone with this name already exists" }); return; }
-    const max = await ctx.conn.db.collection("zones").findOne({}, { sort: { rank: -1 } });
-    const doc = {
-      name,
-      description: String(req.body?.description ?? "").trim(),
-      rank: Number(max?.rank ?? 0) + 1,
-      pincodes: normalizeZonePincodes(req.body?.pincodes ?? []),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    const result = await ctx.conn.db.collection("zones").insertOne(doc);
-    res.status(201).json({ zone: { ...doc, _id: result.insertedId } });
-  } catch (err) {
-    req.log.error({ err }, "Failed to create delivery zone");
-    res.status(500).json({ error: "InternalError", message: "Failed to create delivery zone" });
-  }
-});
-
-router.put("/zones/reorder", async (req, res) => {
-  try {
-    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
-    if (!ctx) return;
-    const ids = Array.isArray(req.body?.zoneIds) ? req.body.zoneIds.map(String) : [];
-    await Promise.all(ids.map((id, index) => {
-      const oid = toId(id);
-      return oid ? ctx.conn.db.collection("zones").updateOne({ _id: oid }, { $set: { rank: ids.length - index, updatedAt: new Date() } }) : null;
-    }));
-    res.json({ ok: true });
-  } catch (err) {
-    req.log.error({ err }, "Failed to reorder delivery zones");
-    res.status(500).json({ error: "InternalError", message: "Failed to reorder delivery zones" });
-  }
-});
-
-router.put("/zones/:zoneId", async (req, res) => {
-  try {
-    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
-    if (!ctx) return;
-    const oid = toId(req.params.zoneId);
-    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid zone ID" }); return; }
-    const update: any = { updatedAt: new Date() };
-    if (req.body?.name !== undefined) {
-      const name = String(req.body.name).trim();
-      if (!name) { res.status(400).json({ error: "ValidationError", message: "Zone name is required" }); return; }
-      update.name = name;
-    }
-    if (req.body?.description !== undefined) update.description = String(req.body.description).trim();
-    if (req.body?.pincodes !== undefined) update.pincodes = normalizeZonePincodes(req.body.pincodes);
-    const result = await ctx.conn.db.collection("zones").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
-    if (!result) { res.status(404).json({ error: "NotFound", message: "Zone not found" }); return; }
-    res.json({ zone: result });
-  } catch (err) {
-    req.log.error({ err }, "Failed to update delivery zone");
-    res.status(500).json({ error: "InternalError", message: "Failed to update delivery zone" });
-  }
-});
-
-router.delete("/zones/:zoneId", async (req, res) => {
-  try {
-    const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
-    if (!ctx) return;
-    const oid = toId(req.params.zoneId);
-    if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid zone ID" }); return; }
-    await ctx.conn.db.collection("zones").deleteOne({ _id: oid });
-    res.json({ message: "Zone deleted" });
-  } catch (err) {
-    req.log.error({ err }, "Failed to delete delivery zone");
-    res.status(500).json({ error: "InternalError", message: "Failed to delete delivery zone" });
   }
 });
 
