@@ -537,6 +537,7 @@ export default function SubHubMenuAdmin() {
       const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/stats`);
       setStats(data.stats);
       setDbName(data.stats.dbName ?? "");
+      setPincodesCount(Number(data.stats.pincodes) || 0);
     } catch (err: any) {
       if (!silent) setStatsError(err.message);
     } finally {
@@ -550,7 +551,6 @@ export default function SubHubMenuAdmin() {
       if (sub) {
         setSubHubName(sub.name);
         setDbName(sub.dbName);
-        setPincodesCount((sub.pincodes ?? []).length);
       }
     }).catch(() => {});
     loadStats();
@@ -670,14 +670,17 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
 
   useEffect(() => {
     setLoading(true);
-    apiFetch("/api/sub-hubs").then((d) => {
-      const sub = d.subHubs?.find((s: any) => s.id === subHubId);
-      if (sub) {
-        const pins: PincodeEntry[] = sub.pincodes ?? [];
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`)
+      .then((d) => {
+        const pins: PincodeEntry[] = Array.isArray(d.pincodes) ? d.pincodes : [];
         setPincodes(pins);
         onCountChange(pins.length);
-      }
-    }).catch(() => {}).finally(() => setLoading(false));
+      })
+      .catch(() => {
+        setPincodes([]);
+        onCountChange(0);
+      })
+      .finally(() => setLoading(false));
   }, [subHubId]);
 
   const addPin = () => {
