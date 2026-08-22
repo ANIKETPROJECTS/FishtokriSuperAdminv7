@@ -1160,8 +1160,9 @@ router.post("/", async (req: ScopedRequest, res) => {
     const slotChargeNum = Math.max(0, Number(slotCharge) || 0);
     const deliveryChargeNum = Math.max(0, Number(deliveryCharge) || 0);
     const extraDiscountNum = Math.max(0, Number(extraDiscount) || 0);
-    const totalNum = Number.isFinite(Number(totalIn)) && Number(totalIn) > 0
-      ? Number(totalIn)
+    const hasIncomingTotal = totalIn !== undefined && totalIn !== null && totalIn !== "";
+    const totalNum = hasIncomingTotal && Number.isFinite(Number(totalIn))
+      ? Math.max(0, Number(totalIn))
       : Math.max(0, subTotalNum - discountNum + slotChargeNum + deliveryChargeNum);
 
     const orderDoc: any = {
@@ -1781,7 +1782,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       );
       // Use the incoming total if provided (edit may have changed it), else fall back to DB value
       let totalNum = total !== undefined ? (Number(total) || 0) : (Number(existing?.total) || 0);
-      if (totalNum <= 0 && Array.isArray(existing?.items)) {
+      if (total === undefined && totalNum <= 0 && Array.isArray(existing?.items)) {
         totalNum = existing.items.reduce(
           (s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1),
           0
