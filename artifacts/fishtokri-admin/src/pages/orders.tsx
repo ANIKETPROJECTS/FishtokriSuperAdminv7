@@ -397,11 +397,13 @@ function orderTotal(items: any[]) {
 
 // Returns the final amount payable for an order, honouring any saved
 // `total` (which already accounts for coupon discounts and slot charges).
-// Falls back to items × qty − discount for legacy orders that don't have
-// `total` persisted.
+// A saved total of zero is valid, for example when a full discount was
+// applied, so only fall back when the field is genuinely absent.
 function effectiveOrderTotal(o: any): number {
-  const saved = Number(o?.total);
-  if (saved > 0) return saved;
+  if (o?.total !== undefined && o?.total !== null && o?.total !== "") {
+    const saved = Number(o.total);
+    if (Number.isFinite(saved)) return Math.max(0, saved);
+  }
   // Fallback for orders without a stored total: recompute from components.
   // Must mirror the detail-breakdown math so line items and grand total stay consistent.
   const items = Array.isArray(o?.items) ? o.items : [];
