@@ -2954,6 +2954,9 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     onValueChange={(value) => setPreorderAvailability((current) => ({
                       ...current,
                       type: value as PreorderAvailabilityType,
+                      weekdays: value === "all" || value === "date_range"
+                        ? PREORDER_WEEKDAYS.map((day) => day.value)
+                        : current.weekdays,
                     }))}
                   >
                     <SelectTrigger className="h-9 text-sm bg-white border-orange-200"><SelectValue /></SelectTrigger>
@@ -2966,47 +2969,57 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                   </Select>
 
                   <div className="border-t border-orange-200 pt-3">
+                    {preorderAvailability.type !== "all" && (
+                      <>
+                        <div className="mb-2">
+                          <div>
+                            <p className="text-[11px] font-semibold text-orange-800">1. Choose available days</p>
+                            <p className="text-[10px] text-orange-700">All days start selected. Turn off any day this product should not be available.</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 mb-3">
+                          {PREORDER_WEEKDAYS.map((day) => {
+                            const selected = preorderAvailability.weekdays.includes(day.value);
+                            return (
+                              <button
+                                key={day.value}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => setPreorderAvailability((current) => {
+                                  const weekdays = (selected
+                                    ? current.weekdays.filter((value) => value !== day.value)
+                                    : [...current.weekdays, day.value]).sort((a, b) => a - b);
+                                  let type = current.type;
+                                  if (current.type === "all" && weekdays.length < 7) type = "weekdays";
+                                  if (current.type === "weekdays" && weekdays.length === 7) type = "all";
+                                  if (current.type === "date_range" && weekdays.length < 7) type = "date_range_and_weekdays";
+                                  if (current.type === "date_range_and_weekdays" && weekdays.length === 7) type = "date_range";
+                                  return { ...current, type, weekdays };
+                                })}
+                                className={`h-8 rounded-md border text-[11px] font-semibold transition-colors ${
+                                  selected
+                                    ? "border-orange-500 bg-orange-500 text-white"
+                                    : "border-orange-200 bg-white text-orange-700 hover:bg-orange-100"
+                                }`}
+                              >
+                                {day.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {preorderAvailability.weekdays.length === 0 && (
+                          <p className="text-[11px] text-red-600 mb-2">Select at least one weekday.</p>
+                        )}
+                      </>
+                    )}
                     <div className="mb-2">
                       <div>
-                        <p className="text-[11px] font-semibold text-orange-800">1. Choose available days</p>
-                        <p className="text-[10px] text-orange-700">All days start selected. Turn off any day this product should not be available.</p>
+                        <p className="text-[11px] font-semibold text-orange-800">
+                          {preorderAvailability.type === "all" ? "Choose timeslots for each day" : "2. Choose timeslots for each selected day"}
+                        </p>
+                        <p className="text-[10px] text-orange-700">All slots start selected. Click a slot to turn it off for that day.</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-7 gap-1 mb-3">
-                      {PREORDER_WEEKDAYS.map((day) => {
-                        const selected = preorderAvailability.weekdays.includes(day.value);
-                        return (
-                          <button
-                            key={day.value}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => setPreorderAvailability((current) => {
-                              const weekdays = (selected
-                                ? current.weekdays.filter((value) => value !== day.value)
-                                : [...current.weekdays, day.value]).sort((a, b) => a - b);
-                              let type = current.type;
-                              if (current.type === "all" && weekdays.length < 7) type = "weekdays";
-                              if (current.type === "weekdays" && weekdays.length === 7) type = "all";
-                              if (current.type === "date_range" && weekdays.length < 7) type = "date_range_and_weekdays";
-                              if (current.type === "date_range_and_weekdays" && weekdays.length === 7) type = "date_range";
-                              return { ...current, type, weekdays };
-                            })}
-                            className={`h-8 rounded-md border text-[11px] font-semibold transition-colors ${
-                              selected
-                                ? "border-orange-500 bg-orange-500 text-white"
-                                : "border-orange-200 bg-white text-orange-700 hover:bg-orange-100"
-                            }`}
-                          >
-                            {day.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {preorderAvailability.weekdays.length === 0 && (
-                      <p className="text-[11px] text-red-600 mb-2">Select at least one weekday.</p>
-                    )}
-                    <p className="text-[11px] font-semibold text-orange-800 mb-1.5">2. Choose timeslots for each selected day</p>
-                    <p className="text-[10px] text-orange-700 mb-2">All slots start selected. Click a slot to turn it off for that day.</p>
                     <div className="space-y-2">
                       {PREORDER_WEEKDAYS.map((day) => {
                         const dayKey = String(day.value);
