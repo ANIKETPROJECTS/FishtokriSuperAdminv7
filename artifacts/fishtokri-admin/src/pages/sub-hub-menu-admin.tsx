@@ -77,6 +77,17 @@ const defaultPreorderAvailability = (): PreorderAvailability => ({
   timeslotIdsByWeekday: {},
 });
 
+function getTomorrowDateISO(): string {
+  const now = new Date();
+  const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  istNow.setUTCDate(istNow.getUTCDate() + 1);
+  return [
+    istNow.getUTCFullYear(),
+    String(istNow.getUTCMonth() + 1).padStart(2, "0"),
+    String(istNow.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function normalizePreorderAvailability(raw: any): PreorderAvailability {
   const type: PreorderAvailabilityType = ["all", "weekdays", "date_range", "date_range_and_weekdays"].includes(String(raw?.type))
     ? raw.type
@@ -2805,6 +2816,10 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
           toast({ title: "Choose a preorder date range", description: "Select both a start date and an end date.", variant: "destructive" });
           return;
         }
+        if (preorderAvailability.startDate < getTomorrowDateISO() || preorderAvailability.endDate < getTomorrowDateISO()) {
+          toast({ title: "Choose future dates", description: "Preorder availability must start from tomorrow or later.", variant: "destructive" });
+          return;
+        }
         if (preorderAvailability.startDate > preorderAvailability.endDate) {
           toast({ title: "Invalid preorder date range", description: "The end date must be on or after the start date.", variant: "destructive" });
           return;
@@ -3080,6 +3095,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                         <Label className="text-[11px] font-semibold text-orange-800">Start date</Label>
                         <Input
                           type="date"
+                          min={getTomorrowDateISO()}
                           value={preorderAvailability.startDate}
                           onChange={(e) => setPreorderAvailability((current) => ({ ...current, startDate: e.target.value }))}
                           className="h-9 bg-white border-orange-200"
@@ -3089,7 +3105,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                         <Label className="text-[11px] font-semibold text-orange-800">End date</Label>
                         <Input
                           type="date"
-                          min={preorderAvailability.startDate || undefined}
+                          min={preorderAvailability.startDate && preorderAvailability.startDate >= getTomorrowDateISO() ? preorderAvailability.startDate : getTomorrowDateISO()}
                           value={preorderAvailability.endDate}
                           onChange={(e) => setPreorderAvailability((current) => ({ ...current, endDate: e.target.value }))}
                           className="h-9 bg-white border-orange-200"
