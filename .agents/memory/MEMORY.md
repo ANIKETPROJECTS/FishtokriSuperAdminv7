@@ -6,4 +6,5 @@
 - [Two delivery-charge fields on orders](order-delivery-charge-fields.md) — admin orders use `deliveryCharge`, storefront/FTW orders use `slotCharge`; UI must check both, not just one.
 - [Admark media sending contract](admark-media-sending.md) — upload returns top-level `url`/`cloudUrl`; send attachments through documented `/api/send/bymedia` query parameters, not `/send-chat-message`.
 - [Product sales modes](product-sales-modes.md) — product sales mode is limited to normal or preorder-only; preorder products may have date/day or combined availability.
+- [Product preorder slot rules](product-preorder-slot-rules.md) — missing weekday slot rules mean all active slots; an explicit empty list means no slots for that weekday.
 - [Sub-hub Mongo debugging](sub-hub-mongo-debugging.md) — shell probes may resolve to the default Mongo database instead of the API workflow’s scoped sub-hub context.
