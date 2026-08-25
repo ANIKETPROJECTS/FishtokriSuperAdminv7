@@ -2984,7 +2984,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                   </Select>
 
                   <div className="border-t border-orange-200 pt-3">
-                    {preorderAvailability.type !== "all" && (
+                    {(preorderAvailability.type === "weekdays" || preorderAvailability.type === "date_range_and_weekdays") && (
                       <>
                         <div className="mb-2">
                           <div>
@@ -3030,7 +3030,9 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     <div className="mb-2">
                       <div>
                         <p className="text-[11px] font-semibold text-orange-800">
-                          {preorderAvailability.type === "all" ? "Choose timeslots for each day" : "2. Choose timeslots for each selected day"}
+                          {preorderAvailability.type === "all" || preorderAvailability.type === "date_range"
+                            ? "Choose timeslots for each day"
+                            : "2. Choose timeslots for each selected day"}
                         </p>
                         <p className="text-[10px] text-orange-700">All slots start selected. Click a slot to turn it off for that day.</p>
                       </div>
