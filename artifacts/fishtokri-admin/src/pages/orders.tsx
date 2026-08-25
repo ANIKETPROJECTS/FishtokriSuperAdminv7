@@ -1751,9 +1751,15 @@ export default function Orders() {
 
     // Validate scheduling (only for delivery orders — takeaway is instant for today)
     if (orderDeliveryType === "delivery") {
-      if (!isExpressOrder && orderScheduleType === "slot" && activeTimeslots.length > 0 && !selectedTimeslotId) {
-        toast({ title: "Pick a delivery slot", description: "Please select a time slot for this order.", variant: "destructive" });
-        return;
+      if (!isExpressOrder && orderScheduleType === "slot" && timeslots.length > 0) {
+        if (activeTimeslots.length === 0) {
+          toast({ title: "No common delivery slot", description: "The selected preorder products do not share an available timeslot for this date.", variant: "destructive" });
+          return;
+        }
+        if (!selectedTimeslotId || !activeTimeslots.some((slot) => String(slot._id) === selectedTimeslotId)) {
+          toast({ title: "Pick a delivery slot", description: "Please select a time slot available for every preorder product in this order.", variant: "destructive" });
+          return;
+        }
       }
       if (!orderDate) {
         toast({ title: "Pick a delivery date", variant: "destructive" });
