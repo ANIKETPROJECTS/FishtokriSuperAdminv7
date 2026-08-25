@@ -2978,7 +2978,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                     <SelectContent>
                       <SelectItem value="all">All dates</SelectItem>
                       <SelectItem value="weekdays">Selected weekdays</SelectItem>
-                      <SelectItem value="date_range">Specific date or date range</SelectItem>
+                      <SelectItem value="date_range">Date range only</SelectItem>
                       <SelectItem value="date_range_and_weekdays">Date range + selected weekdays</SelectItem>
                     </SelectContent>
                   </Select>
