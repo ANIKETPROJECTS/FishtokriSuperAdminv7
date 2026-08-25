@@ -219,42 +219,6 @@ not being applied correctly there. The digital menu should be updated to apply
 the per-day product timeslot rules described above; this document records the
 gap and does not claim that issue is fixed.
 
-## Multiple preorder products: common dates and timeslots
-
-When the customer selects multiple preorder products, the digital menu must
-show only dates that are valid for **every** selected product. This is an
-intersection, not a union.
-
-For each candidate date:
-
-1. Check the date against every product's `preorderAvailability`.
-2. Remove the date if any product is outside its date range.
-3. Remove the date if any product uses weekday restrictions and the date's
-   weekday is not selected.
-4. Keep the date only when all selected preorder products are available.
-
-After the customer selects one of those common dates, the timeslot list must
-also be the intersection of every selected product's allowed slots for that
-date's weekday:
-
-1. Start with the active sub-hub timeslots.
-2. Apply each product's `timeslotIdsByWeekday` rule for the selected weekday.
-3. Keep only timeslots allowed by every selected product.
-4. Prevent checkout when no common timeslot remains.
-
-Example:
-
-- Product A is available Monday through Friday and allows Monday slots A and B.
-- Product B is available only Monday and Wednesday and allows Monday slots B
-  and C.
-- The only common date is a Monday within both products' date rules.
-- The only common Monday timeslot is slot B.
-
-If the products have no common eligible date, the customer must not be able to
-complete the preorder until the cart is changed. If they have a common date but
-no common timeslot for that date, the timeslot picker must show no selectable
-slot and checkout must be blocked.
-
 ## Order storage
 
 The product availability configuration controls eligibility, but the submitted
