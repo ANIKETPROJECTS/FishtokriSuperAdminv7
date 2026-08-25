@@ -337,6 +337,20 @@ function isProductAvailableForPreorder(product: any, date: string): boolean {
   return type === "all" || usesDateRange || usesWeekdays;
 }
 
+function isProductTimeslotAllowedForPreorder(product: any, date: string, timeslotId: string): boolean {
+  let availability = product?.preorderAvailability;
+  if (typeof availability === "string") {
+    try { availability = JSON.parse(availability); } catch { availability = null; }
+  }
+  const rules = availability?.timeslotIdsByWeekday;
+  if (!rules || typeof rules !== "object" || Array.isArray(rules)) return true;
+  const dow = /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? new Date(`${date}T00:00:00Z`).getUTCDay()
+    : new Date().getDay();
+  const rule = rules[String(dow)];
+  return !Array.isArray(rule) || rule.map(String).includes(String(timeslotId));
+}
+
 function dateToISODate(date: Date): string {
   return format(date, "yyyy-MM-dd");
 }
@@ -1222,6 +1236,16 @@ export default function Orders() {
       // Hide slots whose activeDays marks the target day as "off".
       if (!isDayActive(t.activeDays, targetDow)) return false;
 
+      if (posProductMode === "preorder" && selectedProducts.length > 0) {
+        const selectedProductIds = new Set(selectedProducts.map((item) => String(item.productId)));
+        const preorderProducts = subHubProducts.filter((product) =>
+          selectedProductIds.has(String(product._id)) && isPreorderOnlyProduct(product),
+        );
+        if (preorderProducts.length > 0 && !preorderProducts.every((product) =>
+          isProductTimeslotAllowedForPreorder(product, orderDate, String(t._id)),
+        )) return false;
+      }
+
        // Hide slots that have hit their order limit for the selected date.
        // Future preorder dates use the exact-date count returned by the API.
       const limit = Number(t.orderLimit) || 0;
@@ -1244,7 +1268,7 @@ export default function Orders() {
       const currentMins = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
       return slotStartMins > currentMins + 30;
     });
-  }, [timeslots, orderDate]);
+  }, [timeslots, orderDate, posProductMode, selectedProducts, subHubProducts]);
 
   // A slot selected for one date must never carry over to another date if
   // that slot is disabled, inactive, or full on the newly selected date.

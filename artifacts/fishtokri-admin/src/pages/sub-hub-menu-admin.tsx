@@ -56,6 +56,7 @@ type PreorderAvailability = {
   weekdays: number[];
   startDate: string;
   endDate: string;
+  timeslotIdsByWeekday?: Record<string, string[]>;
 };
 
 const PREORDER_WEEKDAYS = [
@@ -73,6 +74,7 @@ const defaultPreorderAvailability = (): PreorderAvailability => ({
   weekdays: [0, 1, 2, 3, 4, 5, 6],
   startDate: "",
   endDate: "",
+  timeslotIdsByWeekday: {},
 });
 
 function normalizePreorderAvailability(raw: any): PreorderAvailability {
@@ -89,6 +91,11 @@ function normalizePreorderAvailability(raw: any): PreorderAvailability {
     weekdays: weekdays.length > 0 ? weekdays : [0, 1, 2, 3, 4, 5, 6],
     startDate: type === "date_range" || type === "date_range_and_weekdays" ? String(raw?.startDate ?? "") : "",
     endDate: type === "date_range" || type === "date_range_and_weekdays" ? String(raw?.endDate ?? "") : "",
+    timeslotIdsByWeekday: raw?.timeslotIdsByWeekday && typeof raw.timeslotIdsByWeekday === "object"
+      ? Object.fromEntries(Object.entries(raw.timeslotIdsByWeekday)
+        .filter(([day, ids]) => /^[0-6]$/.test(day) && Array.isArray(ids))
+        .map(([day, ids]) => [day, Array.from(new Set((ids as any[]).map((id) => String(id))))]))
+      : {},
   };
 }
 
@@ -2673,6 +2680,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
   const [isArchived, setIsArchived] = useState(false);
   const [preorderMode, setPreorderMode] = useState<"normal" | "preorder_only">("normal");
   const [preorderAvailability, setPreorderAvailability] = useState<PreorderAvailability>(defaultPreorderAvailability);
+  const [preorderTimeslots, setPreorderTimeslots] = useState<any[]>([]);
   const [imageUrl, setProductImageUrl] = useState("");
   const [productImageMode, setProductImageMode] = useState<"url" | "upload">("url");
   const [productImageUploading, setProductImageUploading] = useState(false);
@@ -2696,6 +2704,9 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
     apiFetch(`/api/sub-hubs/${subHubId}/menu/coupons`).then((d) => {
       setAvailableCoupons(d.coupons ?? []);
     }).catch(() => {});
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/timeslots`)
+      .then((d) => setPreorderTimeslots(Array.isArray(d.timeslots) ? d.timeslots : []))
+      .catch(() => setPreorderTimeslots([]));
     if (product) {
       setName(product.name ?? "");
       setShortCode(product.shortCode ?? "");
@@ -2748,6 +2759,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
       setIsArchived(false); setProductImageUrl(""); setProductImageMode("url"); setRecipes([]);
       setPreorderMode("normal");
       setPreorderAvailability(defaultPreorderAvailability());
+      setPreorderTimeslots([]);
       setCouponIds([]);
       setLowStockThreshold("0");
       setBatches([]);
@@ -2987,6 +2999,65 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                       )}
                     </div>
                   )}
+
+                  <div className="border-t border-orange-200 pt-3">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div>
+                        <p className="text-[11px] font-semibold text-orange-800">Timeslots by weekday <span className="font-normal text-orange-700">(optional)</span></p>
+                        <p className="text-[10px] text-orange-700">Leave a day as “All slots” to allow every active sub-hub slot.</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {PREORDER_WEEKDAYS.map((day) => {
+                        const dayKey = String(day.value);
+                        const rule = preorderAvailability.timeslotIdsByWeekday?.[dayKey];
+                        const hasRule = Array.isArray(rule);
+                        const selectedIds = new Set(rule ?? []);
+                        const updateRule = (next: string[] | undefined) => setPreorderAvailability((current) => {
+                          const nextRules = { ...(current.timeslotIdsByWeekday ?? {}) };
+                          if (next === undefined) delete nextRules[dayKey];
+                          else nextRules[dayKey] = next;
+                          return { ...current, timeslotIdsByWeekday: nextRules };
+                        });
+                        return (
+                          <div key={day.value} className="rounded-md border border-orange-200 bg-white p-2">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-[11px] font-bold text-gray-700">{day.label}</span>
+                              <div className="flex items-center gap-2">
+                                {hasRule && <button type="button" onClick={() => updateRule(undefined)} className="text-[10px] text-gray-500 hover:text-gray-800 underline">All slots</button>}
+                                {!hasRule && <span className="text-[10px] text-green-700 font-medium">All slots</span>}
+                                {hasRule && <span className="text-[10px] text-orange-700 font-medium">{selectedIds.size} selected</span>}
+                              </div>
+                            </div>
+                            {preorderTimeslots.length === 0 ? (
+                              <p className="text-[10px] text-gray-400">No sub-hub timeslots configured.</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {preorderTimeslots.map((slot) => {
+                                  const slotId = String(slot._id);
+                                  const selected = selectedIds.has(slotId);
+                                  return (
+                                    <button
+                                      key={slotId}
+                                      type="button"
+                                      onClick={() => updateRule(
+                                        hasRule
+                                          ? (selected ? [...selectedIds].filter((id) => id !== slotId) : [...selectedIds, slotId])
+                                          : [slotId],
+                                      )}
+                                      className={`rounded border px-2 py-1 text-[10px] transition-colors ${selected ? "border-orange-500 bg-orange-500 text-white" : "border-gray-200 text-gray-600 hover:border-orange-300"}`}
+                                    >
+                                      {slot.startTime}–{slot.endTime}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   {(preorderAvailability.type === "date_range" || preorderAvailability.type === "date_range_and_weekdays") && (
                     <div className="grid grid-cols-2 gap-2">

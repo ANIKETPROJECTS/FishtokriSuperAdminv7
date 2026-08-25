@@ -70,6 +70,23 @@ function normalizePreorderAvailability(raw: any): { value: any; error?: string }
       .map((day: any) => Number(day))
       .filter((day: number) => Number.isInteger(day) && day >= 0 && day <= 6),
   )).sort((a, b) => a - b);
+  const rawTimeslots = raw.timeslotIdsByWeekday;
+  const timeslotIdsByWeekday: Record<string, string[]> = {};
+  if (rawTimeslots !== undefined && (typeof rawTimeslots !== "object" || Array.isArray(rawTimeslots) || rawTimeslots === null)) {
+    return { value: null, error: "Invalid preorder timeslot rules" };
+  }
+  if (rawTimeslots && typeof rawTimeslots === "object") {
+    for (const [dayKey, ids] of Object.entries(rawTimeslots)) {
+      const day = Number(dayKey);
+      if (!Number.isInteger(day) || day < 0 || day > 6 || !Array.isArray(ids)) {
+        return { value: null, error: "Invalid preorder timeslot rules" };
+      }
+      const normalizedIds = Array.from(new Set(ids
+        .map((id: any) => String(id ?? "").trim())
+        .filter(Boolean)));
+      timeslotIdsByWeekday[String(day)] = normalizedIds;
+    }
+  }
 
   if ((type === "weekdays" || type === "date_range_and_weekdays") && weekdays.length === 0) {
     return { value: null, error: "Select at least one preorder weekday" };
@@ -89,6 +106,7 @@ function normalizePreorderAvailability(raw: any): { value: any; error?: string }
       weekdays: type === "weekdays" || type === "date_range_and_weekdays" ? weekdays : [...PRODUCT_PREORDER_DAY_NUMBERS],
       startDate: type === "date_range" || type === "date_range_and_weekdays" ? startDate : "",
       endDate: type === "date_range" || type === "date_range_and_weekdays" ? endDate : "",
+      ...(Object.keys(timeslotIdsByWeekday).length > 0 ? { timeslotIdsByWeekday } : {}),
     },
   };
 }
