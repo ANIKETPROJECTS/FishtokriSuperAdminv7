@@ -3044,7 +3044,7 @@ function ProductModal({ isOpen, onClose, product, subHubId, categories, onSaved 
                                       disabled={!daySelected}
                                       onClick={() => updateRule(
                                         selected
-                                          ? allSlotIds.filter((id) => id !== slotId)
+                                          ? [...selectedIds].filter((id) => id !== slotId)
                                           : [...selectedIds, slotId],
                                       )}
                                       className={`rounded border px-2 py-1 text-[10px] transition-colors disabled:cursor-not-allowed ${selected ? "border-orange-500 bg-orange-500 text-white" : "border-gray-200 text-gray-600 hover:border-orange-300"}`}
