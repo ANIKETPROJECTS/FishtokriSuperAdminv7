@@ -5610,12 +5610,14 @@ export default function Orders() {
                   <div className="space-y-3">
                     {(() => {
                       const isTakeaway = selectedOrder.deliveryType === "takeaway";
+                      const isPreorder = String(selectedOrder.orderType ?? "").toLowerCase() === "preorder";
                       const hasAssignee = !!selectedOrder.assignedDeliveryPersonId || !!selectedOrder.isExpress;
                       const requiresAssignee = (s: string) => !isTakeaway && !hasAssignee && (s === "out_for_delivery" || s === "delivered");
-                      // "Next day" orders (deliveryDate is exactly tomorrow) cannot be
-                      // dispatched or marked delivered until the delivery day arrives.
-                      // Past-dated orders are treated as current and have no restriction.
+                      // Normal next-day orders cannot be dispatched or marked delivered
+                      // until the delivery day arrives. Preorders are intentionally
+                      // exempt because they may be fulfilled on any actual date.
                       const isOtherDay = !!(
+                        !isPreorder &&
                         selectedOrder.deliveryDate &&
                         selectedOrder.deliveryDate !== "" &&
                         selectedOrder.deliveryDate === getTomorrowIST()

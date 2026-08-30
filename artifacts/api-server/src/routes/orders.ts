@@ -1837,8 +1837,8 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         res.status(400).json({ error: "ValidationError", message: "Preorders must use delivery" });
         return;
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDeliveryDate) || nextDeliveryDate <= getTodayISODate()) {
-        res.status(400).json({ error: "ValidationError", message: "Preorder delivery date must be a future date" });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDeliveryDate)) {
+        res.status(400).json({ error: "ValidationError", message: "Preorder delivery date must be a valid date" });
         return;
       }
     }
