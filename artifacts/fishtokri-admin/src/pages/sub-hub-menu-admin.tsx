@@ -957,6 +957,8 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [xlsxBusy, setXlsxBusy] = useState(false);
   const [initBatchesBusy, setInitBatchesBusy] = useState(false);
+  const [activeProductsPreviewOpen, setActiveProductsPreviewOpen] = useState(false);
+  const [activeProductsPreview, setActiveProductsPreview] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLInputElement>(null);
 
@@ -1033,8 +1035,11 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
       toast({ title: "No active products", description: "There are no in-stock products to copy.", variant: "destructive" });
       return;
     }
+    const message = buildActiveProductsMessage(products);
+    setActiveProductsPreview(message);
+    setActiveProductsPreviewOpen(true);
     try {
-      await copyToClipboard(buildActiveProductsMessage(products));
+      await copyToClipboard(message);
       toast({ title: "Active products copied", description: `${activeCount} product${activeCount === 1 ? "" : "s"} copied in WhatsApp format.` });
     } catch (err: any) {
       toast({ title: "Could not copy products", description: err.message, variant: "destructive" });
@@ -1502,6 +1507,35 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
 
       <ProductModal isOpen={modalOpen} onClose={() => setModalOpen(false)} product={editing} subHubId={subHubId} categories={categories} onSaved={load} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Product" description="This will permanently remove the product from the menu." />
+      <Dialog open={activeProductsPreviewOpen} onOpenChange={setActiveProductsPreviewOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[#162B4D]">Active Products Preview</DialogTitle>
+            <DialogDescription>
+              This is the WhatsApp message copied from the current active product list.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 max-h-[60vh] overflow-y-auto">
+            <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-800 font-sans select-text">
+              {activeProductsPreview}
+            </pre>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setActiveProductsPreviewOpen(false)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1A56DB] hover:bg-[#1447B4]"
+              onClick={() => copyToClipboard(activeProductsPreview)
+                .then(() => toast({ title: "Active products copied" }))
+                .catch((err: any) => toast({ title: "Could not copy products", description: err.message, variant: "destructive" }))}
+            >
+              <Copy className="w-4 h-4 mr-1.5" /> Copy again
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
