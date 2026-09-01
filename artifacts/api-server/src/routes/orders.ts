@@ -75,6 +75,39 @@ async function getOrdersDb() {
   return getSubHubDbConnection(ORDERS_DB);
 }
 
+/**
+ * Delivery lifecycle timestamps are server-owned so assignment and status
+ * changes from the admin UI, delivery UI, and QR dispatch stay consistent.
+ */
+function addDeliveryLifecycleTimestamps(update: any, existing: any, body: any, now: Date) {
+  const previousAssignee = String(existing?.assignedDeliveryPersonId ?? "");
+  const nextAssignee = body.assignedDeliveryPersonId !== undefined
+    ? String(body.assignedDeliveryPersonId ?? "")
+    : previousAssignee;
+
+  if (nextAssignee && nextAssignee !== previousAssignee) {
+    update.deliveryAssignedAt = now;
+  } else if (nextAssignee && !existing?.deliveryAssignedAt && body.assignedDeliveryPersonId !== undefined) {
+    // Give legacy orders a timestamp the next time their current assignment is
+    // explicitly confirmed, without allowing clients to provide the value.
+    update.deliveryAssignedAt = now;
+  }
+
+  if (
+    body.status === "out_for_delivery" &&
+    (String(existing?.status ?? "") !== "out_for_delivery" || !existing?.deliveryPickedUpAt)
+  ) {
+    update.deliveryPickedUpAt = now;
+  }
+
+  if (
+    body.status === "delivered" &&
+    (String(existing?.status ?? "") !== "delivered" || !existing?.deliveryDeliveredAt)
+  ) {
+    update.deliveryDeliveredAt = now;
+  }
+}
+
 function extractOrderPincode(order: any): string {
   const detail = order?.deliveryAddressDetail;
   const candidates = [
@@ -1599,6 +1632,7 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
       return;
     }
     const name = String((person as any).name ?? (person as any).fullName ?? req.admin.email ?? "Delivery Partner");
+    const dispatchTime = new Date();
     const updated = await collection.findOneAndUpdate(
       {
         _id: oid,
@@ -1615,7 +1649,9 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
           assignedDeliveryPersonId: String(req.admin.adminId),
           assignedDeliveryPersonName: name,
           status: "out_for_delivery",
-          updatedAt: new Date(),
+           deliveryAssignedAt: dispatchTime,
+           deliveryPickedUpAt: dispatchTime,
+           updatedAt: dispatchTime,
         },
       },
       { returnDocument: "after" },
@@ -1701,7 +1737,8 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       res.status(400).json({ error: "ValidationError", message: `Invalid order status: ${status}` });
       return;
     }
-    const update: any = { updatedAt: new Date() };
+    const updateTime = new Date();
+    const update: any = { updatedAt: updateTime };
     if (status !== undefined) update.status = status;
     if (notes !== undefined) update.notes = notes;
     if (assignedDeliveryPersonId !== undefined) update.assignedDeliveryPersonId = assignedDeliveryPersonId;
@@ -1827,6 +1864,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     if (!prev || !isOrderInScope(req.scope, prev, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
     }
+    addDeliveryLifecycleTimestamps(update, prev, { status, assignedDeliveryPersonId }, updateTime);
     // Validate preorder constraints after loading the current order so partial
     // edits can safely inherit its existing delivery type/date.
     const nextOrderType = orderType !== undefined ? String(orderType) : String(prev.orderType ?? "normal");

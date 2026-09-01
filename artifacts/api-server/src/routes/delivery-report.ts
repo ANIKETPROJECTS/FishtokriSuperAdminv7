@@ -23,6 +23,7 @@ const ORDER_PROJECTION = {
   _id: 1, orderId: 1, orderNumber: 1, customerName: 1, phone: 1, total: 1,
   paidAmount: 1, dueAmount: 1, payments: 1, paymentMode: 1, paymentStatus: 1, status: 1,
   deliveryType: 1, assignedDeliveryPersonId: 1, assignedDeliveryPersonName: 1,
+  deliveryAssignedAt: 1, deliveryPickedUpAt: 1, deliveryDeliveredAt: 1,
   createdAt: 1, deliveryDate: 1, subHubName: 1, deliveryArea: 1, items: 1, isExpress: 1,
   walletUsed: 1,
 };
@@ -132,6 +133,9 @@ function processOrders(orders: any[]) {
       payments: payments.map((p: any) => ({ mode: p.mode, amount: p.amount, reference: p.reference })),
       status: order.status,
       deliveryType: order.deliveryType,
+      deliveryAssignedAt: order.deliveryAssignedAt,
+      deliveryPickedUpAt: order.deliveryPickedUpAt,
+      deliveryDeliveredAt: order.deliveryDeliveredAt,
       createdAt: order.createdAt,
       subHubName: order.subHubName,
       deliveryArea: order.deliveryArea,

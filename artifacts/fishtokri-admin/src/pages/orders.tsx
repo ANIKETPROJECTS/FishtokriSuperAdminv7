@@ -390,6 +390,14 @@ function formatDate(d: any) {
   return new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function formatLifecycleTime(d: any) {
+  if (!d) return "—";
+  return new Date(d).toLocaleString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
 function formatDeliveryDate(d: any) {
   if (!d) return "—";
   // deliveryDate is stored as "YYYY-MM-DD" string — parse without timezone shift
@@ -2582,10 +2590,11 @@ export default function Orders() {
       const payload = personId
         ? { assignedDeliveryPersonId: personId, assignedDeliveryPersonName: person?.name ?? "" }
         : { assignedDeliveryPersonId: "", assignedDeliveryPersonName: "" };
-      await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify(payload) });
+      const result = await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify(payload) });
+      const savedOrder = result?.order ?? {};
       toast({ title: personId ? `Assigned to ${person?.name}` : "Assignment removed" });
-      setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, ...payload } : o));
-      if (selectedOrder && String(selectedOrder._id) === orderId) setSelectedOrder((o: any) => ({ ...o, ...payload }));
+      setOrders((prev) => prev.map((o) => String(o._id) === orderId ? { ...o, ...payload, ...savedOrder } : o));
+      if (selectedOrder && String(selectedOrder._id) === orderId) setSelectedOrder((o: any) => ({ ...o, ...payload, ...savedOrder }));
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setInlineAssigningId(null); }
@@ -2600,10 +2609,11 @@ export default function Orders() {
       const payload = resolvedId
         ? { assignedDeliveryPersonId: resolvedId, assignedDeliveryPersonName: person?.name ?? "" }
         : { assignedDeliveryPersonId: "", assignedDeliveryPersonName: "" };
-      await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+      const result = await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify(payload) });
+      const savedOrder = result?.order ?? {};
       toast({ title: resolvedId ? `Assigned to ${person?.name}` : "Assignment removed" });
-      setSelectedOrder((o: any) => ({ ...o, ...payload }));
-      setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, ...payload } : o));
+      setSelectedOrder((o: any) => ({ ...o, ...payload, ...savedOrder }));
+      setOrders((prev) => prev.map((o) => String(o._id) === String(selectedOrder._id) ? { ...o, ...payload, ...savedOrder } : o));
       setSelectedDeliveryPersonId("");
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -5337,7 +5347,29 @@ export default function Orders() {
                   </div>
                 </div>
 
-                {/* ── 5. DELIVERY PARTNER ── */}
+                {/* ── 5. DELIVERY TIMELINE ── */}
+                <div className="px-6 py-6">
+                  <div className="flex items-center gap-2.5 mb-5">
+                    <Clock className="w-5 h-5 text-[#364F9F]" />
+                    <span className="text-xs font-bold text-[#364F9F] uppercase tracking-widest">Delivery Timeline</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[
+                      { label: "ASSIGNED AT", value: selectedOrder.deliveryAssignedAt, color: "text-[#364F9F]", bg: "bg-[#EEF1F9]" },
+                      { label: "PICKED UP AT", value: selectedOrder.deliveryPickedUpAt, color: "text-indigo-700", bg: "bg-indigo-50" },
+                      { label: "DELIVERED AT", value: selectedOrder.deliveryDeliveredAt, color: "text-emerald-700", bg: "bg-emerald-50" },
+                    ].map((event) => (
+                      <div key={event.label} className={`rounded-xl px-3 py-3 ${event.bg}`}>
+                        <p className="text-[10px] font-bold tracking-wider text-black/50 mb-1">{event.label}</p>
+                        <p className={`text-sm font-bold ${event.value ? event.color : "text-black/30"}`}>
+                          {formatLifecycleTime(event.value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── 6. DELIVERY PARTNER ── */}
                 {selectedOrder.deliveryType === "takeaway" ? (
                   <div className="px-6 py-6">
                     <div className="flex items-center gap-2.5 mb-5">

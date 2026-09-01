@@ -143,6 +143,22 @@ function OrderCard({ order }: { order: any }) {
         <span className="text-[17px] font-bold text-black ml-2">{formatRupees(order.total ?? 0)}</span>
       </div>
 
+      {/* Delivery lifecycle timestamps */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 pt-3 border-t border-black/6">
+        {[
+          { label: "Assigned", value: order.deliveryAssignedAt, color: "text-blue-700", bg: "bg-blue-50" },
+          { label: "Picked up", value: order.deliveryPickedUpAt, color: "text-indigo-700", bg: "bg-indigo-50" },
+          { label: "Delivered", value: order.deliveryDeliveredAt, color: "text-emerald-700", bg: "bg-emerald-50" },
+        ].map((event) => (
+          <div key={event.label} className={`rounded-lg px-2.5 py-2 ${event.bg}`}>
+            <p className="text-[10px] font-bold text-black/45">{event.label}</p>
+            <p className={`text-[11px] font-bold ${event.value ? event.color : "text-black/30"}`}>
+              {event.value ? formatDateTime(event.value) : "—"}
+            </p>
+          </div>
+        ))}
+      </div>
+
       {/* Wallet credit / debit from over- or under-collection */}
       {(() => {
         const pays: any[] = Array.isArray(order.payments) ? order.payments : [];

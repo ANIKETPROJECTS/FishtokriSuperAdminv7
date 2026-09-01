@@ -288,6 +288,28 @@ function OrderDetailDialog({
             </div>
           )}
 
+          {/* ── Delivery timeline ── */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <Truck className="w-4 h-4 text-[#1A56DB]" />
+              <p className="text-[10px] font-black text-black uppercase tracking-widest">Delivery Timeline</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { label: "Assigned at", value: order.deliveryAssignedAt, color: "text-[#1A56DB]", bg: "bg-blue-50" },
+                { label: "Picked up at", value: order.deliveryPickedUpAt, color: "text-indigo-700", bg: "bg-indigo-50" },
+                { label: "Delivered at", value: order.deliveryDeliveredAt, color: "text-emerald-700", bg: "bg-emerald-50" },
+              ].map((event) => (
+                <div key={event.label} className={`rounded-xl px-3 py-2.5 ${event.bg}`}>
+                  <p className="text-[10px] font-bold text-black/50 mb-0.5">{event.label}</p>
+                  <p className={`text-xs font-bold ${event.value ? event.color : "text-black/30"}`}>
+                    {event.value ? formatDate(event.value) : "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* ── Items ── */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
             <div className="px-4 pt-4 pb-2">
@@ -752,6 +774,20 @@ function OrdersList({ mode, refreshKey, silentRefreshKey, onCountChange }: { mod
                       <div className="flex items-center gap-2.5">
                         <img src="/icon-clock.png" alt="Time" className="w-4 h-4 flex-shrink-0" />
                         <span className="text-sm font-semibold text-black">{o.timeslotLabel}</span>
+                      </div>
+                    )}
+                    {(o.deliveryAssignedAt || o.deliveryPickedUpAt || o.deliveryDeliveredAt) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                        {[
+                          { label: "Assigned", value: o.deliveryAssignedAt },
+                          { label: "Picked up", value: o.deliveryPickedUpAt },
+                          { label: "Delivered", value: o.deliveryDeliveredAt },
+                        ].map((event) => (
+                          <div key={event.label} className="rounded-lg bg-black/[0.03] px-2.5 py-2">
+                            <p className="text-[10px] font-bold text-black/40">{event.label}</p>
+                            <p className="text-[11px] font-semibold text-black/70">{event.value ? formatDate(event.value) : "—"}</p>
+                          </div>
+                        ))}
                       </div>
                     )}
                     {mode === "history" && paid > 0 && (
