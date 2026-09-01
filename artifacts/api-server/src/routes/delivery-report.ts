@@ -69,7 +69,10 @@ function parseTimestamp(value: any): number | null {
 
 function addTimeBucket(bucket: TimeBucket, milliseconds: number) {
   if (milliseconds < 0) return;
-  const minutes = milliseconds / 60000;
+  // The report uses one minute as its smallest unit. QR dispatch can record
+  // assignment and pickup at the same server timestamp, but that must still
+  // be represented as one minute in the operational report.
+  const minutes = Math.max(1, milliseconds / 60000);
   bucket.count++;
   bucket.totalMinutes += minutes;
   bucket.minMinutes = bucket.minMinutes === null ? minutes : Math.min(bucket.minMinutes, minutes);
@@ -98,9 +101,9 @@ function recordDeliveryTimes(stats: DeliveryTimeStats, order: any) {
 function publicTimeBucket(bucket: TimeBucket) {
   return {
     count: bucket.count,
-    averageMinutes: bucket.count > 0 ? Math.round((bucket.totalMinutes / bucket.count) * 10) / 10 : null,
-    minMinutes: bucket.minMinutes === null ? null : Math.round(bucket.minMinutes * 10) / 10,
-    maxMinutes: bucket.maxMinutes === null ? null : Math.round(bucket.maxMinutes * 10) / 10,
+    averageMinutes: bucket.count > 0 ? Math.max(1, Math.round((bucket.totalMinutes / bucket.count) * 10) / 10) : null,
+    minMinutes: bucket.minMinutes === null ? null : Math.max(1, Math.round(bucket.minMinutes * 10) / 10),
+    maxMinutes: bucket.maxMinutes === null ? null : Math.max(1, Math.round(bucket.maxMinutes * 10) / 10),
   };
 }
 

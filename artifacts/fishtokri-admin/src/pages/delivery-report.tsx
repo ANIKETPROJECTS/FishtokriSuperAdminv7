@@ -27,7 +27,7 @@ function formatRupees(n: number) {
 
 function formatDuration(minutes: number | null | undefined) {
   if (minutes === null || minutes === undefined || !Number.isFinite(Number(minutes))) return "—";
-  const rounded = Math.max(0, Math.round(Number(minutes)));
+  const rounded = Math.max(1, Math.ceil(Number(minutes)));
   if (rounded < 60) return `${rounded} min`;
   const hours = Math.floor(rounded / 60);
   const mins = rounded % 60;
