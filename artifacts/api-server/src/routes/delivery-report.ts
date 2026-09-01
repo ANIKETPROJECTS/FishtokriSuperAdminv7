@@ -30,6 +30,103 @@ const ORDER_PROJECTION = {
 
 interface ModeData { count: number; amount: number; }
 
+interface TimeBucket {
+  count: number;
+  totalMinutes: number;
+  minMinutes: number | null;
+  maxMinutes: number | null;
+}
+
+interface DeliveryTimeStats {
+  assignedCount: number;
+  pickedUpCount: number;
+  deliveredCount: number;
+  assignmentToPickup: TimeBucket;
+  pickupToDelivered: TimeBucket;
+  assignmentToDelivered: TimeBucket;
+}
+
+function emptyTimeBucket(): TimeBucket {
+  return { count: 0, totalMinutes: 0, minMinutes: null, maxMinutes: null };
+}
+
+function emptyDeliveryTimeStats(): DeliveryTimeStats {
+  return {
+    assignedCount: 0,
+    pickedUpCount: 0,
+    deliveredCount: 0,
+    assignmentToPickup: emptyTimeBucket(),
+    pickupToDelivered: emptyTimeBucket(),
+    assignmentToDelivered: emptyTimeBucket(),
+  };
+}
+
+function parseTimestamp(value: any): number | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function addTimeBucket(bucket: TimeBucket, milliseconds: number) {
+  if (milliseconds < 0) return;
+  const minutes = milliseconds / 60000;
+  bucket.count++;
+  bucket.totalMinutes += minutes;
+  bucket.minMinutes = bucket.minMinutes === null ? minutes : Math.min(bucket.minMinutes, minutes);
+  bucket.maxMinutes = bucket.maxMinutes === null ? minutes : Math.max(bucket.maxMinutes, minutes);
+}
+
+function recordDeliveryTimes(stats: DeliveryTimeStats, order: any) {
+  const assignedAt = parseTimestamp(order.deliveryAssignedAt);
+  const pickedUpAt = parseTimestamp(order.deliveryPickedUpAt);
+  const deliveredAt = parseTimestamp(order.deliveryDeliveredAt);
+
+  if (assignedAt !== null) stats.assignedCount++;
+  if (pickedUpAt !== null) stats.pickedUpCount++;
+  if (deliveredAt !== null) stats.deliveredCount++;
+  if (assignedAt !== null && pickedUpAt !== null) {
+    addTimeBucket(stats.assignmentToPickup, pickedUpAt - assignedAt);
+  }
+  if (pickedUpAt !== null && deliveredAt !== null) {
+    addTimeBucket(stats.pickupToDelivered, deliveredAt - pickedUpAt);
+  }
+  if (assignedAt !== null && deliveredAt !== null) {
+    addTimeBucket(stats.assignmentToDelivered, deliveredAt - assignedAt);
+  }
+}
+
+function publicTimeBucket(bucket: TimeBucket) {
+  return {
+    count: bucket.count,
+    averageMinutes: bucket.count > 0 ? Math.round((bucket.totalMinutes / bucket.count) * 10) / 10 : null,
+    minMinutes: bucket.minMinutes === null ? null : Math.round(bucket.minMinutes * 10) / 10,
+    maxMinutes: bucket.maxMinutes === null ? null : Math.round(bucket.maxMinutes * 10) / 10,
+  };
+}
+
+function publicDeliveryTimeStats(stats: DeliveryTimeStats) {
+  return {
+    assignedCount: stats.assignedCount,
+    pickedUpCount: stats.pickedUpCount,
+    deliveredCount: stats.deliveredCount,
+    trackedOrderCount: stats.assignmentToDelivered.count,
+    assignmentToPickup: publicTimeBucket(stats.assignmentToPickup),
+    pickupToDelivered: publicTimeBucket(stats.pickupToDelivered),
+    assignmentToDelivered: publicTimeBucket(stats.assignmentToDelivered),
+  };
+}
+
+function calculateDeliveryTimeStats(orders: any[]) {
+  const stats = emptyDeliveryTimeStats();
+  for (const order of orders) {
+    const personId = String(order.assignedDeliveryPersonId || "");
+    const isTakeaway = order.deliveryType === "takeaway" || order.status === "takeaway";
+    if (!personId || personId === "unassigned" || isTakeaway) continue;
+    recordDeliveryTimes(stats, order);
+  }
+  return publicDeliveryTimeStats(stats);
+}
+
 function processOrders(orders: any[]) {
   const personMap = new Map<string, any>();
 
@@ -59,6 +156,7 @@ function processOrders(orders: any[]) {
         dueAmount: 0,
         walletExtra: 0,
         byMode: {} as Record<string, ModeData>,
+        deliveryTimeStats: emptyDeliveryTimeStats(),
         orders: [] as any[],
       });
     }
@@ -119,6 +217,9 @@ function processOrders(orders: any[]) {
 
     // Gross order value (for "Today's Sales" card, mirrors Day-end report)
     person.totalSales += orderTotal;
+    if (personId !== "unassigned") {
+      recordDeliveryTimes(person.deliveryTimeStats, order);
+    }
 
     person.orders.push({
       id: String(order._id),
@@ -146,6 +247,11 @@ function processOrders(orders: any[]) {
       // payments[] entry with mode="wallet".
       walletUsed,
     });
+  }
+
+  for (const person of personMap.values()) {
+    person.deliveryTime = publicDeliveryTimeStats(person.deliveryTimeStats);
+    delete person.deliveryTimeStats;
   }
 
   return personMap;
@@ -183,7 +289,13 @@ router.get("/", async (req: ScopedRequest, res) => {
 
     const scopeFilter = buildScopeFilter(req, personId || undefined);
     if (!scopeFilter) {
-      res.json({ summary: { totalOrders: 0, totalRevenue: 0, dueAmount: 0, byMode: {} }, byPerson: [] });
+      res.json({
+        summary: {
+          totalOrders: 0, totalRevenue: 0, dueAmount: 0, byMode: {},
+          deliveryTime: publicDeliveryTimeStats(emptyDeliveryTimeStats()),
+        },
+        byPerson: [],
+      });
       return;
     }
 
@@ -206,6 +318,7 @@ router.get("/", async (req: ScopedRequest, res) => {
 
     const personMap = processOrders(orders);
     const byPersonArr = Array.from(personMap.values()).sort((a, b) => b.orderCount - a.orderCount);
+    const deliveryTime = calculateDeliveryTimeStats(orders);
 
     const globalByMode: Record<string, ModeData> = {};
     let totalRevenue = 0;
@@ -227,7 +340,15 @@ router.get("/", async (req: ScopedRequest, res) => {
 
     const r2 = (n: number) => Math.round(n * 100) / 100;
     res.json({
-      summary: { totalOrders: orders.length, totalRevenue: r2(totalRevenue), dueAmount: r2(totalDue), walletExtra: r2(totalWalletExtra), totalSales: r2(totalSales), byMode: globalByMode },
+      summary: {
+        totalOrders: orders.length,
+        totalRevenue: r2(totalRevenue),
+        dueAmount: r2(totalDue),
+        walletExtra: r2(totalWalletExtra),
+        totalSales: r2(totalSales),
+        byMode: globalByMode,
+        deliveryTime,
+      },
       byPerson: byPersonArr,
     });
   } catch (err) {
@@ -248,8 +369,8 @@ router.get("/person/:id", async (req: ScopedRequest, res) => {
     const scopeFilter = buildScopeFilter(req, targetPersonId);
     if (!scopeFilter) {
       res.json({
-        person: { personId: targetPersonId, personName: "Unknown", orderCount: 0, totalRevenue: 0, dueAmount: 0, byMode: {}, orders: [] },
-        summary: { totalOrders: 0, totalRevenue: 0, dueAmount: 0, byMode: {} },
+        person: { personId: targetPersonId, personName: "Unknown", orderCount: 0, totalRevenue: 0, dueAmount: 0, byMode: {}, deliveryTime: publicDeliveryTimeStats(emptyDeliveryTimeStats()), orders: [] },
+        summary: { totalOrders: 0, totalRevenue: 0, dueAmount: 0, byMode: {}, deliveryTime: publicDeliveryTimeStats(emptyDeliveryTimeStats()) },
       });
       return;
     }
@@ -285,6 +406,7 @@ router.get("/person/:id", async (req: ScopedRequest, res) => {
       totalRevenue: 0,
       dueAmount: 0,
       byMode: {},
+      deliveryTime: publicDeliveryTimeStats(emptyDeliveryTimeStats()),
       orders: [],
     };
 
@@ -295,6 +417,7 @@ router.get("/person/:id", async (req: ScopedRequest, res) => {
         totalRevenue: person.totalRevenue,
         dueAmount: person.dueAmount,
         byMode: person.byMode,
+        deliveryTime: person.deliveryTime,
       },
     });
   } catch (err) {

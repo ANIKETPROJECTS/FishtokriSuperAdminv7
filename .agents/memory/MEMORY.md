@@ -8,3 +8,4 @@
 - [Product sales modes](product-sales-modes.md) — product sales mode is limited to normal or preorder-only; preorder products may have date/day or combined availability.
 - [Product preorder slot rules](product-preorder-slot-rules.md) — missing weekday slot rules mean all active slots; an explicit empty list means no slots for that weekday.
 - [Sub-hub Mongo debugging](sub-hub-mongo-debugging.md) — shell probes may resolve to the default Mongo database instead of the API workflow’s scoped sub-hub context.
+- [Delivery timing coverage](delivery-timing-coverage.md) — calculate each lifecycle duration only when both endpoint timestamps exist; expose coverage instead of guessing missing durations.

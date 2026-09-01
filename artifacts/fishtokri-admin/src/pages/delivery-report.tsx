@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Truck, Package, IndianRupee, Banknote, CreditCard, Wallet, RefreshCw,
-  Calendar, ChevronRight, Users, AlertCircle, TrendingUp, ArrowRight,
+  Calendar, ChevronRight, Users, AlertCircle, TrendingUp, ArrowRight, Timer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,20 @@ async function apiFetch(path: string) {
 
 function formatRupees(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
+function formatDuration(minutes: number | null | undefined) {
+  if (minutes === null || minutes === undefined || !Number.isFinite(Number(minutes))) return "—";
+  const rounded = Math.max(0, Math.round(Number(minutes)));
+  if (rounded < 60) return `${rounded} min`;
+  const hours = Math.floor(rounded / 60);
+  const mins = rounded % 60;
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
+
+function formatDurationRange(bucket: any) {
+  if (!bucket || bucket.count === 0) return "No complete records";
+  return `${formatDuration(bucket.minMinutes)} – ${formatDuration(bucket.maxMinutes)}`;
 }
 
 export function today() { return new Date().toISOString().slice(0, 10); }
@@ -286,6 +300,132 @@ function PersonCard({ person, userProfile, onView }: { person: any; userProfile?
   );
 }
 
+function DeliveryTimeReport({ persons, combined }: { persons: any[]; combined?: any }) {
+  const assignedPersons = persons.filter((person) => person.personId !== "unassigned");
+  const hasTimingData = assignedPersons.some((person) => {
+    const stats = person.deliveryTime;
+    return (stats?.assignmentToPickup?.count ?? 0) > 0 ||
+      (stats?.pickupToDelivered?.count ?? 0) > 0 ||
+      (stats?.assignmentToDelivered?.count ?? 0) > 0;
+  });
+  const all = combined ?? {};
+
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+          <Timer className="w-4 h-4 text-indigo-600" />
+        </div>
+        <div>
+          <h2 className="text-base font-bold text-gray-900">Delivery Time Report</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Average handoff and delivery time for the selected date range
+          </p>
+        </div>
+      </div>
+
+      {!hasTimingData ? (
+        <div className="px-5 py-10 text-center">
+          <Timer className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+          <p className="text-sm font-semibold text-gray-500">No delivery timing data yet</p>
+          <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
+            Timing averages will appear after orders receive server-recorded assignment, pickup, and delivery timestamps.
+          </p>
+        </div>
+      ) : (
+        <div className="p-5 space-y-5">
+          {/* Combined totals */}
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <p className="text-sm font-bold text-indigo-900">All Delivery Persons Combined</p>
+                <p className="text-[11px] text-indigo-700/70 mt-0.5">
+                  {all.trackedOrderCount ?? 0} fully tracked order{all.trackedOrderCount === 1 ? "" : "s"}
+                </p>
+              </div>
+              <span className="text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-100 rounded-full px-2.5 py-1">
+                {all.deliveredCount ?? 0} delivered timestamps
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { label: "Assignment → Pickup", bucket: all.assignmentToPickup },
+                { label: "Pickup → Delivered", bucket: all.pickupToDelivered },
+                { label: "Assignment → Delivered", bucket: all.assignmentToDelivered },
+              ].map((metric) => (
+                <div key={metric.label} className="bg-white rounded-lg border border-indigo-100 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{metric.label}</p>
+                  <p className="text-xl font-extrabold text-indigo-700 mt-1">{formatDuration(metric.bucket?.averageMinutes)}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    {metric.bucket?.count ?? 0} complete · {formatDurationRange(metric.bucket)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-indigo-700/70 mt-3">
+              Lifecycle records: {all.assignedCount ?? 0} assigned · {all.pickedUpCount ?? 0} picked up · {all.deliveredCount ?? 0} delivered
+            </p>
+          </div>
+
+          {/* Per-person detail */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-4 h-4 text-gray-400" />
+              <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">By Delivery Person</h3>
+            </div>
+            <div className="overflow-x-auto border border-gray-100 rounded-xl">
+              <table className="w-full min-w-[850px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100 text-left">
+                    <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wide">Delivery Person</th>
+                    <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wide text-center">Orders</th>
+                    <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wide">Assign → Pickup</th>
+                    <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wide">Pickup → Delivered</th>
+                    <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wide">Assign → Delivered</th>
+                    <th className="px-4 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wide">Tracked</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assignedPersons.map((person) => {
+                    const stats = person.deliveryTime ?? {};
+                    const total = stats.assignmentToDelivered;
+                    return (
+                      <tr key={person.personId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-bold text-gray-900">{person.personName}</p>
+                          <p className="text-[11px] text-gray-400">
+                            {stats.assignedCount ?? 0} assigned · {stats.pickedUpCount ?? 0} picked up · {stats.deliveredCount ?? 0} delivered
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm font-bold text-brand-primary">{person.orderCount}</td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-bold text-indigo-700">{formatDuration(stats.assignmentToPickup?.averageMinutes)}</p>
+                          <p className="text-[10px] text-gray-400">{formatDurationRange(stats.assignmentToPickup)}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-bold text-indigo-700">{formatDuration(stats.pickupToDelivered?.averageMinutes)}</p>
+                          <p className="text-[10px] text-gray-400">{formatDurationRange(stats.pickupToDelivered)}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-bold text-emerald-700">{formatDuration(total?.averageMinutes)}</p>
+                          <p className="text-[10px] text-gray-400">{formatDurationRange(total)}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-600">
+                          {total?.count ?? 0} / {person.orderCount}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function DeliveryReportPage() {
   const admin = getAdmin();
   const isDeliveryPerson = admin?.role === "delivery_person";
@@ -405,6 +545,11 @@ export default function DeliveryReportPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Delivery time report */}
+      {!isLoading && !isError && byPerson.length > 0 && (
+        <DeliveryTimeReport persons={byPerson} combined={summary.deliveryTime} />
       )}
 
       {/* Overall mode breakdown table */}
