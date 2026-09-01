@@ -10,7 +10,7 @@ import {
   Database, AlertCircle, CheckCircle, XCircle, Image,
   LayoutList, ShoppingBag, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripVertical,
   LayoutGrid, List, SlidersHorizontal, ArrowUpDown, Clock,
-  Download, Upload, FilePen, CalendarDays,
+  Download, Upload, FilePen, CalendarDays, Copy,
 } from "lucide-react";
 import recycleIcon from "@/assets/recycling-symbol.png";
 import iconMenuProducts from "@/assets/icon-menu-products.png";
@@ -220,6 +220,7 @@ function TabToolbar({
   filterGroups = [], filterValues = {}, onFilterChange,
   layout, onLayout,
   addLabel, onAdd,
+  secondaryLabel, onSecondary, secondaryDisabled = false,
   resultCount, totalCount,
   hideLayoutToggle,
 }: {
@@ -228,6 +229,7 @@ function TabToolbar({
   filterGroups?: FilterGroup[]; filterValues?: Record<string, string>; onFilterChange?: (key: string, v: string) => void;
   layout: Layout; onLayout: (v: Layout) => void;
   addLabel: string; onAdd: () => void;
+  secondaryLabel?: string; onSecondary?: () => void; secondaryDisabled?: boolean;
   resultCount: number; totalCount: number;
   hideLayoutToggle?: boolean;
 }) {
@@ -347,6 +349,18 @@ function TabToolbar({
               <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
+        )}
+
+        {/* Secondary action */}
+        {secondaryLabel && onSecondary && (
+          <Button
+            variant="outline"
+            onClick={onSecondary}
+            disabled={secondaryDisabled}
+            className="h-9 px-3 text-sm gap-1.5 font-semibold text-[#1A56DB] border-[#B8C9EE] hover:bg-blue-50"
+          >
+            <Copy className="w-3.5 h-3.5" /> {secondaryLabel}
+          </Button>
         )}
 
         {/* Add button */}
@@ -867,6 +881,68 @@ const PRODUCT_COLS = [
   { key: "limitedStockNote", header: "Limited Stock Note" },
 ];
 
+function formatWhatsAppWeight(product: any): string {
+  const raw = String(product.grossWeight || product.netWeight || product.weight || "").trim();
+  if (!raw) return "";
+
+  const normalizeUnit = (value: string) =>
+    value.replace(/\bgrams?\b/gi, "gm").replace(/\bg\b/gi, "gm").replace(/\s+/g, " ").trim();
+  const range = raw.match(/^(.+?)\s*(?:-|–|—|\bto\b)\s*(.+)$/i);
+  if (!range) return normalizeUnit(raw);
+
+  let start = normalizeUnit(range[1]);
+  const end = normalizeUnit(range[2]);
+  const endUnit = end.match(/\b(?:kg|gm)\b$/i)?.[0];
+  if (endUnit && !/\b(?:kg|gm)\b$/i.test(start)) start = `${start} ${endUnit}`;
+  return `${start} To ${end}`;
+}
+
+function buildActiveProductsMessage(products: any[]): string {
+  const availableProducts = products.filter((product) =>
+    !product.isArchived &&
+    product.status !== "out_of_stock" &&
+    (Number(product.quantity) || 0) > 0
+  );
+
+  const itemLines = availableProducts.map((product) => {
+    const name = String(product.name || "").trim();
+    const pieces = String(product.pieces || "").trim();
+    const label = pieces ? `${name} - ${pieces}` : name;
+    const price = Number(product.price) || 0;
+    const weight = formatWhatsAppWeight(product);
+    return `○ ${label} @ ₹ ${price.toLocaleString("en-IN")}${weight ? ` | ${weight}` : ""}`;
+  });
+
+  return [
+    "*ITEMS AVAILABLE FOR NOW*",
+    "",
+    ...itemLines,
+    "",
+    "📲 *TO ORDER & VIEW TODAY'S FULL FRESH CATCH*",
+    "https://wa.me/message/4FDCXQRZAAEKI1",
+    "",
+    "🌐 *ORDER ONLINE*",
+    "https://fishtokri.com",
+  ].join("\n");
+}
+
+async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Clipboard access was not available");
+}
+
 function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (cfg: ExcelBarConfig) => void }) {
   const { toast } = useToast();
   const [products, setProducts] = useState<any[]>([]);
@@ -946,6 +1022,24 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
   }, [products, search, filters, sortValue]);
 
   const pagedProducts = usePaginated(processed, 20, `${search}|${JSON.stringify(filters)}|${sortValue}`);
+
+  const handleCopyActiveProducts = async () => {
+    const activeCount = products.filter((product) =>
+      !product.isArchived &&
+      product.status !== "out_of_stock" &&
+      (Number(product.quantity) || 0) > 0
+    ).length;
+    if (activeCount === 0) {
+      toast({ title: "No active products", description: "There are no in-stock products to copy.", variant: "destructive" });
+      return;
+    }
+    try {
+      await copyToClipboard(buildActiveProductsMessage(products));
+      toast({ title: "Active products copied", description: `${activeCount} product${activeCount === 1 ? "" : "s"} copied in WhatsApp format.` });
+    } catch (err: any) {
+      toast({ title: "Could not copy products", description: err.message, variant: "destructive" });
+    }
+  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -1305,6 +1399,7 @@ function ProductsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
         filterGroups={filterGroups} filterValues={filters} onFilterChange={(k, v) => setFilters((f) => ({ ...f, [k]: v }))}
         layout={layout} onLayout={() => {}}
         addLabel="Add Product" onAdd={() => { setEditing(null); setModalOpen(true); }}
+        secondaryLabel="Copy Active products" onSecondary={handleCopyActiveProducts} secondaryDisabled={loading}
         resultCount={processed.length} totalCount={products.length}
         hideLayoutToggle
       />
