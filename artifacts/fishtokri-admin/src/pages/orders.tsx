@@ -710,6 +710,22 @@ function InlineDeliverySelect({
   );
 }
 
+function comboIncludeProductId(include: any): string {
+  const raw = include?.productId ?? include?.id ?? "";
+  return String(raw?.$oid ?? raw?._id ?? raw);
+}
+
+function comboAvailableQuantity(combo: any, products: any[]): number {
+  const includes = Array.isArray(combo?.includes) ? combo.includes : [];
+  if (includes.length === 0) return 0;
+  return Math.max(0, Math.min(...includes.map((include: any) => {
+    const product = products.find((item) => String(item._id) === comboIncludeProductId(include));
+    if (!product) return 0;
+    const quantityPerCombo = Math.max(1, Number(include.quantity) || 1);
+    return Math.floor(Math.max(0, Number(product.quantity) || 0) / quantityPerCombo);
+  })));
+}
+
 // ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function Orders() {
   const { toast } = useToast();
@@ -850,12 +866,13 @@ export default function Orders() {
   const [selectedSubHubId, setSelectedSubHubId] = useState<string>("");
   const [subHubPincodes, setSubHubPincodes] = useState<any[]>([]);
   const [subHubProducts, setSubHubProducts] = useState<any[]>([]);
+  const [subHubCombos, setSubHubCombos] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [pickerCategory, setPickerCategory] = useState<string | null>(null);
   const [posProductMode, setPosProductMode] = useState<"normal" | "preorder">("normal");
-  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; unit: string; quantity: number }[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; unit: string; quantity: number; isCombo?: boolean }[]>([]);
 
   // Coupons / timeslots / scheduling
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -1068,13 +1085,14 @@ export default function Orders() {
     }
     setSelectedSubHubId("");
     setSubHubProducts([]);
+    setSubHubCombos([]);
     setSelectedProducts([]);
   }, [selectedSuperHubId]);
 
   // Load products, coupons, timeslots when sub-hub changes
   useEffect(() => {
     if (!selectedSubHubId) {
-      setSubHubProducts([]); setCoupons([]); setTimeslots([]);
+      setSubHubProducts([]); setSubHubCombos([]); setCoupons([]); setTimeslots([]);
       setSubHubPincodes([]);
       setAppliedCouponIds([]); setSelectedTimeslotId("");
       return;
@@ -1084,6 +1102,9 @@ export default function Orders() {
       .then((d) => setSubHubProducts(d.products ?? []))
       .catch(() => setSubHubProducts([]))
       .finally(() => setLoadingProducts(false));
+    apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/combos`)
+      .then((d) => setSubHubCombos(d.combos ?? []))
+      .catch(() => setSubHubCombos([]));
 
     setLoadingCoupons(true);
     apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/coupons`)
@@ -1171,6 +1192,9 @@ export default function Orders() {
       apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/products`)
         .then((d) => setSubHubProducts(d.products ?? []))
         .catch(() => {/* silent – keep existing list */});
+      apiFetch(`/api/sub-hubs/${selectedSubHubId}/menu/combos`)
+        .then((d) => setSubHubCombos(d.combos ?? []))
+        .catch(() => {/* silent – keep existing combos */});
     }, 1000);
     return () => clearInterval(id);
   }, [isCreatePage, selectedSubHubId]);
@@ -1207,10 +1231,14 @@ export default function Orders() {
 
   const stockOf = useCallback((productId: string): number => {
     const p = subHubProducts.find((x) => String(x._id) === productId);
-    if (!p) return Infinity;
-    const q = Number(p.quantity);
-    return Number.isFinite(q) ? q : Infinity;
-  }, [subHubProducts]);
+    if (p) {
+      const q = Number(p.quantity);
+      return Number.isFinite(q) ? q : Infinity;
+    }
+    const combo = subHubCombos.find((x) => String(x._id) === productId);
+    if (combo) return comboAvailableQuantity(combo, subHubProducts);
+    return Infinity;
+  }, [subHubProducts, subHubCombos]);
 
   const isCouponApplicable = useCallback((c: any): boolean => {
     const apProds = (Array.isArray(c.applicableProducts) ? c.applicableProducts : []).map((x: any) => String(x));
@@ -1219,12 +1247,13 @@ export default function Orders() {
     if (selectedProducts.length === 0) return false;
     for (const sp of selectedProducts) {
       if (apProds.includes(String(sp.productId))) return true;
-      const prod = subHubProducts.find((x) => String(x._id) === sp.productId);
+      const prod = subHubProducts.find((x) => String(x._id) === sp.productId)
+        ?? subHubCombos.find((x) => String(x._id) === sp.productId);
       const cat = String(prod?.category ?? "").toLowerCase();
-      if (cat && apCats.includes(cat)) return true;
+      if ((cat && apCats.includes(cat)) || (sp.isCombo && apCats.includes("combos"))) return true;
     }
     return false;
-  }, [selectedProducts, subHubProducts]);
+  }, [selectedProducts, subHubProducts, subHubCombos]);
 
   const activeTimeslots = useMemo(() => {
     const todayISO = getTodayIST();
@@ -1294,10 +1323,24 @@ export default function Orders() {
   }, [activeTimeslots, loadingTimeslots, selectedTimeslotId, timeslots.length]);
 
   const productsForMode = useMemo(() => {
-    return subHubProducts.filter((p) => posProductMode === "preorder"
+    const products = subHubProducts.filter((p) => posProductMode === "preorder"
       ? isPreorderOnlyProduct(p) && isProductAvailableForPreorder(p, orderDate)
       : !isPreorderOnlyProduct(p));
-  }, [subHubProducts, posProductMode, orderDate]);
+    if (posProductMode === "preorder") return products;
+    const combos = subHubCombos
+      .filter((combo) => combo.isActive !== false)
+      .map((combo) => ({
+        ...combo,
+        category: "Combos",
+        subCategory: "",
+        shortCode: "",
+        price: Number(combo.discountedPrice ?? combo.price) || 0,
+        unit: combo.weight ?? "",
+        quantity: comboAvailableQuantity(combo, subHubProducts),
+        isCombo: true,
+      }));
+    return [...products, ...combos];
+  }, [subHubProducts, subHubCombos, posProductMode, orderDate]);
 
   // A preorder date must be valid for every product already in the cart.
   // Before anything is selected, use the union of preorder product schedules
@@ -1372,7 +1415,8 @@ export default function Orders() {
     }
     if (q) {
       list = list.filter((p) =>
-        [p.name, p.category, p.subCategory, p.shortCode].some((v) => String(v ?? "").toLowerCase().includes(q))
+        [p.name, p.description, p.category, p.subCategory, p.shortCode, ...(Array.isArray(p.tags) ? p.tags : [])]
+          .some((v) => String(v ?? "").toLowerCase().includes(q))
       );
     }
     // In-stock products first, then out-of-stock
@@ -4101,10 +4145,20 @@ export default function Orders() {
                           setSelectedProducts((prev) => {
                             const exists = prev.find((sp) => sp.productId === pid);
                             if (exists) return prev.map((sp) => sp.productId === pid ? { ...sp, quantity: sp.quantity + 1 } : sp);
-                            return [...prev, { productId: pid, name: p.name, price: Number(p.price) || 0, unit: p.unit ?? "", quantity: 1 }];
+                            return [...prev, {
+                              productId: pid,
+                              name: p.name,
+                              price: Number(p.price) || 0,
+                              unit: p.unit ?? "",
+                              quantity: 1,
+                              isCombo: Boolean(p.isCombo),
+                            }];
                           });
                         }}
                       >
+                        {p.imageUrl && (
+                          <img src={p.imageUrl} alt="" className="w-full h-20 object-cover rounded-t-[10px]" />
+                        )}
                         <div className="p-2.5 flex flex-col flex-1">
                           <p className="text-sm font-medium text-[#162B4D] leading-snug line-clamp-2 min-h-[2.5rem]">{p.name}</p>
                           <p className="text-xs text-gray-400 uppercase tracking-wide truncate h-4">{p.category || "\u00A0"}</p>

@@ -35,6 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { PaginationBar } from "@/components/pagination-bar";
 import { usePaginated } from "@/hooks/use-paginated";
+import { ImageUpload } from "@/components/image-upload";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -3613,6 +3614,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
   const [originalPrice, setOriginalPrice] = useState("");
   const [serves, setServes] = useState("");
   const [weight, setWeight] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [tagsStr, setTagsStr] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [sortOrder, setSortOrder] = useState("1");
@@ -3631,6 +3633,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
       setDiscountedPrice(String(combo.discountedPrice ?? combo.price ?? ""));
       setOriginalPrice(String(combo.originalPrice ?? ""));
       setServes(combo.serves ?? ""); setWeight(combo.weight ?? "");
+      setImageUrl(combo.imageUrl ?? "");
       setTagsStr(Array.isArray(combo.tags) ? combo.tags.join(", ") : "");
       setIncludes(Array.isArray(combo.includes) ? combo.includes.map((i: any) => ({
         productId: String(i.productId ?? ""),
@@ -3641,6 +3644,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
     } else {
       setName(""); setDescription(""); setFullDescription(""); setDiscountedPrice(""); setOriginalPrice("");
       setServes(""); setWeight(""); setTagsStr(""); setIncludes([]); setIsActive(true); setSortOrder(String(nextOrder));
+      setImageUrl("");
     }
     setProductSearch(""); setSelectedCategory("all");
   }, [isOpen, combo, nextOrder]);
@@ -3684,7 +3688,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
     if (dup) { toast({ title: "Duplicate order number", description: `Sort order ${soNum} is already used by another combo.`, variant: "destructive" }); setSaving(false); return; }
     const dp = Number(discountedPrice) || 0; const op = Number(originalPrice) || 0;
     const payload = {
-      name, description, fullDescription, serves, weight,
+      name, description, fullDescription, serves, weight, imageUrl,
       discountedPrice: dp, originalPrice: op,
       discount: op > dp && dp > 0 ? Math.round(((op - dp) / op) * 100) : 0,
       includes,
@@ -3710,6 +3714,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Combo Name *</Label><Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Family Fish Combo" className="h-9" /></div>
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Short Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief tagline" className="h-9" /></div>
             <div className="space-y-1.5"><Label className="text-xs font-semibold text-gray-600">Full Description</Label><textarea value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} placeholder="Detailed description of the combo..." className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1A56DB] focus:ring-1 focus:ring-[#1A56DB]/30 outline-none resize-none h-16" /></div>
+            <ImageUpload value={imageUrl} onChange={setImageUrl} folder="fishtokri/combos" label="Combo Image" previewClassName="w-20 h-20 rounded-lg" />
           </section>
 
           {/* Pricing & details */}

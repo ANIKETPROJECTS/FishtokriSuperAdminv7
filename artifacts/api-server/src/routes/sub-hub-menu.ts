@@ -688,7 +688,7 @@ router.post("/combos", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
-    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder, sectionId } = req.body;
+    const { name, description, fullDescription, serves, weight, imageUrl, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder, sectionId } = req.body;
     if (!name) { res.status(400).json({ error: "ValidationError", message: "Name is required" }); return; }
     const dp = Number(discountedPrice) || 0;
     const op = Number(originalPrice) || 0;
@@ -698,6 +698,7 @@ router.post("/combos", async (req, res) => {
       fullDescription: fullDescription ?? "",
       serves: serves ?? "",
       weight: weight ?? "",
+      imageUrl: imageUrl ?? "",
       discountedPrice: dp,
       originalPrice: op,
       discount: Number(discount) || (op > dp && dp > 0 ? Math.round(((op - dp) / op) * 100) : 0),
@@ -743,13 +744,14 @@ router.put("/combos/:comboId", async (req, res) => {
     if (!ctx) return;
     const oid = toId(req.params.comboId);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid combo ID" }); return; }
-    const { name, description, fullDescription, serves, weight, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder, sectionId } = req.body;
+    const { name, description, fullDescription, serves, weight, imageUrl, discountedPrice, originalPrice, discount, includes, tags, nutrition, isActive, sortOrder, sectionId } = req.body;
     const update: any = { updatedAt: new Date() };
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
     if (fullDescription !== undefined) update.fullDescription = fullDescription;
     if (serves !== undefined) update.serves = serves;
     if (weight !== undefined) update.weight = weight;
+    if (imageUrl !== undefined) update.imageUrl = String(imageUrl ?? "");
     if (discountedPrice !== undefined) update.discountedPrice = Number(discountedPrice) || 0;
     if (originalPrice !== undefined) update.originalPrice = Number(originalPrice) || 0;
     if (discount !== undefined) update.discount = Number(discount) || 0;
