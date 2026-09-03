@@ -882,22 +882,6 @@ const PRODUCT_COLS = [
   { key: "limitedStockNote", header: "Limited Stock Note" },
 ];
 
-function formatWhatsAppWeight(product: any): string {
-  const raw = String(product.grossWeight || product.netWeight || product.weight || "").trim();
-  if (!raw) return "";
-
-  const normalizeUnit = (value: string) =>
-    value.replace(/\bgrams?\b/gi, "gm").replace(/\bg\b/gi, "gm").replace(/\s+/g, " ").trim();
-  const range = raw.match(/^(.+?)\s*(?:-|–|—|\bto\b)\s*(.+)$/i);
-  if (!range) return normalizeUnit(raw);
-
-  let start = normalizeUnit(range[1]);
-  const end = normalizeUnit(range[2]);
-  const endUnit = end.match(/\b(?:kg|gm)\b$/i)?.[0];
-  if (endUnit && !/\b(?:kg|gm)\b$/i.test(start)) start = `${start} ${endUnit}`;
-  return `${start} To ${end}`;
-}
-
 function buildActiveProductsMessage(products: any[]): string {
   const availableProducts = products.filter((product) =>
     !product.isArchived &&
@@ -907,11 +891,8 @@ function buildActiveProductsMessage(products: any[]): string {
 
   const itemLines = availableProducts.map((product) => {
     const name = String(product.name || "").trim();
-    const pieces = String(product.pieces || "").trim();
-    const label = pieces ? `${name} - ${pieces}` : name;
     const price = Number(product.price) || 0;
-    const weight = formatWhatsAppWeight(product);
-    return `○ ${label} @ ₹ ${price.toLocaleString("en-IN")}${weight ? ` | ${weight}` : ""}`;
+    return `○ ${name} @ ₹ ${price.toLocaleString("en-IN")}`;
   });
 
   return [
