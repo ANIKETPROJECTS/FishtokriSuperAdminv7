@@ -816,10 +816,6 @@ export default function Orders() {
   const [deletingOrder, setDeletingOrder] = useState<any>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  // Permanent delete (from Deleted tab)
-  const [permanentDeletingOrder, setPermanentDeletingOrder] = useState<any>(null);
-  const [confirmingPermanentDelete, setConfirmingPermanentDelete] = useState(false);
-
   // Restore order (from Deleted tab)
   const [restoringOrderId, setRestoringOrderId] = useState<string | null>(null);
 
@@ -2883,21 +2879,6 @@ export default function Orders() {
     } finally { setConfirmingDelete(false); }
   };
 
-  const handlePermanentDeleteOrder = async () => {
-    if (!permanentDeletingOrder) return;
-    setConfirmingPermanentDelete(true);
-    try {
-      await apiFetch(`/api/orders/${permanentDeletingOrder._id}/permanent`, { method: "DELETE" });
-      toast({ title: "Order permanently deleted" });
-      setOrders((prev) => prev.filter((o) => String(o._id) !== String(permanentDeletingOrder._id)));
-      setTotal((t) => Math.max(0, t - 1));
-      setPermanentDeletingOrder(null);
-      loadStats();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally { setConfirmingPermanentDelete(false); }
-  };
-
   const handleRestoreOrder = async (order: any) => {
     setRestoringOrderId(String(order._id));
     try {
@@ -3444,13 +3425,6 @@ export default function Orders() {
                               >
                                 <RotateCcw className="w-[18px] h-[18px] text-emerald-600" />
                               </button>
-                              <button
-                                title="Delete Permanently"
-                                onClick={() => setPermanentDeletingOrder(o)}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-red-50 transition-colors"
-                              >
-                                <Trash2 className="w-[18px] h-[18px] text-red-600" />
-                              </button>
                             </>
                           ) : (
                             <>
@@ -3645,49 +3619,6 @@ export default function Orders() {
                   className="bg-red-600 hover:bg-red-700 h-9 text-white"
                 >
                   {confirmingDelete ? "Moving..." : "Move to Deleted"}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Permanent Delete Confirmation Dialog */}
-      <Dialog open={!!permanentDeletingOrder} onOpenChange={(o) => { if (!o && !confirmingPermanentDelete) setPermanentDeletingOrder(null); }}>
-        <DialogContent className="sm:max-w-[400px]">
-          {permanentDeletingOrder && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-red-600 flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" />
-                  Permanently Delete Order
-                </DialogTitle>
-              </DialogHeader>
-              <div className="py-2 space-y-3">
-                <p className="text-sm text-gray-600">
-                  Permanently delete the order for{" "}
-                  <span className="font-semibold text-[#162B4D]">{permanentDeletingOrder.customerName}</span>?
-                </p>
-                <div className="bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
-                  <p className="text-xs text-red-600 font-medium flex items-center gap-1.5">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    This cannot be undone. The order will be erased permanently.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {Array.isArray(permanentDeletingOrder.items) ? permanentDeletingOrder.items.length : 0} item(s) ·{" "}
-                    {formatRupees(effectiveOrderTotal(permanentDeletingOrder))} ·{" "}
-                    <StatusBadge status={permanentDeletingOrder.status} deliveryType={permanentDeletingOrder.deliveryType} />
-                  </p>
-                </div>
-              </div>
-              <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setPermanentDeletingOrder(null)} disabled={confirmingPermanentDelete} className="h-9">Cancel</Button>
-                <Button
-                  onClick={handlePermanentDeleteOrder}
-                  disabled={confirmingPermanentDelete}
-                  className="bg-red-700 hover:bg-red-800 h-9 text-white"
-                >
-                  {confirmingPermanentDelete ? "Deleting..." : "Delete Permanently"}
                 </Button>
               </DialogFooter>
             </>
