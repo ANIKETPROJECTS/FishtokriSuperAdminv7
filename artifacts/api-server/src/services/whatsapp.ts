@@ -423,7 +423,14 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
   const itemSlots = buildOrderConfirmedItemSlots(order.items ?? [], 5);
   const subtotal = String(order.subtotal ?? 0);
   const discount = String(order.discount ?? 0);
-  const deliveryCharge = String(order.deliveryCharge ?? 0);
+  // Storefront/FTW orders keep the scheduled delivery fee in slotCharge,
+  // while admin/express orders use deliveryCharge or instantDeliveryCharge.
+  // WhatsApp should show the same combined delivery amount as the invoice.
+  const deliveryCharge = String(
+    (Number(order.slotCharge) || 0) +
+    (Number(order.deliveryCharge) || 0) +
+    (Number(order.instantDeliveryCharge) || 0),
+  );
   const total = String(order.total ?? 0);
   const rawMode = String(order.paymentMode ?? "").trim().toLowerCase();
   const paymentMode =
