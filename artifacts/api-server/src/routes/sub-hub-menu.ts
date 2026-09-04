@@ -630,8 +630,9 @@ router.get("/combos", async (req, res) => {
 
     // Sync each combo's isActive against current product stock.
     // A combo must be inactive if ANY of its constituent products has quantity <= 0.
+    // Do not automatically activate combos again: an inactive combo may have
+    // been disabled manually, and the list refresh must preserve that choice.
     const toDeactivate: any[] = [];
-    const toActivate: any[] = [];
 
     for (const combo of combos) {
       const includes: any[] = Array.isArray(combo.includes) ? combo.includes : [];
@@ -656,9 +657,6 @@ router.get("/combos", async (req, res) => {
       if (anyOutOfStock && combo.isActive) {
         toDeactivate.push(combo._id);
         combo.isActive = false;
-      } else if (!anyOutOfStock && !combo.isActive) {
-        toActivate.push(combo._id);
-        combo.isActive = true;
       }
     }
 
@@ -670,13 +668,6 @@ router.get("/combos", async (req, res) => {
         { $set: { isActive: false, updatedAt: now } },
       );
     }
-    if (toActivate.length > 0) {
-      await combosCol.updateMany(
-        { _id: { $in: toActivate } },
-        { $set: { isActive: true, updatedAt: now } },
-      );
-    }
-
     res.json({ combos, total: combos.length });
   } catch (err) {
     req.log.error({ err }, "Failed to get combos");
