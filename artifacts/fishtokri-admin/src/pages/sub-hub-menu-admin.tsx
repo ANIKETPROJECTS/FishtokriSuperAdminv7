@@ -7,7 +7,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket,
-  Database, AlertCircle, CheckCircle, XCircle, Image,
+  Database, AlertCircle, Check, CheckCircle, XCircle, Image,
   LayoutList, ShoppingBag, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripVertical,
   LayoutGrid, List, SlidersHorizontal, ArrowUpDown, Clock,
   Download, Upload, FilePen, CalendarDays, Copy,
@@ -700,6 +700,10 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editingPincode, setEditingPincode] = useState<string | null>(null);
+  const [editPinInput, setEditPinInput] = useState("");
+  const [editPinCharge, setEditPinCharge] = useState("0");
+  const [editPinTimeDelay, setEditPinTimeDelay] = useState("0");
 
   useEffect(() => {
     setLoading(true);
@@ -737,6 +741,38 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
     setPincodes(next);
     setDirty(true);
     onCountChange(next.length);
+  };
+
+  const startEditPin = (pin: PincodeEntry) => {
+    setEditingPincode(pin.pincode);
+    setEditPinInput(pin.pincode);
+    setEditPinCharge(String(pin.charge ?? 0));
+    setEditPinTimeDelay(String(pin.timeDelay ?? 0));
+  };
+
+  const cancelEditPin = () => {
+    setEditingPincode(null);
+  };
+
+  const saveEditPin = () => {
+    if (!editingPincode) return;
+    const val = editPinInput.trim();
+    if (!val) {
+      toast({ title: "Pincode is required", variant: "destructive" });
+      return;
+    }
+    if (pincodes.some((p) => p.pincode === val && p.pincode !== editingPincode)) {
+      toast({ title: "Pincode already added", variant: "destructive" });
+      return;
+    }
+    const next = pincodes.map((p) =>
+      p.pincode === editingPincode
+        ? { pincode: val, charge: Number(editPinCharge) || 0, timeDelay: Number(editPinTimeDelay) || 0 }
+        : p
+    );
+    setPincodes(next);
+    setEditingPincode(null);
+    setDirty(true);
   };
 
   const save = async () => {
@@ -832,24 +868,88 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
                   <th className="px-3 py-2 text-left font-semibold text-gray-500">Pincode</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-500">Extra Charge</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-500">Time Delay</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-500">Remove</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {pincodes.map((p) => (
-                  <tr key={p.pincode} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 py-2 font-semibold text-blue-700">{p.pincode}</td>
-                    <td className="px-3 py-2 text-gray-700">₹{p.charge}</td>
-                    <td className="px-3 py-2 text-gray-700">{p.timeDelay} min</td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => removePin(p.pincode)}
-                        className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </td>
+                    <tr key={p.pincode} className="hover:bg-gray-50 transition-colors">
+                      {editingPincode === p.pincode ? (
+                        <>
+                          <td className="px-3 py-1.5">
+                            <Input
+                              value={editPinInput}
+                              onChange={(e) => setEditPinInput(e.target.value)}
+                              className="h-8 text-xs text-black"
+                              autoFocus
+                            />
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={editPinCharge}
+                              onChange={(e) => setEditPinCharge(e.target.value)}
+                              className="h-8 text-xs text-black"
+                            />
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={editPinTimeDelay}
+                              onChange={(e) => setEditPinTimeDelay(e.target.value)}
+                              className="h-8 text-xs text-black"
+                            />
+                          </td>
+                          <td className="px-3 py-1.5 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                title="Save Pincode"
+                                onClick={saveEditPin}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-emerald-50 text-emerald-600 transition-colors"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Cancel Edit"
+                                onClick={cancelEditPin}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2 font-semibold text-blue-700">{p.pincode}</td>
+                          <td className="px-3 py-2 text-gray-700">₹{p.charge}</td>
+                          <td className="px-3 py-2 text-gray-700">{p.timeDelay} min</td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                title="Edit Pincode"
+                                onClick={() => startEditPin(p)}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Remove Pincode"
+                                onClick={() => removePin(p.pincode)}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      )}
                   </tr>
                 ))}
               </tbody>
