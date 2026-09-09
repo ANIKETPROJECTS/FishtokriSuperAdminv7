@@ -4,7 +4,7 @@
 
 Implement inventory handling for **FTW storefront orders only** in the FTW application.
 
-The FTW application must deduct stock only after the payment has been confirmed by a trusted payment result, and it must restore stock when the payment fails, is cancelled, or is refunded after a deduction.
+For an FTW order paid through UPI, the FTW application must deduct/reserve stock immediately when the user initiates the UPI payment. Do not wait for the payment to succeed. If the payment later fails, is declined, is cancelled, expires, or is refunded, restore the deducted quantity immediately and exactly once.
 
 Do not change inventory behavior for:
 
@@ -19,7 +19,7 @@ The existing admin API currently tries to auto-deduct orders that arrive with `i
 
 If this is a browser frontend, do not connect directly to MongoDB and do not expose `MONGODB_URI` to the browser.
 
-The actual inventory mutation must run in a trusted server-side route or server action owned by the FTW application. The browser should call that route after the payment provider result has been verified.
+The actual inventory mutation must run in a trusted server-side route or server action owned by the FTW application. The browser should call that route at the moment the UPI payment is initiated. The initiation request must be authenticated, validated, and idempotent; it must not depend on a later client-side success screen.
 
 Use a MongoDB transaction if the deployment supports transactions. Otherwise use an atomic compare-and-set update, a distributed lock, or another server-side concurrency mechanism. A process-local JavaScript mutex is not sufficient when multiple app instances can run.
 
@@ -34,7 +34,7 @@ Use a MongoDB transaction if the deployment supports transactions. Otherwise use
 - FTW detection: use the public order number prefix `FTW` case-insensitively, allowing an optional leading `#`
 - FTW orders commonly have `source: "online"`
 
-Do not identify FTW orders by `paymentStatus` alone. FTW orders can arrive with inconsistent payment fields while a Razorpay payment is being reconciled. Use the order-number prefix and then use a trusted payment-verification result to decide whether to deduct or restore.
+Do not identify FTW orders by `paymentStatus` alone. FTW orders can arrive with inconsistent payment fields while a Razorpay payment is being reconciled. Use the order-number prefix, then use the verified UPI initiation event to deduct and the verified payment outcome to decide whether to keep or restore the deduction.
 
 Relevant order fields:
 
@@ -99,9 +99,9 @@ The admin Inventory Management history reads these movement documents. Use these
 - `order_deduct` for a successful order deduction
 - `order_restore` for a stock restoration
 
-## FTW deduction flow
+## FTW UPI initiation deduction flow
 
-Create one idempotent server-side inventory operation for FTW payment confirmation.
+Create one idempotent server-side inventory operation for FTW UPI payment initiation.
 
 ### 1. Validate the order
 
@@ -109,11 +109,12 @@ Before mutating anything:
 
 1. Load the order from `orders.orders`.
 2. Confirm that `orderId` matches `/^#?FTW/i`.
-3. Confirm that the payment provider has verified the payment as successful.
+3. Confirm that this is a UPI payment initiation event. Payment success is **not** required at this point.
 4. Resolve the order's `subHubId` or `subHubName` to the correct sub-hub database.
 5. Resolve all order items to products.
 6. Ignore zero or negative quantities.
 7. Aggregate duplicate product IDs before checking or deducting stock.
+8. Deduct stock immediately before or at the same time as launching the UPI payment flow. If stock cannot be deducted, stop the payment flow and show an out-of-stock error.
 
 Do not run this flow for FTS, FTN, POS, admin-manual, or unknown order types.
 
@@ -138,6 +139,7 @@ Also persist an FTW-specific processing state on the order, for example:
 ```js
 {
   ftwInventoryStatus: "pending" | "deducted" | "restored" | "failed",
+  ftwInventoryTrigger: "upi_initiated",
   ftwInventoryProcessedAt: Date,
   ftwInventoryOperationId: String
 }
@@ -202,7 +204,7 @@ After the product update succeeds, insert one movement document per deducted pro
   orderId: String(order._id),
   orderRef: `#${String(order._id).slice(-6).toUpperCase()}`,
   batchNumbers: "BATCH_NUMBER_1, BATCH_NUMBER_2",
-  subReason: "payment_confirmed",
+  subReason: "upi_initiated",
   expiryDate: expiryDateOfTheOldestConsumedBatch || undefined,
   createdAt: new Date()
 }
@@ -228,7 +230,7 @@ This allocation is important if stock must later be restored to the exact origin
 
 Restoration must also be idempotent and FTW-only.
 
-Trigger restoration when a trusted payment result says that an already-deducted FTW order was not successfully paid, was cancelled, was refunded, or otherwise must not remain reserved.
+Trigger restoration immediately when the UPI payment result says that an already-deducted FTW order failed, was declined, was cancelled, expired, was abandoned, was refunded, or otherwise must not remain reserved. Do not wait for a later order-status poll or manual admin action.
 
 ### Restoration rules
 
@@ -304,7 +306,9 @@ If an item contains a direct product ID, use that product before attempting name
 
 Do not:
 
-- Deduct based only on a client-side “payment successful” screen.
+- Wait for payment success before deducting an FTW UPI order; deduction happens at UPI initiation.
+- Deduct twice when the payment initiation request or webhook is retried.
+- Restore only after a slow polling cycle when an immediate payment-failure result is available.
 - Connect MongoDB from browser code.
 - Use `inventoryBatches`.
 - Update only `products.quantity` while leaving `batches` unchanged.
@@ -337,17 +341,18 @@ Do not work around the background scan by marking an FTW order as deducted befor
 
 The implementation is complete only when all of these cases pass:
 
-1. One paid FTW order deducts the requested quantity once.
-2. Retrying the same payment webhook does not deduct again.
-3. Two simultaneous FTW orders cannot oversell the same stock.
-4. A payment failure before deduction creates no deduction movement.
-5. A payment failure after deduction restores exactly once.
-6. A repeated failure/refund event does not restore twice.
-7. A cancelled FTW order with no deduction does not increase stock.
-8. FIFO uses active batches and skips expired batches.
-9. The product's `batches` and top-level `quantity` remain synchronized.
-10. `inventory_movements` contains `order_deduct` and `order_restore` records visible in Inventory Management history.
-11. Combo items deduct their constituent products correctly.
-12. FTS, FTN, POS, and admin-manual orders are unaffected.
-13. The existing admin background job cannot deduct the same FTW order.
-14. A partial failure cannot leave a product changed without a corresponding movement record.
+1. One FTW UPI initiation deducts the requested quantity once, before payment success is known.
+2. A successful UPI payment leaves the deduction in place.
+3. Retrying the same initiation event does not deduct again.
+4. Two simultaneous FTW orders cannot oversell the same stock.
+5. A UPI payment failure after initiation restores exactly once and does so immediately.
+6. A repeated failure, cancellation, expiry, or refund event does not restore twice.
+7. If UPI initiation fails before inventory is deducted, no restore is created.
+8. A cancelled FTW order with no deduction does not increase stock.
+9. FIFO uses active batches and skips expired batches.
+10. The product's `batches` and top-level `quantity` remain synchronized.
+11. `inventory_movements` contains `order_deduct` and `order_restore` records visible in Inventory Management history.
+12. Combo items deduct their constituent products correctly.
+13. FTS, FTN, POS, and admin-manual orders are unaffected.
+14. The existing admin background job cannot deduct the same FTW order.
+15. A partial failure cannot leave a product changed without a corresponding movement record.
