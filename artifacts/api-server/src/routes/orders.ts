@@ -9,6 +9,7 @@ import {
   applyOrderInventoryOnUpdate,
   applyOrderInventoryOnDelete,
   autoDeductUndedcutedOrders,
+  isFTWOrder,
   InsufficientStockError,
 } from "./inventory.js";
 import { requireAuth } from "../middlewares/auth.js";
@@ -1400,7 +1401,10 @@ router.post("/", async (req: ScopedRequest, res) => {
     // being set — without this guard, both the POST handler and the background job could both
     // see inventoryDeducted=false and each deduct independently, causing a double deduction.
     const ORDER_DEDUCT_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
-    const shouldDeductOnCreate = ORDER_DEDUCT_STATUSES.has(String(orderDoc.status)) && !!orderDoc.subHubId;
+    const shouldDeductOnCreate =
+      ORDER_DEDUCT_STATUSES.has(String(orderDoc.status)) &&
+      !!orderDoc.subHubId &&
+      !isFTWOrder(orderDoc);
     if (shouldDeductOnCreate) {
       await conn.db.collection(COLLECTION).updateOne(
         { _id: result.insertedId },
@@ -1412,6 +1416,7 @@ router.post("/", async (req: ScopedRequest, res) => {
       req.log.info({ orderId: String(result.insertedId), subHubId: orderDoc.subHubId, status: orderDoc.status, itemCount: (orderDoc.items ?? []).length }, "order create: calling applyOrderInventoryOnCreate");
       const deducted = await applyOrderInventoryOnCreate({
         _id: result.insertedId,
+        orderId: orderDoc.orderId,
         subHubId: orderDoc.subHubId,
         subHubName: orderDoc.subHubName,
         status: orderDoc.status,
@@ -2342,7 +2347,13 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
     // the second gets null back and is rejected instead of re-deducting inventory.
     const claimed = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid, isDeleted: true },
-      { $set: { isDeleted: false, inventoryDeducted: true }, $unset: { deletedAt: "" } },
+      {
+        $set: {
+          isDeleted: false,
+          inventoryDeducted: isFTWOrder(existing as any) ? false : true,
+        },
+        $unset: { deletedAt: "" },
+      },
       { returnDocument: "before" }
     );
     if (!claimed) {
@@ -2350,7 +2361,7 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
       return;
     }
 
-    // Re-deduct inventory. If this fails we must roll back isDeleted so the
+    // Re-deduct inventory for non-FTW orders. If this fails we must roll back isDeleted so the
     // order doesn't appear in normal tabs with no inventory deducted.
     try {
       await applyOrderInventoryOnCreate(existing as any, "order_restored");

@@ -822,6 +822,7 @@ router.post("/init-product-batches", async (req, res) => {
 // ─── ORDER SYNC HELPERS (used by orders.ts) ───────────────────────────────────
 type OrderForSync = {
   _id: any;
+  orderId?: string;
   subHubId?: string;
   subHubName?: string;
   status?: string;
@@ -830,8 +831,12 @@ type OrderForSync = {
 
 const ACTIVE_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
 
+export function isFTWOrder(order: { orderId?: unknown } | null | undefined): boolean {
+  return /^#?FTW/i.test(String(order?.orderId ?? "").trim());
+}
+
 function orderShouldDeduct(order: OrderForSync) {
-  if (!order || !order.subHubId) return false;
+  if (!order || isFTWOrder(order) || !order.subHubId) return false;
   const status = String(order.status ?? "").toLowerCase();
   return ACTIVE_STATUSES.has(status);
 }
@@ -954,6 +959,10 @@ async function expandOrderItems(
 }
 
 async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", subReason?: string): Promise<number> {
+  if (isFTWOrder(order)) {
+    logger.info({ orderId: String(order._id), publicOrderId: order.orderId, direction }, "applyDelta: skipped FTW order — inventory is owned by FTW frontend");
+    return 0;
+  }
   if (!order.subHubId) {
     logger.warn({ orderId: String(order._id) }, "applyDelta: skipped — no subHubId on order");
     return 0;
@@ -1137,7 +1146,7 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
  */
 export async function autoDeductUndedcutedOrders(
   ordersDb: any,
-  orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
+  orders: Array<{ _id: any; orderId?: string; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
 ): Promise<void> {
   // Log a sample of raw order structure so we can see what customer-app orders look like
   if (orders.length > 0) {
@@ -1169,7 +1178,11 @@ export async function autoDeductUndedcutedOrders(
   }
 
   const candidates = orders.filter(
-    (o) => ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) && o.inventoryDeducted !== true && (o as any).isDeleted !== true
+    (o) =>
+      !isFTWOrder(o) &&
+      ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) &&
+      o.inventoryDeducted !== true &&
+      (o as any).isDeleted !== true
   );
   logger.info(
     { candidateCount: candidates.length, skippedCount: orders.length - candidates.length },
@@ -1193,7 +1206,7 @@ export async function autoDeductUndedcutedOrders(
       // read stale qty and each write back qty-5 instead of the correct qty-10.
       const deducted = await withDeductionLock(() =>
         applyDelta(
-          { _id: order._id, subHubId: order.subHubId, subHubName: order.subHubName, status: order.status, items: order.items },
+          { _id: order._id, orderId: order.orderId, subHubId: order.subHubId, subHubName: order.subHubName, status: order.status, items: order.items },
           "deduct",
           "order_placed"
         )
@@ -1245,7 +1258,7 @@ export async function runInventoryBackgroundDeduction(): Promise<void> {
 
     // Filter in JS so case differences in status ("Pending" vs "pending") don't cause misses
     const undeducted = candidates.filter((o: any) =>
-      ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase())
+      !isFTWOrder(o) && ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase())
     );
 
     logger.info(
@@ -1263,6 +1276,7 @@ export async function runInventoryBackgroundDeduction(): Promise<void> {
 }
 
 export async function applyOrderInventoryOnDelete(order: OrderForSync, wasDeducted: boolean) {
+  if (isFTWOrder(order)) return false;
   if (!wasDeducted) return false;
   if (!order?.subHubId) return false;
   const restored = await applyDelta(order, "restore", "order_deleted");
@@ -1279,6 +1293,13 @@ function itemsSignature(items: any): string {
 }
 
 export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
+  if (isFTWOrder(prev) || isFTWOrder(next)) {
+    logger.info(
+      { orderId: String(next?._id ?? prev?._id), publicOrderId: next?.orderId ?? prev?.orderId, wasDeducted },
+      "applyOrderInventoryOnUpdate: skipped FTW order — inventory is owned by FTW frontend",
+    );
+    return false;
+  }
   const wantsDeducted = orderShouldDeduct(next);
   if (!wasDeducted && wantsDeducted) {
     await withDeductionLock(() => applyDelta(next, "deduct", "order_placed"));
