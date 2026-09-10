@@ -27,6 +27,7 @@ const VALID_ORDER_STATUSES = new Set([
   "out_for_delivery",
   "delivered",
   "cancelled",
+  "rejected",
   "takeaway",
 ]);
 
@@ -1959,6 +1960,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         prev as any,
         result as any,
         wasDeducted,
+        { allowFTW: true },
       );
       if (wasDeducted !== nowDeducted) {
         await conn.db.collection(COLLECTION).updateOne(
@@ -2224,7 +2226,11 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
 
     // Restore inventory for any deducted items.
     try {
-      await applyOrderInventoryOnDelete(existing as any, (existing as any).inventoryDeducted === true);
+      await applyOrderInventoryOnDelete(
+        existing as any,
+        (existing as any).inventoryDeducted === true,
+        { allowFTW: true },
+      );
     } catch (e) {
       req.log.error({ err: e }, "Failed to restore inventory on order delete");
     }
@@ -2350,7 +2356,7 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
       {
         $set: {
           isDeleted: false,
-          inventoryDeducted: isFTWOrder(existing as any) ? false : true,
+          inventoryDeducted: true,
         },
         $unset: { deletedAt: "" },
       },
@@ -2361,10 +2367,15 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
       return;
     }
 
-    // Re-deduct inventory for non-FTW orders. If this fails we must roll back isDeleted so the
+    // Re-deduct inventory using the admin-controlled flow. If this fails we must roll back isDeleted so the
     // order doesn't appear in normal tabs with no inventory deducted.
     try {
-      await applyOrderInventoryOnCreate(existing as any, "order_restored");
+      const rededucted = await applyOrderInventoryOnCreate(existing as any, "order_restored", { allowFTW: true });
+      await conn.db.collection(COLLECTION).updateOne(
+        { _id: oid },
+        { $set: { inventoryDeducted: rededucted } }
+      );
+      (existing as any).inventoryDeducted = rededucted;
     } catch (e) {
       // Full rollback: return order to deleted state so it doesn't appear in
       // normal tabs with inconsistent inventory.

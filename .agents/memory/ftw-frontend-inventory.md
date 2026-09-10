@@ -3,8 +3,8 @@ name: FTW frontend-owned inventory
 description: FTW payment inventory ownership and the coordination required with the admin API.
 ---
 
-FTW inventory is intended to be deducted and restored by a trusted server-side service in the FTW application, while FTS, FTN, POS, and manual orders retain the admin API's existing inventory flow.
+FTW inventory has two ownership phases: the trusted FTW application owns the initial UPI reservation and payment-outcome restoration; explicit authenticated admin order mutations own subsequent FTW edits, cancellations, rejections, deletes, and restores through the normal admin inventory flow. The unattended admin scanner still excludes FTW orders.
 
-**Why:** The admin background scanner can see an undeducted FTW order after it is inserted, causing a race with frontend-owned processing and leaving paid/delivered orders without reliable inventory state.
+**Why:** The admin background scanner can see an undeducted FTW order after it is inserted, causing a race with frontend-owned processing. Explicit admin actions are different: once an administrator changes the order, inventory must follow that deliberate admin lifecycle change.
 
-**How to apply:** FTW processing must be idempotent, batch-aware, and history-aware; the admin background scanner must explicitly exclude FTW orders rather than treating `inventoryDeducted: true` as a fake claim. See the root `prompt.md` for the full contract.
+**How to apply:** Keep the background scanner excluded from FTW orders, but pass an explicit admin-only override for authenticated order update/delete/restore flows. Preserve batch/FIFO, movement history, locking, and idempotency. See the root `prompt.md` for the full contract.

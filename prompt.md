@@ -2,7 +2,12 @@
 
 ## Objective
 
-Implement inventory handling for **FTW storefront orders only** in the FTW application.
+Implement inventory handling for **FTW storefront orders** with two ownership phases:
+
+1. The FTW application owns the initial UPI reservation and payment-outcome restoration.
+2. Once an administrator edits, cancels, rejects, deletes, or restores an FTW order through
+   the admin application, that explicit admin operation owns the inventory transition and uses
+   the normal admin deduction/restoration flow.
 
 For an FTW order paid through UPI, the FTW application must deduct/reserve stock immediately when the user initiates the UPI payment. Do not wait for the payment to succeed. If the payment later fails, is declined, is cancelled, expires, or is refunded, restore the deducted quantity immediately and exactly once.
 
@@ -13,7 +18,7 @@ Do not change inventory behavior for:
 - Manual admin orders
 - Any order that is not clearly an FTW order
 
-The existing admin API currently tries to auto-deduct orders that arrive with `inventoryDeducted: false`. The FTW flow must be coordinated with that behavior: the server-side background job must skip FTW orders, or the FTW inventory operation will race with the background job. Do **not** set `inventoryDeducted: true` as a fake claim without actually deducting stock.
+The existing admin API currently tries to auto-deduct orders that arrive with `inventoryDeducted: false`. The FTW flow must be coordinated with that behavior: the server-side background job must skip FTW orders, or the FTW inventory operation will race with the background job. Do **not** set `inventoryDeducted: true` as a fake claim without actually deducting stock. Explicit authenticated admin order mutations may opt into FTW inventory handling and must complete the matching stock movement before updating the flag.
 
 ## Important security requirement
 
@@ -336,6 +341,21 @@ The exclusion should be based on the order number:
 Keep the existing automatic inventory behavior for FTS, FTN, POS, and other supported order types.
 
 Do not work around the background scan by marking an FTW order as deducted before changing inventory. That would hide a real failed deduction.
+
+### Explicit admin control
+
+The background scanner must continue to exclude FTW orders, but authenticated admin order
+operations are an intentional exception. When the admin updates an FTW order:
+
+- Moving an active order to cancelled or rejected restores inventory if it was deducted.
+- Moving a cancelled/rejected order back to an active status deducts inventory.
+- Editing active-order items restores the previous allocation and deducts the new allocation.
+- Deleting an FTW order restores inventory if it was deducted.
+- Restoring a deleted FTW order deducts inventory again when its status is active.
+
+These operations must use the same batch/FIFO, movement-history, locking, and idempotency behavior
+as non-FTW admin orders. They must not cause the unattended background scanner to process FTW
+orders.
 
 ## Acceptance tests
 
