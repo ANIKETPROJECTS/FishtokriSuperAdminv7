@@ -37,6 +37,9 @@ function formatDate(iso: string | null) {
 function formatRupees(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
+function isOrderFromChannel(order: any, channel: "FTW" | "FTS"): boolean {
+  return new RegExp(`^#?${channel}`, "i").test(String(order?.orderId ?? order?.invoiceNo ?? "").trim());
+}
 function formatTime12(t: string): string {
   const str = String(t).trim();
   // If the string already has an AM/PM suffix (12-hour format), parse and re-format it.
@@ -459,6 +462,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     rows.push([]);
     rows.push(["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
     rows.push(["Showing (filtered)", filteredOrders.length, "of", orders.length, "total orders"]);
+    rows.push(["Web Orders (FTW)", filteredOrders.filter(o => isOrderFromChannel(o, "FTW")).length]);
+    rows.push(["POS Orders (FTS)", filteredOrders.filter(o => isOrderFromChannel(o, "FTS")).length]);
     rows.push(["Cash Revenue", stats.cash]);
     rows.push(["UPI Revenue", stats.upi]);
     rows.push(["Card Revenue", stats.card]);
@@ -481,6 +486,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       {(() => {
         const cancelledCount = filteredOrders.filter(o => String(o.orderStatus || o.status || "").toLowerCase() === "cancelled").length;
         const regularCount   = filteredOrders.length - cancelledCount;
+        const webOrderCount  = filteredOrders.filter(o => isOrderFromChannel(o, "FTW")).length;
+        const posOrderCount  = filteredOrders.filter(o => isOrderFromChannel(o, "FTS")).length;
 
         type InfoLine = { label: string; color: string; value?: string };
         type StatCard = {
@@ -499,6 +506,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
             sub: [
               { text: `${regularCount} regular`, color: "#16a34a" },
               { text: `${cancelledCount} cancelled`, color: "#dc2626" },
+              { text: `${webOrderCount} web (FTW)`, color: "#2563eb" },
+              { text: `${posOrderCount} POS (FTS)`, color: "#ea580c" },
             ],
           },
           { label: "Cash Payment",     value: formatRupees(stats.cash),       color: "#16a34a" },
