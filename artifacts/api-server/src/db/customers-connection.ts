@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { logger } from "../lib/logger.js";
 
 if (!process.env.MONGODB_URI) {
   throw new Error("MONGODB_URI must be set.");
@@ -19,6 +18,5 @@ export async function getCustomersConnection(): Promise<mongoose.Connection> {
   if (customersConn && customersConn.readyState === 1) return customersConn;
   const uri = buildUri("customers");
   customersConn = await mongoose.createConnection(uri).asPromise();
-  logger.info("Connected to customers DB");
   return customersConn;
 }

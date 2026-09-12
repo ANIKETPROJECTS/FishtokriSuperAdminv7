@@ -7,6 +7,9 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
+      // Routine stdout must not be retained by PM2. Error output remains
+      // available through PM2's error log for genuine failures.
+      out_file: "/dev/null",
       max_memory_restart: "500M",
       env: {
         NODE_ENV: "production",

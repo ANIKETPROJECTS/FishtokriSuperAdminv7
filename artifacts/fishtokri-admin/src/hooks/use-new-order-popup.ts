@@ -179,12 +179,6 @@ export function useNewOrderPopup(): NewOrderPopupState {
 
   const acceptOrder = useCallback(async (id: string) => {
     try {
-      const queueEntry = queue.find(p => String(p.order._id) === id);
-      console.log(
-        `[WhatsApp] popup acceptOrder → orderId=${queueEntry?.order?.orderId || id} ` +
-        `customer=${queueEntry?.order?.customerName} phone=${queueEntry?.order?.phone} ` +
-        `→ confirmed | WA template: fishtokri_order_confirmed`
-      );
       await apiFetch(`/api/orders/${id}`, {
         method: "PUT",
         body: JSON.stringify({ status: "confirmed" }),
@@ -193,16 +187,10 @@ export function useNewOrderPopup(): NewOrderPopupState {
       // Best-effort — popup still closes
     }
     removeFromQueue(id);
-  }, [removeFromQueue, queue]);
+  }, [removeFromQueue]);
 
   const rejectOrder = useCallback(async (id: string) => {
     try {
-      const queueEntry = queue.find(p => String(p.order._id) === id);
-      console.log(
-        `[WhatsApp] popup rejectOrder → orderId=${queueEntry?.order?.orderId || id} ` +
-        `customer=${queueEntry?.order?.customerName} phone=${queueEntry?.order?.phone} ` +
-        `→ cancelled | WA template: fishtokri_order_cancelled | reason="Rejected by admin"`
-      );
       await apiFetch(`/api/orders/${id}`, {
         method: "PUT",
         body: JSON.stringify({ status: "cancelled", cancellationReason: "Rejected by admin" }),
@@ -211,7 +199,7 @@ export function useNewOrderPopup(): NewOrderPopupState {
       // Best-effort
     }
     removeFromQueue(id);
-  }, [removeFromQueue, queue]);
+  }, [removeFromQueue]);
 
   const dismissOrder = useCallback((id: string) => {
     removeFromQueue(id);

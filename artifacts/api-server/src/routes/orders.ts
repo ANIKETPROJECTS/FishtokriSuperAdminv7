@@ -2184,10 +2184,6 @@ router.put("/:id", async (req: ScopedRequest, res) => {
             } catch (e) {
               req.log.warn({ err: e }, "[WhatsApp] Could not fetch delivery person phone for re-notification");
             }
-            console.log(
-              `[WhatsApp] Re-firing out_for_delivery for order ${orderDoc.orderId} — ` +
-              `delivery person changed from ${prevAssigned} to ${newAssigned}`
-            );
             await sendOutForDelivery(orderDoc, dpPhone, req.log);
           } catch (e) {
             req.log.error({ err: e }, "[WhatsApp] Re-notification error on delivery person change");

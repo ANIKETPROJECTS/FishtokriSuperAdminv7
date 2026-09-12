@@ -2389,26 +2389,6 @@ export default function Orders() {
 
     setSavingStatus(true);
     try {
-      const _waTemplateHint = (status: string): string => {
-        if (status === "confirmed") return "fishtokri_order_confirmed";
-        if (status === "out_for_delivery") {
-          const mode = String(selectedOrder.paymentMode ?? "").trim().toLowerCase();
-          const isCashMode = mode === "cod" || mode === "cash" || mode === "";
-          const dueAmount = Number(selectedOrder.dueAmount ?? 0);
-          return (isCashMode && dueAmount > 0)
-            ? "fishtokri_out_for_delivery_cod_new"
-            : "fishtokri_out_for_delivery";
-        }
-        if (status === "cancelled") return "fishtokri_order_cancelled";
-        return "";
-      };
-      const waTemplate = _waTemplateHint(editStatus);
-      console.log(
-        `[WhatsApp] Status change triggered → orderId=${selectedOrder.orderId || selectedOrder._id} ` +
-        `customer=${selectedOrder.customerName} phone=${selectedOrder.phone} ` +
-        `${selectedOrder.status} → ${editStatus}` +
-        (waTemplate ? ` | WA template: ${waTemplate}` : " | no WA notification")
-      );
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify({ status: editStatus }) });
       const movedOutOfDelivered =
         selectedOrder.status === "delivered" &&
@@ -2572,10 +2552,6 @@ export default function Orders() {
         payload.subHubId = overrideSubHubId;
         payload.subHubName = overrideSubHubName ?? "";
       }
-      console.log(
-        `[WhatsApp] acceptOrder → orderId=${order.orderId || orderId} customer=${order.customerName} phone=${order.phone} ` +
-        `pending → confirmed | WA template: fishtokri_order_confirmed`
-      );
       await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify(payload) });
       toast({
         title: "Order accepted",
@@ -2600,10 +2576,6 @@ export default function Orders() {
     const orderId = String(rejectingOrder._id);
     setConfirmingReject(true);
     try {
-      console.log(
-        `[WhatsApp] submitReject → orderId=${rejectingOrder.orderId || orderId} customer=${rejectingOrder.customerName} phone=${rejectingOrder.phone} ` +
-        `→ cancelled | WA template: fishtokri_order_cancelled | reason="${reason}"`
-      );
       await apiFetch(`/api/orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify({ status: "cancelled", cancellationReason: reason }),

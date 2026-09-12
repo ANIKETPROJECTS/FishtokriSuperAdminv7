@@ -34,14 +34,15 @@ export async function createPaymentLink(
   order: any,
   log?: Logger
 ): Promise<string | null> {
+  const activeLog: Logger = log ?? {
+    info: () => {},
+    warn: () => {},
+    error: (obj, message) => console.error(message, obj),
+  };
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
   if (!keyId || !keySecret) {
-    (log ?? console).warn(
-      { orderId: order._id },
-      "[Razorpay] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not set — skipping payment link creation"
-    );
     return null;
   }
 
@@ -49,10 +50,6 @@ export async function createPaymentLink(
   const dueAmount = Number(order.dueAmount ?? order.total ?? 0);
 
   if (dueAmount <= 0) {
-    (log ?? console).warn(
-      { orderId },
-      "[Razorpay] dueAmount is 0 — skipping payment link creation"
-    );
     return null;
   }
 
@@ -97,31 +94,20 @@ export async function createPaymentLink(
     const data: any = await resp.json();
 
     if (!resp.ok) {
-      (log ?? console).error(
+      activeLog.error(
         { orderId, status: resp.status, error: data },
         "[Razorpay] Payment link creation failed"
-      );
-      console.error(
-        `[Razorpay] Failed to create payment link for order ${orderId}: ${resp.status} ${JSON.stringify(data)}`
       );
       return null;
     }
 
     const shortUrl = String(data.short_url ?? "").trim();
-    console.log(
-      `[Razorpay] Payment link created for order ${orderId}: ${shortUrl} (amount=₹${dueAmount})`
-    );
-    (log ?? console).info(
-      { orderId, shortUrl, amount: dueAmount, linkId: data.id },
-      "[Razorpay] Payment link created"
-    );
     return shortUrl || null;
   } catch (err: any) {
-    (log ?? console).error(
+    activeLog.error(
       { orderId, err },
       "[Razorpay] Payment link creation error"
     );
-    console.error(`[Razorpay] Error creating payment link for order ${orderId}: ${String(err)}`);
     return null;
   } finally {
     clearTimeout(timer);
