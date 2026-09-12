@@ -1066,6 +1066,7 @@ router.post("/", async (req: ScopedRequest, res) => {
       slotCharge,
       deliveryCharge,
       extraDiscount,
+      extraDiscountValue,
       extraDiscountType,
       total: totalIn,
       couponId,
@@ -1211,6 +1212,7 @@ router.post("/", async (req: ScopedRequest, res) => {
       slotCharge: slotChargeNum,
       deliveryCharge: deliveryChargeNum,
       extraDiscount: extraDiscountNum,
+      extraDiscountValue: Math.max(0, Math.floor(Number(extraDiscountValue) || 0)),
       extraDiscountType: extraDiscountType ? String(extraDiscountType) : "flat",
       total: totalNum,
       deliveryType: dt,
@@ -1732,7 +1734,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       superHubId, superHubName, subHubId, subHubName,
       scheduleType, deliveryDate, timeslotId, timeslotLabel, timeslotStart, timeslotEnd,
       couponId, couponCode, couponTitle, couponIds, couponCodes, coupons,
-      subtotal, discount, slotCharge, deliveryCharge, extraDiscount, extraDiscountType, total,
+      subtotal, discount, slotCharge, deliveryCharge, extraDiscount, extraDiscountValue, extraDiscountType, total,
       cancellationReason,
       walletTopup,
       walletAdjustment,
@@ -1785,6 +1787,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     if (slotCharge !== undefined) update.slotCharge = Number(slotCharge) || 0;
     if (deliveryCharge !== undefined) update.deliveryCharge = Number(deliveryCharge) || 0;
     if (extraDiscount !== undefined) update.extraDiscount = Number(extraDiscount) || 0;
+    if (extraDiscountValue !== undefined) update.extraDiscountValue = Math.max(0, Math.floor(Number(extraDiscountValue) || 0));
     if (extraDiscountType !== undefined) update.extraDiscountType = String(extraDiscountType);
     if (total !== undefined) update.total = Number(total) || 0;
     if (cancellationReason !== undefined) {

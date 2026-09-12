@@ -1864,6 +1864,7 @@ export default function Orders() {
         subtotal: itemsSubtotal,
         discount: couponDiscount + extraDiscountAmount,
         extraDiscount: extraDiscountAmount,
+        extraDiscountValue: Number(extraDiscount) || 0,
         extraDiscountType: extraDiscountType,
         slotCharge: slotExtraCharge,
         deliveryCharge: effectiveDeliveryCharge,
@@ -2789,10 +2790,18 @@ export default function Orders() {
     const savedExtraDiscount = Number(o.extraDiscount);
     const savedExtraDiscountType = o.extraDiscountType === "percentage" ? "percentage" : "flat";
     setExtraDiscountType(savedExtraDiscountType);
-    if (savedExtraDiscount > 0 && savedExtraDiscountType === "percentage") {
+    const savedExtraDiscountValue = Number(o.extraDiscountValue);
+    if (Number.isFinite(savedExtraDiscountValue) && savedExtraDiscountValue > 0) {
+      // Newer orders keep the original whole-number input, so editing does
+      // not need to reverse-engineer a percentage from the rounded rupee amount.
+      const value = savedExtraDiscountType === "percentage"
+        ? Math.min(100, Math.floor(savedExtraDiscountValue))
+        : Math.max(0, Math.floor(savedExtraDiscountValue));
+      setExtraDiscount(value > 0 ? String(value) : "");
+    } else if (savedExtraDiscount > 0 && savedExtraDiscountType === "percentage") {
       // The API stores the calculated discount amount, while the edit control
-      // expects the original percentage input. Reconstruct it from the saved
-      // subtotal and coupon discount so the toggle and value remain equivalent.
+      // expects the original whole-number percentage. Reconstruct the closest
+      // whole number for legacy orders that predate extraDiscountValue.
       const savedSubtotal = Number(o.subtotal) || (o.items ?? []).reduce(
         (sum: number, item: any) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 1),
         0,
@@ -2800,11 +2809,11 @@ export default function Orders() {
       const savedCouponDiscount = Math.max(0, (Number(o.discount) || 0) - savedExtraDiscount);
       const percentageBase = Math.max(0, savedSubtotal - savedCouponDiscount);
       const savedPercentage = percentageBase > 0
-        ? Math.round((savedExtraDiscount / percentageBase) * 10000) / 100
+        ? Math.round((savedExtraDiscount / percentageBase) * 100)
         : 0;
       setExtraDiscount(savedPercentage > 0 ? String(savedPercentage) : "");
     } else {
-      setExtraDiscount(savedExtraDiscount > 0 ? String(savedExtraDiscount) : "");
+      setExtraDiscount(savedExtraDiscount > 0 ? String(Math.floor(savedExtraDiscount)) : "");
     }
   }, [allCustomers]);
 
