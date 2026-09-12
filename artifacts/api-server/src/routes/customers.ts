@@ -253,6 +253,7 @@ async function enrichCustomers(customers: any[], log?: any) {
     // without the ref being cleaned up. Keeping it would show a ghost active order.
     // Historical (non-active) refs are kept as-is for order-history display.
     const validStoredRefs = storedRefs.filter((ref) => {
+      if (ref?.isDeleted === true) return false;
       if (!ACTIVE_ORDER_STATUSES.has(normalize(ref.status))) return true; // keep history
       const refId = getOrderId(ref);
       return refId ? liveOrderIdSet.has(refId) : false;
