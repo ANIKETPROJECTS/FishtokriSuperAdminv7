@@ -219,12 +219,21 @@ function buildOrdersQuery(customers: any[]) {
 async function enrichCustomers(customers: any[], log?: any) {
   if (!customers.length) return customers;
   const query = buildOrdersQuery(customers);
-  if (!query) return customers.map((c) => ({ ...c, currentOrders: [], orderHistory: c.orders ?? [] }));
+  if (!query) {
+    return customers.map((c) => {
+      const orders = Array.isArray(c.orders) ? c.orders.filter((order: any) => order?.isDeleted !== true) : [];
+      return { ...c, orders, currentOrders: [], orderHistory: orders };
+    });
+  }
 
   let liveOrders: any[] = [];
   try {
     const ordersConn = await getSubHubDbConnection("orders");
-    liveOrders = await ordersConn.db.collection("orders").find(query).sort({ createdAt: -1 }).limit(1000).toArray();
+    liveOrders = await ordersConn.db.collection("orders")
+      .find({ $and: [query, { isDeleted: { $ne: true } }] })
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .toArray();
   } catch (err) {
     log?.warn?.({ err }, "Could not enrich customers with live orders");
   }

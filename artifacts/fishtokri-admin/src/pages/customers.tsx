@@ -260,7 +260,10 @@ function getOrderDueAmount(order: any): number {
 function getCustomerDueAmount(customer: Customer): number {
   const { all } = splitOrders(customer);
   return all.reduce((sum: number, order: any) => {
-    if (["cancelled", "canceled", "rejected"].includes(normalize(order?.status ?? order?.orderStatus))) return sum;
+    if (
+      order?.isDeleted === true ||
+      ["cancelled", "canceled", "rejected"].includes(normalize(order?.status ?? order?.orderStatus))
+    ) return sum;
     return sum + getOrderDueAmount(order);
   }, 0);
 }
@@ -276,9 +279,14 @@ function getStatusStyle(status: any) {
 
 function splitOrders(customer: Customer) {
   const rawOrders = Array.isArray(customer.orders) ? customer.orders : [];
-  const current = Array.isArray(customer.currentOrders) ? customer.currentOrders : rawOrders.filter((o) => ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
-  const history = Array.isArray(customer.orderHistory) ? customer.orderHistory : rawOrders.filter((o) => !ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
-  const all = (current.length + history.length) > 0 ? [...current, ...history] : rawOrders;
+  const visibleOrders = (orders: any[]) => orders.filter((order) => order?.isDeleted !== true);
+  const current = Array.isArray(customer.currentOrders)
+    ? visibleOrders(customer.currentOrders)
+    : visibleOrders(rawOrders).filter((o) => ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
+  const history = Array.isArray(customer.orderHistory)
+    ? visibleOrders(customer.orderHistory)
+    : visibleOrders(rawOrders).filter((o) => !ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
+  const all = (current.length + history.length) > 0 ? [...current, ...history] : visibleOrders(rawOrders);
   return { current, history, all };
 }
 
