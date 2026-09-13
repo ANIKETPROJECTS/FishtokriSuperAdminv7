@@ -23,6 +23,7 @@ export async function getSubHubDbConnection(dbName: string): Promise<mongoose.Co
   const uri = buildUri(dbName);
   const conn = await mongoose.createConnection(uri).asPromise();
   connectionCache.set(dbName, conn);
+  logger.info({ dbName }, "Connected to sub hub DB");
   return conn;
 }
 
@@ -40,6 +41,7 @@ export async function dropSubHubDb(dbName: string): Promise<void> {
     await conn.dropDatabase();
     await conn.close();
     connectionCache.delete(dbName);
+    logger.info({ dbName }, "Dropped sub hub DB");
   } catch (err) {
     logger.error({ err, dbName }, "Failed to drop sub hub DB");
     throw err;

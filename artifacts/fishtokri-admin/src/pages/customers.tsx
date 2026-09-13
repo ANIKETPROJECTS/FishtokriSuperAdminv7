@@ -244,30 +244,6 @@ function getOrderTotal(order: any) {
   return (order?.items ?? []).reduce((sum: number, item: any) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1), 0);
 }
 
-function getOrderDueAmount(order: any): number {
-  const total = getOrderTotal(order);
-  if (total <= 0 || normalize(order?.paymentStatus) === "paid") return 0;
-  if (order?.dueAmount !== undefined && order?.dueAmount !== null) {
-    return Math.max(0, Number(order.dueAmount) || 0);
-  }
-  const paymentStatus = normalize(order?.paymentStatus);
-  if (["unpaid", "pending", "partial", "due"].includes(paymentStatus)) {
-    return Math.max(0, total - (Number(order?.paidAmount ?? order?.paid) || 0));
-  }
-  return 0;
-}
-
-function getCustomerDueAmount(customer: Customer): number {
-  const { all } = splitOrders(customer);
-  return all.reduce((sum: number, order: any) => {
-    if (
-      order?.isDeleted === true ||
-      ["cancelled", "canceled", "rejected"].includes(normalize(order?.status ?? order?.orderStatus))
-    ) return sum;
-    return sum + getOrderDueAmount(order);
-  }, 0);
-}
-
 function getStatusStyle(status: any) {
   const value = normalize(status);
   if (["delivered", "completed", "paid"].includes(value)) return "bg-green-50 text-green-700 border-green-200";
@@ -279,14 +255,9 @@ function getStatusStyle(status: any) {
 
 function splitOrders(customer: Customer) {
   const rawOrders = Array.isArray(customer.orders) ? customer.orders : [];
-  const visibleOrders = (orders: any[]) => orders.filter((order) => order?.isDeleted !== true);
-  const current = Array.isArray(customer.currentOrders)
-    ? visibleOrders(customer.currentOrders)
-    : visibleOrders(rawOrders).filter((o) => ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
-  const history = Array.isArray(customer.orderHistory)
-    ? visibleOrders(customer.orderHistory)
-    : visibleOrders(rawOrders).filter((o) => !ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
-  const all = (current.length + history.length) > 0 ? [...current, ...history] : visibleOrders(rawOrders);
+  const current = Array.isArray(customer.currentOrders) ? customer.currentOrders : rawOrders.filter((o) => ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
+  const history = Array.isArray(customer.orderHistory) ? customer.orderHistory : rawOrders.filter((o) => !ACTIVE_ORDER_STATUSES.has(normalize(o?.status)));
+  const all = (current.length + history.length) > 0 ? [...current, ...history] : rawOrders;
   return { current, history, all };
 }
 
@@ -602,7 +573,6 @@ export default function Customers() {
                   <th className="px-3 py-4 text-left">Contact</th>
                   <th className="px-3 py-4 text-left">Location</th>
                   <th className="px-3 py-4 text-right">Total Spend</th>
-                  <th className="px-3 py-4 text-right">Due Amount</th>
                   <th className="px-3 py-4 text-center">Total Orders</th>
                   <th className="px-3 py-4 text-right">Wallet</th>
                   <th className="px-3 py-4 text-right">Actions</th>
@@ -612,7 +582,6 @@ export default function Customers() {
                 {filteredCustomers.map((c) => {
                   const loc = getCustomerLocation(c);
                   const totalSpend = getCustomerTotalSpend(c);
-                  const dueAmount = getCustomerDueAmount(c);
                   const totalOrders = getCustomerTotalOrders(c);
                   return (
                     <tr key={c.id} className="hover:bg-gray-50 transition-colors">
@@ -638,11 +607,6 @@ export default function Customers() {
                       </td>
                       <td className="px-3 py-4 text-right">
                         <span className="text-sm font-medium text-black">{formatRupees(totalSpend)}</span>
-                      </td>
-                      <td className="px-3 py-4 text-right">
-                        <span className={`text-sm font-semibold ${dueAmount > 0 ? "text-red-600" : "text-emerald-600"}`}>
-                          {formatRupees(dueAmount)}
-                        </span>
                       </td>
                       <td className="px-3 py-4 text-center">
                         <span className="text-sm text-black">{totalOrders}</span>
@@ -971,7 +935,6 @@ function CustomerDetailPage({
     [fullCustomer]
   );
   const totalSpend = all.reduce((sum: number, order: any) => sum + getOrderTotal(order), 0);
-  const totalDue = fullCustomer ? getCustomerDueAmount(fullCustomer) : 0;
 
   return (
     <div style={{ fontFamily: "'Poppins', sans-serif" }}>
@@ -1066,13 +1029,12 @@ function CustomerDetailPage({
               </div>
             </div>
             {/* Stats strip — no card backgrounds, just dividers */}
-            <div className="border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 divide-x divide-gray-100">
+            <div className="border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-gray-100">
               <SummaryCard label="Addresses" value={fullCustomer.addresses?.length ?? 0} icon={Home} color="text-[#364F9F]" />
               <SummaryCard label="Active Orders" value={current.length} icon={Clock} color="text-indigo-500" />
               <SummaryCard label="Order History" value={history.length} icon={CheckCircle2} color="text-emerald-500" />
               <SummaryCard label="All Orders" value={all.length} icon={ClipboardList} color="text-amber-500" />
               <SummaryCard label="Total Spend" value={formatRupees(totalSpend)} icon={CreditCard} color="text-[#F05B4E]" />
-              <SummaryCard label="Due Amount" value={formatRupees(totalDue)} icon={Tag} color={totalDue > 0 ? "text-red-500" : "text-emerald-500"} />
               <SummaryCard label="Wallet Balance" value={formatRupees(Number(fullCustomer.walletBalance) || 0)} icon={Wallet} color="text-blue-500" />
             </div>
           </div>
@@ -1585,7 +1547,6 @@ function OrderCardCompact({ order, index }: { order: any; index: number }) {
   const ref = shortOrderRef(order, index);
   const items = Array.isArray(order.items) ? order.items : [];
   const totalAmt = Number(order.total ?? order.grandTotal ?? order.totalAmount ?? getOrderTotal(order));
-  const dueAmount = getOrderDueAmount(order);
   const subHubName = order.subHubName ?? order.subHub ?? order.location ?? "";
 
   return (
@@ -1602,10 +1563,7 @@ function OrderCardCompact({ order, index }: { order: any; index: number }) {
         </div>
       </div>
       <div className="px-5 py-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`inline-flex border items-center px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${getStatusStyle(order.status)}`}>{statusLabel(order.status)}</span>
-          {dueAmount > 0 && <span className="text-[10px] font-semibold text-red-600">Due {formatRupees(dueAmount)}</span>}
-        </div>
+        <span className={`inline-flex border items-center px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${getStatusStyle(order.status)}`}>{statusLabel(order.status)}</span>
         <span className="text-sm font-bold text-[#162B4D]">{formatRupees(totalAmt)}</span>
       </div>
       {items.length > 0 && (
@@ -1646,8 +1604,10 @@ function OrderCard({ order, index }: { order: any; index: number }) {
   const billAddr = getOrderBillAddress(order);
   const paymentStatus = order.paymentStatus ?? "";
   const totalAmt = Number(grandTotal ?? getOrderTotal(order));
-  const paidAmount = totalAmt === 0 ? 0 : Number(order.paidAmount ?? order.paid ?? 0);
-  const dueAmount = getOrderDueAmount(order);
+   const paidAmount = totalAmt === 0 ? 0 : Number(order.paidAmount ?? order.paid ?? 0);
+   const dueAmount = totalAmt === 0
+     ? 0
+     : (order.dueAmount != null ? Number(order.dueAmount) : Math.max(0, totalAmt - paidAmount));
   const subHubName = order.subHubName ?? order.subHub ?? order.location ?? "";
   const isPaid = paymentStatus && normalize(paymentStatus) === "paid";
   const isUnpaid = paymentStatus && ["unpaid", "pending", "due"].includes(normalize(paymentStatus));

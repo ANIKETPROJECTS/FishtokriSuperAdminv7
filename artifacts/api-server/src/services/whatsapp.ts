@@ -27,6 +27,10 @@ function isDuplicate(orderId: string, templateName: string): boolean {
   const last = recentlySent.get(key);
   const now = Date.now();
   if (last !== undefined && now - last < DEDUP_TTL_MS) {
+    console.warn(
+      `[WhatsApp] DEDUP — suppressing duplicate ${templateName} for order ${orderId} ` +
+      `(last sent ${now - last}ms ago, TTL=${DEDUP_TTL_MS}ms)`
+    );
     return true;
   }
   recentlySent.set(key, now);
@@ -225,6 +229,18 @@ async function attemptSend(
 
   const requestUrl = `${WABA_API_BASE}/api/send/bytemplate?${params.toString()}`;
 
+  // Log full details (mask API key in the URL shown)
+  const maskedUrl = requestUrl.replace(/(api-key=)[^&]+/, "$1***");
+  console.log(
+    `[WhatsApp][attempt ${attemptNum}] SEND → template=${templateName} phone=${formattedPhone}\n` +
+    `  variables: ${JSON.stringify(varsObj)}\n` +
+    `  url: ${maskedUrl}`
+  );
+  log.info(
+    { templateName, phone: formattedPhone, variables: varsObj, attempt: attemptNum },
+    `[WhatsApp] Sending template (attempt ${attemptNum})`
+  );
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
 
@@ -244,6 +260,15 @@ async function attemptSend(
     clearTimeout(timer);
   }
 
+  // Always log the full raw response so we can see exactly what Admark returns.
+  console.log(
+    `[WhatsApp][attempt ${attemptNum}] RESPONSE ← httpStatus=${httpStatus} body=${rawText}`
+  );
+  log.info(
+    { templateName, phone: formattedPhone, httpStatus, response: data, attempt: attemptNum },
+    "[WhatsApp] Admark raw response"
+  );
+
   // Admark quirk: it can return success:true at the top level but still fail delivery.
   // The reliable check is: success:true AND sent >= 1 AND errors array is empty.
   const topSuccess = data?.success === true;
@@ -257,8 +282,19 @@ async function attemptSend(
       : `success=${topSuccess} sent=${sentCount}`;
     const errMsg = `[WhatsApp] Delivery failed: ${errDetail} | httpStatus=${httpStatus} | body=${rawText}`;
     log.error({ templateName, phone: formattedPhone, httpStatus, response: data, attempt: attemptNum }, errMsg);
+    console.error(errMsg);
     throw new Error(errMsg);
   }
+
+  const msgId = data?.results?.[0]?.messageId ?? data?.messageId ?? "(none)";
+  console.log(
+    `[WhatsApp][attempt ${attemptNum}] SUCCESS → template=${templateName} phone=${formattedPhone} ` +
+    `sent=${sentCount} msgId=${msgId}`
+  );
+  log.info(
+    { templateName, phone: formattedPhone, sent: sentCount, msgId, response: data, attempt: attemptNum },
+    "[WhatsApp] Message delivered via Admark"
+  );
 }
 
 /**
@@ -278,20 +314,27 @@ async function sendTemplate(
   extraVars?: Record<string, string>
 ): Promise<void> {
   const logger: Logger = log ?? {
-    warn: () => {},
+    warn: (o, m) => console.warn(m, o),
     error: (o, m) => console.error(m, o),
-    info: () => {},
+    info: (o, m) => console.log(m, o),
   };
 
   const apiKey = process.env.WABA_API_KEY;
   const phoneId = process.env.WABA_PHONE_ID;
 
   if (!apiKey || !phoneId) {
+    logger.warn({ templateName }, "[WhatsApp] WABA_API_KEY or WABA_PHONE_ID not set — skipping");
+    console.warn(`[WhatsApp] WABA_API_KEY or WABA_PHONE_ID not set — skipping template=${templateName}`);
     return;
   }
 
   const formattedPhone = formatPhone(phone);
   if (!formattedPhone) {
+    logger.warn(
+      { phone, templateName },
+      "[WhatsApp] Unrecognised phone format — skipping"
+    );
+    console.warn(`[WhatsApp] Unrecognised phone format="${phone}" for template=${templateName} — skipping`);
     return;
   }
 
@@ -321,6 +364,9 @@ async function sendTemplate(
       lastErr = err;
       if (attempt < MAX_RETRIES) {
         const delay = attempt * 2000; // 2 s, 4 s …
+        console.warn(
+          `[WhatsApp][attempt ${attempt}] FAILED for template=${templateName} phone=${formattedPhone} — retrying in ${delay}ms. Error: ${String(err)}`
+        );
         await new Promise((r) => setTimeout(r, delay));
       }
     }
@@ -330,6 +376,9 @@ async function sendTemplate(
   logger.error(
     { err: lastErr, templateName, phone: formattedPhone },
     `[WhatsApp] All ${MAX_RETRIES} attempts failed`
+  );
+  console.error(
+    `[WhatsApp] ALL ${MAX_RETRIES} ATTEMPTS FAILED → template=${templateName} phone=${formattedPhone}. Last error: ${String(lastErr)}`
   );
 }
 
@@ -359,6 +408,8 @@ async function sendTemplate(
 export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void> {
   const phone = String(order.phone ?? "").trim();
   if (!phone) {
+    (log ?? console).warn({ orderId: String(order._id) }, "[WhatsApp] Order has no phone — skipping order_confirmed");
+    console.warn(`[WhatsApp] Order ${order._id} has no phone field — skipping order_confirmed`);
     return;
   }
 
@@ -397,6 +448,11 @@ export async function sendOrderConfirmed(order: any, log?: Logger): Promise<void
   const walletUsed = payments
     .filter((p: any) => String(p?.mode ?? "").toLowerCase() === "wallet")
     .reduce((s: number, p: any) => s + (Number(p?.amount) || 0), 0);
+
+  console.log(
+    `[WhatsApp] sendOrderConfirmed → orderId=${orderId} customer=${order.customerName} ` +
+    `phone=${phone} timing="${timingLabel}" walletUsed=${walletUsed}`
+  );
 
   if (walletUsed > 0) {
     // Compute the cash/UPI balance due after wallet deduction.
@@ -459,6 +515,7 @@ export async function sendOutForDelivery(
 ): Promise<void> {
   const phone = String(order.phone ?? "").trim();
   if (!phone) {
+    console.warn(`[WhatsApp] Order ${order._id} has no phone field — skipping out_for_delivery`);
     return;
   }
 
@@ -492,6 +549,11 @@ export async function sendOutForDelivery(
 
   const templateName = "fishtokri_out_for_delivery_v7";
 
+  console.log(
+    `[WhatsApp] sendOutForDelivery → orderId=${orderId} customer=${order.customerName} ` +
+    `phone=${phone} dp=${dpName} dpPhone=${dpPhone} slot="${deliverySlot}" template=${templateName}`
+  );
+
   if (isDuplicate(orderId, templateName)) return;
   await sendTemplate(
     templateName,
@@ -515,6 +577,7 @@ export async function sendOutForDelivery(
 export async function sendOrderCancelled(order: any, log?: Logger): Promise<void> {
   const phone = String(order.phone ?? "").trim();
   if (!phone) {
+    console.warn(`[WhatsApp] Order ${order._id} has no phone field — skipping order_cancelled`);
     return;
   }
 
@@ -525,6 +588,10 @@ export async function sendOrderCancelled(order: any, log?: Logger): Promise<void
   const reason =
     String(order.cancellationReason ?? "").trim() ||
     "As per operational requirements";
+
+  console.log(
+    `[WhatsApp] sendOrderCancelled → orderId=${orderId} customer=${order.customerName} phone=${phone} reason="${reason}"`
+  );
 
   await sendTemplate(
     "fishtokri_order_cancelled",

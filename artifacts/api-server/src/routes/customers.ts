@@ -219,21 +219,12 @@ function buildOrdersQuery(customers: any[]) {
 async function enrichCustomers(customers: any[], log?: any) {
   if (!customers.length) return customers;
   const query = buildOrdersQuery(customers);
-  if (!query) {
-    return customers.map((c) => {
-      const orders = Array.isArray(c.orders) ? c.orders.filter((order: any) => order?.isDeleted !== true) : [];
-      return { ...c, orders, currentOrders: [], orderHistory: orders };
-    });
-  }
+  if (!query) return customers.map((c) => ({ ...c, currentOrders: [], orderHistory: c.orders ?? [] }));
 
   let liveOrders: any[] = [];
   try {
     const ordersConn = await getSubHubDbConnection("orders");
-    liveOrders = await ordersConn.db.collection("orders")
-      .find({ $and: [query, { isDeleted: { $ne: true } }] })
-      .sort({ createdAt: -1 })
-      .limit(1000)
-      .toArray();
+    liveOrders = await ordersConn.db.collection("orders").find(query).sort({ createdAt: -1 }).limit(1000).toArray();
   } catch (err) {
     log?.warn?.({ err }, "Could not enrich customers with live orders");
   }
@@ -253,7 +244,6 @@ async function enrichCustomers(customers: any[], log?: any) {
     // without the ref being cleaned up. Keeping it would show a ghost active order.
     // Historical (non-active) refs are kept as-is for order-history display.
     const validStoredRefs = storedRefs.filter((ref) => {
-      if (ref?.isDeleted === true) return false;
       if (!ACTIVE_ORDER_STATUSES.has(normalize(ref.status))) return true; // keep history
       const refId = getOrderId(ref);
       return refId ? liveOrderIdSet.has(refId) : false;

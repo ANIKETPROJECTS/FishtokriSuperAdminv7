@@ -9,7 +9,6 @@ import {
   applyOrderInventoryOnUpdate,
   applyOrderInventoryOnDelete,
   autoDeductUndedcutedOrders,
-  isFTWOrder,
   InsufficientStockError,
 } from "./inventory.js";
 import { requireAuth } from "../middlewares/auth.js";
@@ -27,7 +26,6 @@ const VALID_ORDER_STATUSES = new Set([
   "out_for_delivery",
   "delivered",
   "cancelled",
-  "rejected",
   "takeaway",
 ]);
 
@@ -1066,7 +1064,6 @@ router.post("/", async (req: ScopedRequest, res) => {
       slotCharge,
       deliveryCharge,
       extraDiscount,
-      extraDiscountValue,
       extraDiscountType,
       total: totalIn,
       couponId,
@@ -1212,7 +1209,6 @@ router.post("/", async (req: ScopedRequest, res) => {
       slotCharge: slotChargeNum,
       deliveryCharge: deliveryChargeNum,
       extraDiscount: extraDiscountNum,
-      extraDiscountValue: Math.max(0, Math.floor(Number(extraDiscountValue) || 0)),
       extraDiscountType: extraDiscountType ? String(extraDiscountType) : "flat",
       total: totalNum,
       deliveryType: dt,
@@ -1404,10 +1400,7 @@ router.post("/", async (req: ScopedRequest, res) => {
     // being set — without this guard, both the POST handler and the background job could both
     // see inventoryDeducted=false and each deduct independently, causing a double deduction.
     const ORDER_DEDUCT_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
-    const shouldDeductOnCreate =
-      ORDER_DEDUCT_STATUSES.has(String(orderDoc.status)) &&
-      !!orderDoc.subHubId &&
-      !isFTWOrder(orderDoc);
+    const shouldDeductOnCreate = ORDER_DEDUCT_STATUSES.has(String(orderDoc.status)) && !!orderDoc.subHubId;
     if (shouldDeductOnCreate) {
       await conn.db.collection(COLLECTION).updateOne(
         { _id: result.insertedId },
@@ -1419,7 +1412,6 @@ router.post("/", async (req: ScopedRequest, res) => {
       req.log.info({ orderId: String(result.insertedId), subHubId: orderDoc.subHubId, status: orderDoc.status, itemCount: (orderDoc.items ?? []).length }, "order create: calling applyOrderInventoryOnCreate");
       const deducted = await applyOrderInventoryOnCreate({
         _id: result.insertedId,
-        orderId: orderDoc.orderId,
         subHubId: orderDoc.subHubId,
         subHubName: orderDoc.subHubName,
         status: orderDoc.status,
@@ -1734,7 +1726,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       superHubId, superHubName, subHubId, subHubName,
       scheduleType, deliveryDate, timeslotId, timeslotLabel, timeslotStart, timeslotEnd,
       couponId, couponCode, couponTitle, couponIds, couponCodes, coupons,
-      subtotal, discount, slotCharge, deliveryCharge, extraDiscount, extraDiscountValue, extraDiscountType, total,
+      subtotal, discount, slotCharge, deliveryCharge, extraDiscount, extraDiscountType, total,
       cancellationReason,
       walletTopup,
       walletAdjustment,
@@ -1787,7 +1779,6 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     if (slotCharge !== undefined) update.slotCharge = Number(slotCharge) || 0;
     if (deliveryCharge !== undefined) update.deliveryCharge = Number(deliveryCharge) || 0;
     if (extraDiscount !== undefined) update.extraDiscount = Number(extraDiscount) || 0;
-    if (extraDiscountValue !== undefined) update.extraDiscountValue = Math.max(0, Math.floor(Number(extraDiscountValue) || 0));
     if (extraDiscountType !== undefined) update.extraDiscountType = String(extraDiscountType);
     if (total !== undefined) update.total = Number(total) || 0;
     if (cancellationReason !== undefined) {
@@ -1963,7 +1954,6 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         prev as any,
         result as any,
         wasDeducted,
-        { allowFTW: true },
       );
       if (wasDeducted !== nowDeducted) {
         await conn.db.collection(COLLECTION).updateOne(
@@ -2184,6 +2174,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
             } catch (e) {
               req.log.warn({ err: e }, "[WhatsApp] Could not fetch delivery person phone for re-notification");
             }
+            console.log(
+              `[WhatsApp] Re-firing out_for_delivery for order ${orderDoc.orderId} — ` +
+              `delivery person changed from ${prevAssigned} to ${newAssigned}`
+            );
             await sendOutForDelivery(orderDoc, dpPhone, req.log);
           } catch (e) {
             req.log.error({ err: e }, "[WhatsApp] Re-notification error on delivery person change");
@@ -2225,11 +2219,7 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
 
     // Restore inventory for any deducted items.
     try {
-      await applyOrderInventoryOnDelete(
-        existing as any,
-        (existing as any).inventoryDeducted === true,
-        { allowFTW: true },
-      );
+      await applyOrderInventoryOnDelete(existing as any, (existing as any).inventoryDeducted === true);
     } catch (e) {
       req.log.error({ err: e }, "Failed to restore inventory on order delete");
     }
@@ -2352,13 +2342,7 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
     // the second gets null back and is rejected instead of re-deducting inventory.
     const claimed = await conn.db.collection(COLLECTION).findOneAndUpdate(
       { _id: oid, isDeleted: true },
-      {
-        $set: {
-          isDeleted: false,
-          inventoryDeducted: true,
-        },
-        $unset: { deletedAt: "" },
-      },
+      { $set: { isDeleted: false, inventoryDeducted: true }, $unset: { deletedAt: "" } },
       { returnDocument: "before" }
     );
     if (!claimed) {
@@ -2366,15 +2350,10 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
       return;
     }
 
-    // Re-deduct inventory using the admin-controlled flow. If this fails we must roll back isDeleted so the
+    // Re-deduct inventory. If this fails we must roll back isDeleted so the
     // order doesn't appear in normal tabs with no inventory deducted.
     try {
-      const rededucted = await applyOrderInventoryOnCreate(existing as any, "order_restored", { allowFTW: true });
-      await conn.db.collection(COLLECTION).updateOne(
-        { _id: oid },
-        { $set: { inventoryDeducted: rededucted } }
-      );
-      (existing as any).inventoryDeducted = rededucted;
+      await applyOrderInventoryOnCreate(existing as any, "order_restored");
     } catch (e) {
       // Full rollback: return order to deleted state so it doesn't appear in
       // normal tabs with inconsistent inventory.

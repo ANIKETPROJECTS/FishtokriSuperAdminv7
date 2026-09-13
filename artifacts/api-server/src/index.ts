@@ -44,6 +44,10 @@ async function autoFixStorefrontPaymentMode() {
       { $set: { paymentMode: "upi", upiVariant: "RZPAY" } }
     );
 
+    logger.info(
+      { matched: result.matchedCount, modified: result.modifiedCount },
+      "autoFixStorefrontPaymentMode: applied UPI+RZPAY"
+    );
   } catch (err) {
     logger.error({ err }, "autoFixStorefrontPaymentMode failed (non-fatal)");
   }
@@ -78,6 +82,10 @@ async function fixPaidOrdersDueAmount() {
       ]
     );
     if (takeawayFix.modifiedCount > 0) {
+      logger.info(
+        { count: takeawayFix.modifiedCount },
+        "Migration: marked unpaid takeaway orders as fully paid"
+      );
     }
 
     // Fix 2: any order already "paid" but with a stale dueAmount > 0.
@@ -86,6 +94,10 @@ async function fixPaidOrdersDueAmount() {
       { $set: { dueAmount: 0 } }
     );
     if (dueFix.modifiedCount > 0) {
+      logger.info(
+        { count: dueFix.modifiedCount },
+        "Migration: reset dueAmount=0 for paid orders"
+      );
     }
   } catch (err) {
     logger.error({ err }, "Migration: fixPaidOrdersDueAmount failed (non-fatal)");
@@ -111,6 +123,8 @@ connectDB()
         logger.error({ err }, "Error listening on port");
         process.exit(1);
       }
+      logger.info({ port }, "Server listening");
+
       // Migration: fix paid orders that still have dueAmount > 0 (old takeaway bug).
       fixPaidOrdersDueAmount().catch(() => {});
 

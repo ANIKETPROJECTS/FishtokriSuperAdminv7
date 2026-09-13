@@ -11,9 +11,6 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
-    // Request/access logs are intentionally disabled. Route-level error
-    // handling still uses req.log.error when a request fails.
-    autoLogging: false,
     serializers: {
       req(req) {
         return {
@@ -54,6 +51,9 @@ if (process.env["NODE_ENV"] === "production") {
     app.use((_req, res) => {
       res.sendFile(path.join(frontendDist, "index.html"));
     });
+    logger.info({ frontendDist }, "Serving frontend static files");
+  } else {
+    logger.warn({ frontendDist }, "Frontend dist folder not found — run: npm --prefix artifacts/fishtokri-admin run build");
   }
 }
 

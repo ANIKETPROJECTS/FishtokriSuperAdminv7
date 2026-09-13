@@ -822,7 +822,6 @@ router.post("/init-product-batches", async (req, res) => {
 // ─── ORDER SYNC HELPERS (used by orders.ts) ───────────────────────────────────
 type OrderForSync = {
   _id: any;
-  orderId?: string;
   subHubId?: string;
   subHubName?: string;
   status?: string;
@@ -830,16 +829,9 @@ type OrderForSync = {
 };
 
 const ACTIVE_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
-type OrderInventoryOptions = {
-  allowFTW?: boolean;
-};
 
-export function isFTWOrder(order: { orderId?: unknown } | null | undefined): boolean {
-  return /^#?FTW/i.test(String(order?.orderId ?? "").trim());
-}
-
-function orderShouldDeduct(order: OrderForSync, options: OrderInventoryOptions = {}) {
-  if (!order || (!options.allowFTW && isFTWOrder(order)) || !order.subHubId) return false;
+function orderShouldDeduct(order: OrderForSync) {
+  if (!order || !order.subHubId) return false;
   const status = String(order.status ?? "").toLowerCase();
   return ACTIVE_STATUSES.has(status);
 }
@@ -961,16 +953,7 @@ async function expandOrderItems(
   return Array.from(aggregated.values());
 }
 
-async function applyDelta(
-  order: OrderForSync,
-  direction: "deduct" | "restore",
-  subReason?: string,
-  options: OrderInventoryOptions = {},
-): Promise<number> {
-  if (!options.allowFTW && isFTWOrder(order)) {
-    logger.info({ orderId: String(order._id), publicOrderId: order.orderId, direction }, "applyDelta: skipped FTW order — background/storefront flow owns inventory");
-    return 0;
-  }
+async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", subReason?: string): Promise<number> {
   if (!order.subHubId) {
     logger.warn({ orderId: String(order._id) }, "applyDelta: skipped — no subHubId on order");
     return 0;
@@ -1154,7 +1137,7 @@ async function applyDelta(
  */
 export async function autoDeductUndedcutedOrders(
   ordersDb: any,
-  orders: Array<{ _id: any; orderId?: string; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
+  orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
 ): Promise<void> {
   // Log a sample of raw order structure so we can see what customer-app orders look like
   if (orders.length > 0) {
@@ -1186,11 +1169,7 @@ export async function autoDeductUndedcutedOrders(
   }
 
   const candidates = orders.filter(
-    (o) =>
-      !isFTWOrder(o) &&
-      ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) &&
-      o.inventoryDeducted !== true &&
-      (o as any).isDeleted !== true
+    (o) => ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) && o.inventoryDeducted !== true && (o as any).isDeleted !== true
   );
   logger.info(
     { candidateCount: candidates.length, skippedCount: orders.length - candidates.length },
@@ -1214,7 +1193,7 @@ export async function autoDeductUndedcutedOrders(
       // read stale qty and each write back qty-5 instead of the correct qty-10.
       const deducted = await withDeductionLock(() =>
         applyDelta(
-          { _id: order._id, orderId: order.orderId, subHubId: order.subHubId, subHubName: order.subHubName, status: order.status, items: order.items },
+          { _id: order._id, subHubId: order.subHubId, subHubName: order.subHubName, status: order.status, items: order.items },
           "deduct",
           "order_placed"
         )
@@ -1242,13 +1221,9 @@ export async function autoDeductUndedcutedOrders(
   }
 }
 
-export async function applyOrderInventoryOnCreate(
-  order: OrderForSync,
-  subReason: string = "order_placed",
-  options: OrderInventoryOptions = {},
-) {
-  if (!orderShouldDeduct(order, options)) return false;
-  const deducted = await withDeductionLock(() => applyDelta(order, "deduct", subReason, options));
+export async function applyOrderInventoryOnCreate(order: OrderForSync, subReason: string = "order_placed") {
+  if (!orderShouldDeduct(order)) return false;
+  const deducted = await withDeductionLock(() => applyDelta(order, "deduct", subReason));
   return deducted > 0;
 }
 
@@ -1270,7 +1245,7 @@ export async function runInventoryBackgroundDeduction(): Promise<void> {
 
     // Filter in JS so case differences in status ("Pending" vs "pending") don't cause misses
     const undeducted = candidates.filter((o: any) =>
-      !isFTWOrder(o) && ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase())
+      ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase())
     );
 
     logger.info(
@@ -1287,15 +1262,10 @@ export async function runInventoryBackgroundDeduction(): Promise<void> {
   }
 }
 
-export async function applyOrderInventoryOnDelete(
-  order: OrderForSync,
-  wasDeducted: boolean,
-  options: OrderInventoryOptions = {},
-) {
-  if (!options.allowFTW && isFTWOrder(order)) return false;
+export async function applyOrderInventoryOnDelete(order: OrderForSync, wasDeducted: boolean) {
   if (!wasDeducted) return false;
   if (!order?.subHubId) return false;
-  const restored = await withDeductionLock(() => applyDelta(order, "restore", "order_deleted", options));
+  const restored = await applyDelta(order, "restore", "order_deleted");
   return restored > 0;
 }
 
@@ -1308,26 +1278,14 @@ function itemsSignature(items: any): string {
     .join("|");
 }
 
-export async function applyOrderInventoryOnUpdate(
-  prev: OrderForSync,
-  next: OrderForSync,
-  wasDeducted: boolean,
-  options: OrderInventoryOptions = {},
-) {
-  if (!options.allowFTW && (isFTWOrder(prev) || isFTWOrder(next))) {
-    logger.info(
-      { orderId: String(next?._id ?? prev?._id), publicOrderId: next?.orderId ?? prev?.orderId, wasDeducted },
-      "applyOrderInventoryOnUpdate: skipped FTW order — background/storefront flow owns inventory",
-    );
-    return false;
-  }
-  const wantsDeducted = orderShouldDeduct(next, options);
+export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
+  const wantsDeducted = orderShouldDeduct(next);
   if (!wasDeducted && wantsDeducted) {
-    await withDeductionLock(() => applyDelta(next, "deduct", "order_placed", options));
+    await withDeductionLock(() => applyDelta(next, "deduct", "order_placed"));
     return true;
   }
   if (wasDeducted && !wantsDeducted) {
-    await withDeductionLock(() => applyDelta({ ...prev, _id: next._id }, "restore", "order_cancelled", options));
+    await withDeductionLock(() => applyDelta({ ...prev, _id: next._id }, "restore", "order_cancelled"));
     return false;
   }
   if (wasDeducted && wantsDeducted) {
@@ -1335,8 +1293,8 @@ export async function applyOrderInventoryOnUpdate(
     const nextSig = `${next?.subHubId ?? ""}::${itemsSignature((next as any)?.items)}`;
     if (prevSig !== nextSig) {
       await withDeductionLock(async () => {
-        await applyDelta({ ...prev, _id: next._id }, "restore", "items_changed", options);
-        await applyDelta(next, "deduct", "items_changed", options);
+        await applyDelta({ ...prev, _id: next._id }, "restore", "items_changed");
+        await applyDelta(next, "deduct", "items_changed");
       });
     }
     return true;

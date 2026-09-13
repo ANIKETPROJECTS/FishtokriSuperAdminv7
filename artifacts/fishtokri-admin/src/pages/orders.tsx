@@ -1864,7 +1864,6 @@ export default function Orders() {
         subtotal: itemsSubtotal,
         discount: couponDiscount + extraDiscountAmount,
         extraDiscount: extraDiscountAmount,
-        extraDiscountValue: Number(extraDiscount) || 0,
         extraDiscountType: extraDiscountType,
         slotCharge: slotExtraCharge,
         deliveryCharge: effectiveDeliveryCharge,
@@ -2389,6 +2388,26 @@ export default function Orders() {
 
     setSavingStatus(true);
     try {
+      const _waTemplateHint = (status: string): string => {
+        if (status === "confirmed") return "fishtokri_order_confirmed";
+        if (status === "out_for_delivery") {
+          const mode = String(selectedOrder.paymentMode ?? "").trim().toLowerCase();
+          const isCashMode = mode === "cod" || mode === "cash" || mode === "";
+          const dueAmount = Number(selectedOrder.dueAmount ?? 0);
+          return (isCashMode && dueAmount > 0)
+            ? "fishtokri_out_for_delivery_cod_new"
+            : "fishtokri_out_for_delivery";
+        }
+        if (status === "cancelled") return "fishtokri_order_cancelled";
+        return "";
+      };
+      const waTemplate = _waTemplateHint(editStatus);
+      console.log(
+        `[WhatsApp] Status change triggered → orderId=${selectedOrder.orderId || selectedOrder._id} ` +
+        `customer=${selectedOrder.customerName} phone=${selectedOrder.phone} ` +
+        `${selectedOrder.status} → ${editStatus}` +
+        (waTemplate ? ` | WA template: ${waTemplate}` : " | no WA notification")
+      );
       await apiFetch(`/api/orders/${selectedOrder._id}`, { method: "PUT", body: JSON.stringify({ status: editStatus }) });
       const movedOutOfDelivered =
         selectedOrder.status === "delivered" &&
@@ -2552,6 +2571,10 @@ export default function Orders() {
         payload.subHubId = overrideSubHubId;
         payload.subHubName = overrideSubHubName ?? "";
       }
+      console.log(
+        `[WhatsApp] acceptOrder → orderId=${order.orderId || orderId} customer=${order.customerName} phone=${order.phone} ` +
+        `pending → confirmed | WA template: fishtokri_order_confirmed`
+      );
       await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify(payload) });
       toast({
         title: "Order accepted",
@@ -2576,6 +2599,10 @@ export default function Orders() {
     const orderId = String(rejectingOrder._id);
     setConfirmingReject(true);
     try {
+      console.log(
+        `[WhatsApp] submitReject → orderId=${rejectingOrder.orderId || orderId} customer=${rejectingOrder.customerName} phone=${rejectingOrder.phone} ` +
+        `→ cancelled | WA template: fishtokri_order_cancelled | reason="${reason}"`
+      );
       await apiFetch(`/api/orders/${orderId}`, {
         method: "PUT",
         body: JSON.stringify({ status: "cancelled", cancellationReason: reason }),
@@ -2762,18 +2789,10 @@ export default function Orders() {
     const savedExtraDiscount = Number(o.extraDiscount);
     const savedExtraDiscountType = o.extraDiscountType === "percentage" ? "percentage" : "flat";
     setExtraDiscountType(savedExtraDiscountType);
-    const savedExtraDiscountValue = Number(o.extraDiscountValue);
-    if (Number.isFinite(savedExtraDiscountValue) && savedExtraDiscountValue > 0) {
-      // Newer orders keep the original whole-number input, so editing does
-      // not need to reverse-engineer a percentage from the rounded rupee amount.
-      const value = savedExtraDiscountType === "percentage"
-        ? Math.min(100, Math.floor(savedExtraDiscountValue))
-        : Math.max(0, Math.floor(savedExtraDiscountValue));
-      setExtraDiscount(value > 0 ? String(value) : "");
-    } else if (savedExtraDiscount > 0 && savedExtraDiscountType === "percentage") {
+    if (savedExtraDiscount > 0 && savedExtraDiscountType === "percentage") {
       // The API stores the calculated discount amount, while the edit control
-      // expects the original whole-number percentage. Reconstruct the closest
-      // whole number for legacy orders that predate extraDiscountValue.
+      // expects the original percentage input. Reconstruct it from the saved
+      // subtotal and coupon discount so the toggle and value remain equivalent.
       const savedSubtotal = Number(o.subtotal) || (o.items ?? []).reduce(
         (sum: number, item: any) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 1),
         0,
@@ -2781,11 +2800,11 @@ export default function Orders() {
       const savedCouponDiscount = Math.max(0, (Number(o.discount) || 0) - savedExtraDiscount);
       const percentageBase = Math.max(0, savedSubtotal - savedCouponDiscount);
       const savedPercentage = percentageBase > 0
-        ? Math.round((savedExtraDiscount / percentageBase) * 100)
+        ? Math.round((savedExtraDiscount / percentageBase) * 10000) / 100
         : 0;
       setExtraDiscount(savedPercentage > 0 ? String(savedPercentage) : "");
     } else {
-      setExtraDiscount(savedExtraDiscount > 0 ? String(Math.floor(savedExtraDiscount)) : "");
+      setExtraDiscount(savedExtraDiscount > 0 ? String(savedExtraDiscount) : "");
     }
   }, [allCustomers]);
 

@@ -7,14 +7,11 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      // Routine stdout must not be retained by PM2. Error output remains
-      // available through PM2's error log for genuine failures.
-      out_file: "/dev/null",
       max_memory_restart: "500M",
       env: {
         NODE_ENV: "production",
         PORT: 3015,
-        BASE_URL: "https://admin.fishtokri.in",
+        BASE_URL: "http://187.127.174.48:3015",
         MONGODB_URI: "mongodb://admin:FishTokri%40132231@187.127.174.48:27017/?authSource=admin",
         SESSION_SECRET: "N+sLoTPRIVALoyG9KZg8BEhKC9NNxOSlqfNCDEyxEMIej55cNCHOE1bjIaGh+VFlDXgg9Oh8Wbtgr73PTjkfDQ==",
         WABA_API_KEY: "f14bbabd-3245-44e3-ad2a-0ef632747400",
