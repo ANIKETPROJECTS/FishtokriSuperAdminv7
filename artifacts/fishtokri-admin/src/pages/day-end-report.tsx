@@ -331,6 +331,13 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     return 0;
   }
 
+function orderChannel(o: any): "web" | "pos" | null {
+  const orderId = String(o.orderId || "").replace(/^#/, "").toUpperCase();
+  if (orderId.startsWith("FTW")) return "web";
+  if (orderId.startsWith("FTS")) return "pos";
+  return null;
+}
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ["day-end-orders", from, to],
     queryFn: () => {
@@ -446,6 +453,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
 
   const handleDownload = useCallback(() => {
     if (!filteredOrders.length) return;
+    const webOrderCount = filteredOrders.filter(o => orderChannel(o) === "web").length;
+    const posOrderCount = filteredOrders.filter(o => orderChannel(o) === "pos").length;
     const rows: any[] = [["Invoice No","Order Placed","Delivery Date","Customer","Phone","Items & Qty","Total (₹)","Wallet Used (₹)","Bal. Due Cash/UPI (₹)","Due Amount (₹)","Delivery Partner","Payment Mode","Payment Status","Order Status"]];
     for (const o of filteredOrders) {
       const itemsQty = (o.items || []).map((it: any) => `${it.name} × ${it.quantity}`).join(", ");
@@ -459,6 +468,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
     rows.push([]);
     rows.push(["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
     rows.push(["Showing (filtered)", filteredOrders.length, "of", orders.length, "total orders"]);
+    rows.push(["FTW Web Orders", webOrderCount]);
+    rows.push(["FTS POS Orders", posOrderCount]);
     rows.push(["Cash Revenue", stats.cash]);
     rows.push(["UPI Revenue", stats.upi]);
     rows.push(["Card Revenue", stats.card]);
@@ -481,6 +492,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
       {(() => {
         const cancelledCount = filteredOrders.filter(o => String(o.orderStatus || o.status || "").toLowerCase() === "cancelled").length;
         const regularCount   = filteredOrders.length - cancelledCount;
+        const webOrderCount  = filteredOrders.filter(o => orderChannel(o) === "web").length;
+        const posOrderCount  = filteredOrders.filter(o => orderChannel(o) === "pos").length;
 
         type InfoLine = { label: string; color: string; value?: string };
         type StatCard = {
@@ -499,6 +512,8 @@ function OrdersReport({ from, to, onDownload, downloadRef }: { from: string; to:
             sub: [
               { text: `${regularCount} regular`, color: "#16a34a" },
               { text: `${cancelledCount} cancelled`, color: "#dc2626" },
+              { text: `${webOrderCount} web (FTW)`, color: "#2563eb" },
+              { text: `${posOrderCount} POS (FTS)`, color: "#ea580c" },
             ],
           },
           { label: "Cash Payment",     value: formatRupees(stats.cash),       color: "#16a34a" },
