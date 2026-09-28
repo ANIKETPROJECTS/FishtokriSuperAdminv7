@@ -819,10 +819,6 @@ export default function Orders() {
   // Restore order (from Deleted tab)
   const [restoringOrderId, setRestoringOrderId] = useState<string | null>(null);
 
-  // Permanently delete an order from the Deleted tab
-  const [permanentlyDeletingOrder, setPermanentlyDeletingOrder] = useState<any>(null);
-  const [permanentlyDeletingOrderId, setPermanentlyDeletingOrderId] = useState<string | null>(null);
-
   // Accept / Reject order
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [rejectingOrder, setRejectingOrder] = useState<any>(null);
@@ -2896,28 +2892,6 @@ export default function Orders() {
     } finally { setRestoringOrderId(null); }
   };
 
-  const handlePermanentlyDeleteOrder = async () => {
-    if (!permanentlyDeletingOrder) return;
-    const orderId = String(permanentlyDeletingOrder._id);
-    setPermanentlyDeletingOrderId(orderId);
-    try {
-      await apiFetch(`/api/orders/${orderId}/permanent`, { method: "DELETE" });
-      toast({
-        title: "Order permanently deleted",
-        description: "The order record has been removed from MongoDB and cannot be restored.",
-      });
-      setOrders((prev) => prev.filter((o) => String(o._id) !== orderId));
-      setTotal((count) => Math.max(0, count - 1));
-      if (selectedOrder && String(selectedOrder._id) === orderId) setSelectedOrder(null);
-      setPermanentlyDeletingOrder(null);
-      loadStats();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setPermanentlyDeletingOrderId(null);
-    }
-  };
-
   const clearFilters = () => {
     setSearch(""); setStatusFilter(""); setDeliveryTypeFilter("");
     setDateFrom(""); setDateTo(""); setSortField("createdAt"); setSortDir("desc");
@@ -3451,15 +3425,6 @@ export default function Orders() {
                               >
                                 <RotateCcw className="w-[18px] h-[18px] text-emerald-600" />
                               </button>
-                              <button
-                                title="Permanently Delete Order"
-                                aria-label={`Permanently delete order ${o.orderId || o._id}`}
-                                onClick={() => setPermanentlyDeletingOrder(o)}
-                                disabled={permanentlyDeletingOrderId === String(o._id)}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
-                              >
-                                <Trash2 className="w-[18px] h-[18px] text-red-600" />
-                              </button>
                             </>
                           ) : (
                             <>
@@ -3654,62 +3619,6 @@ export default function Orders() {
                   className="bg-red-600 hover:bg-red-700 h-9 text-white"
                 >
                   {confirmingDelete ? "Moving..." : "Move to Deleted"}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Permanent delete confirmation (irreversible MongoDB record removal) */}
-      <Dialog
-        open={!!permanentlyDeletingOrder}
-        onOpenChange={(open) => {
-          if (!open && !permanentlyDeletingOrderId) setPermanentlyDeletingOrder(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-[420px]">
-          {permanentlyDeletingOrder && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-red-700 flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" />
-                  Permanently Delete Order?
-                </DialogTitle>
-              </DialogHeader>
-              <div className="py-2 space-y-3">
-                <p className="text-sm text-gray-700">
-                  Permanently remove the deleted order for{" "}
-                  <span className="font-semibold text-[#162B4D]">
-                    {permanentlyDeletingOrder.customerName || "this customer"}
-                  </span>
-                  {permanentlyDeletingOrder.orderId ? (
-                    <> ({permanentlyDeletingOrder.orderId})</>
-                  ) : null}
-                  ?
-                </p>
-                <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                  <p className="text-xs text-red-700 font-medium flex items-start gap-1.5">
-                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    This permanently deletes the order record from MongoDB. It cannot be restored.
-                  </p>
-                </div>
-              </div>
-              <DialogFooter className="gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setPermanentlyDeletingOrder(null)}
-                  disabled={!!permanentlyDeletingOrderId}
-                  className="h-9"
-                >
-                  Keep Order
-                </Button>
-                <Button
-                  onClick={handlePermanentlyDeleteOrder}
-                  disabled={!!permanentlyDeletingOrderId}
-                  className="bg-red-600 hover:bg-red-700 h-9 text-white"
-                >
-                  {permanentlyDeletingOrderId ? "Deleting..." : "Permanently Delete"}
                 </Button>
               </DialogFooter>
             </>

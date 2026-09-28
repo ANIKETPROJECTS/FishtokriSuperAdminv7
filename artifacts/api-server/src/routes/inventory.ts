@@ -822,7 +822,6 @@ router.post("/init-product-batches", async (req, res) => {
 // ─── ORDER SYNC HELPERS (used by orders.ts) ───────────────────────────────────
 type OrderForSync = {
   _id: any;
-  orderId?: string;
   subHubId?: string;
   subHubName?: string;
   status?: string;
@@ -830,10 +829,6 @@ type OrderForSync = {
 };
 
 const ACTIVE_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
-
-function isFtwOrder(order: { orderId?: unknown } | null | undefined): boolean {
-  return /^#?FTW/i.test(String(order?.orderId ?? "").trim());
-}
 
 function orderShouldDeduct(order: OrderForSync) {
   if (!order || !order.subHubId) return false;
@@ -1137,14 +1132,12 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
 /**
  * Atomically claims and deducts inventory for orders that arrived without
  * going through applyOrderInventoryOnCreate (e.g. customer-app-created orders
- * inserted directly into MongoDB). FTW storefront orders are intentionally
- * excluded: their frontend checkout owns the inventory reservation and
- * inventory history entry. Uses findOneAndUpdate with an inventoryDeducted
- * condition for the remaining order types.
+ * inserted directly into MongoDB). Uses findOneAndUpdate with an inventoryDeducted
+ * condition to prevent double-deduction if multiple requests run concurrently.
  */
 export async function autoDeductUndedcutedOrders(
   ordersDb: any,
-  orders: Array<{ _id: any; orderId?: string; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
+  orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
 ): Promise<void> {
   // Log a sample of raw order structure so we can see what customer-app orders look like
   if (orders.length > 0) {
@@ -1175,16 +1168,11 @@ export async function autoDeductUndedcutedOrders(
     return;
   }
 
-  const ftwCount = orders.filter((o) => isFtwOrder(o)).length;
   const candidates = orders.filter(
-    (o) =>
-      !isFtwOrder(o) &&
-      ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) &&
-      o.inventoryDeducted !== true &&
-      (o as any).isDeleted !== true
+    (o) => ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) && o.inventoryDeducted !== true && (o as any).isDeleted !== true
   );
   logger.info(
-    { candidateCount: candidates.length, skippedCount: orders.length - candidates.length, skippedFtwCount: ftwCount },
+    { candidateCount: candidates.length, skippedCount: orders.length - candidates.length },
     "autoDeductUndedcutedOrders: candidate filter"
   );
   if (candidates.length === 0) return;
@@ -1205,7 +1193,7 @@ export async function autoDeductUndedcutedOrders(
       // read stale qty and each write back qty-5 instead of the correct qty-10.
       const deducted = await withDeductionLock(() =>
         applyDelta(
-          { _id: order._id, orderId: order.orderId, subHubId: order.subHubId, subHubName: order.subHubName, status: order.status, items: order.items },
+          { _id: order._id, subHubId: order.subHubId, subHubName: order.subHubName, status: order.status, items: order.items },
           "deduct",
           "order_placed"
         )
