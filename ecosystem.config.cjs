@@ -65,6 +65,8 @@ xCwNlsdRirSx9+Lprx+akIwo/N3rr73xtWBQuVxEXiwqZZVH4vz0x2cTtfY6soKT
 10SGo3by9n17lVGjW2Tqu8OkUnkSbi3eI/wQIFlPvmrtdI1u3FkmnJvqh+EBOu47
 78BCqZK35GvmWMxZe4s8h8uTeCY7Uxw=
 -----END CERTIFICATE-----`,
+        RAZORPAY_KEY_ID: 'rzp_live_T50Ny5Ok8wBo6y',
+        RAZORPAY_KEY_SECRET: 'AWBbIhzhOj218hqVpP3taBkH',
       },
     },
   ],
