@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  BellOff,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -12,6 +14,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
+
+type FtwOrderVerification = {
+  status: "matched" | "missing" | "suppressed" | "not_applicable";
+  orderIds: string[];
+  suppressedAt?: string;
+};
 
 type RazorpayPayment = {
   id: string;
@@ -36,6 +44,7 @@ type RazorpayPayment = {
     rrn?: string;
     bank_transaction_id?: string;
   };
+  ftwOrderVerification?: FtwOrderVerification;
 };
 
 type PaymentsResponse = {
@@ -46,7 +55,7 @@ type PaymentsResponse = {
   hasMore: boolean;
 };
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 25;
 const STATUS_OPTIONS = ["all", "created", "authorized", "captured", "refunded", "failed"];
 
 function toEpochStart(date: string) {
@@ -108,6 +117,8 @@ export default function RazorpayPayments() {
   const [maximumAmount, setMaximumAmount] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [expandedId, setExpandedId] = useState("");
+  const [alertActionPaymentId, setAlertActionPaymentId] = useState("");
+  const [alertActionError, setAlertActionError] = useState("");
 
   const loadPayments = useCallback(async (pageIndex: number, dates = appliedDates) => {
     setLoading(true);
@@ -229,6 +240,32 @@ export default function RazorpayPayments() {
     setMinimumAmount("");
     setMaximumAmount("");
     setSortBy("newest");
+  };
+
+  const updateAlertSuppression = async (paymentId: string, suppress: boolean) => {
+    setAlertActionPaymentId(paymentId);
+    setAlertActionError("");
+    try {
+      await apiFetch(`/api/razorpay-payments/${encodeURIComponent(paymentId)}/suppression`, {
+        method: suppress ? "POST" : "DELETE",
+      });
+      setItems((current) =>
+        current.map((payment) =>
+          payment.id === paymentId
+            ? {
+                ...payment,
+                ftwOrderVerification: suppress
+                  ? { status: "suppressed", orderIds: [], suppressedAt: new Date().toISOString() }
+                  : { status: "missing", orderIds: [] },
+              }
+            : payment,
+        ),
+      );
+    } catch (err) {
+      setAlertActionError(err instanceof Error ? err.message : "Could not update the FTW order alert.");
+    } finally {
+      setAlertActionPaymentId("");
+    }
   };
 
   const lastItemNumber = page * PAGE_SIZE + items.length;
@@ -383,8 +420,13 @@ export default function RazorpayPayments() {
             )}
           </div>
           <p className="text-xs text-gray-400">
-            Date range is applied to Razorpay results. Search, status, method, amount, and sorting apply to the loaded page of up to 100 transactions.
+            Date range is applied to Razorpay results. Search, status, method, amount, sorting, and FTW checks apply to the loaded page of up to 25 transactions.
           </p>
+          {alertActionError && (
+            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              {alertActionError}
+            </p>
+          )}
         </div>
 
         {loading ? (
@@ -416,10 +458,11 @@ export default function RazorpayPayments() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1024px] text-sm">
+            <table className="w-full min-w-[1240px] text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Payment ID</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">FTW order check</th>
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bank RRN</th>
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Method</th>
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Customer</th>
@@ -441,6 +484,9 @@ export default function RazorpayPayments() {
                       expanded={expanded}
                       customer={customer}
                       rrn={rrn}
+                      alertActionPending={alertActionPaymentId === payment.id}
+                      onSuppressAlert={() => void updateAlertSuppression(payment.id, true)}
+                      onRestoreAlert={() => void updateAlertSuppression(payment.id, false)}
                       onToggle={() => setExpandedId(expanded ? "" : payment.id)}
                     />
                   );
@@ -485,19 +531,75 @@ function FragmentRow({
   expanded,
   customer,
   rrn,
+  alertActionPending,
+  onSuppressAlert,
+  onRestoreAlert,
   onToggle,
 }: {
   payment: RazorpayPayment;
   expanded: boolean;
   customer: string;
   rrn: string;
+  alertActionPending: boolean;
+  onSuppressAlert: () => void;
+  onRestoreAlert: () => void;
   onToggle: () => void;
 }) {
   const status = payment.status || "unknown";
+  const verification = payment.ftwOrderVerification;
   return (
     <>
       <tr className="transition-colors hover:bg-gray-50">
         <td className="whitespace-nowrap px-5 py-3 font-medium text-[#162B4D]">{payment.id}</td>
+        <td className="min-w-64 px-5 py-3">
+          {verification?.status === "matched" ? (
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              <div>
+                <p className="text-xs font-semibold text-emerald-700">FTW order found</p>
+                <p className="mt-0.5 font-mono text-xs text-gray-600">
+                  {verification.orderIds[0]}
+                  {verification.orderIds.length > 1 ? ` +${verification.orderIds.length - 1} more` : ""}
+                </p>
+              </div>
+            </div>
+          ) : verification?.status === "missing" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">
+                <AlertTriangle className="h-3.5 w-3.5" /> No FTW order
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={alertActionPending}
+                onClick={onSuppressAlert}
+                className="h-7 px-2 text-xs"
+                title="Suppress this alert if the missing order has been resolved"
+              >
+                {alertActionPending ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : "Suppress"}
+              </Button>
+            </div>
+          ) : verification?.status === "suppressed" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
+                <BellOff className="h-3.5 w-3.5" /> Alert suppressed
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={alertActionPending}
+                onClick={onRestoreAlert}
+                className="h-7 px-2 text-xs text-blue-700"
+              >
+                {alertActionPending ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : "Restore"}
+              </Button>
+            </div>
+          ) : verification?.status === "not_applicable" ? (
+            <span className="text-xs text-gray-400">Payment not captured</span>
+          ) : (
+            <span className="text-xs text-gray-400">Checking…</span>
+          )}
+        </td>
         <td className="whitespace-nowrap px-5 py-3 text-gray-600">{rrn}</td>
         <td className="whitespace-nowrap px-5 py-3 capitalize text-gray-600">{payment.method || "—"}</td>
         <td className="px-5 py-3">
@@ -522,7 +624,7 @@ function FragmentRow({
       </tr>
       {expanded && (
         <tr className="bg-slate-50">
-          <td colSpan={8} className="px-5 py-4">
+          <td colSpan={9} className="px-5 py-4">
             <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
               <Detail label="Payment method" value={payment.method} />
               <Detail label="Contact" value={payment.contact} />
