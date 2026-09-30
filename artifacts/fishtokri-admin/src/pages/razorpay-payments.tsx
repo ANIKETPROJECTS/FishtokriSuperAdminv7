@@ -103,6 +103,10 @@ export default function RazorpayPayments() {
   const [appliedDates, setAppliedDates] = useState({ from: "", to: "" });
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [method, setMethod] = useState("all");
+  const [minimumAmount, setMinimumAmount] = useState("");
+  const [maximumAmount, setMaximumAmount] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
   const [expandedId, setExpandedId] = useState("");
 
   const loadPayments = useCallback(async (pageIndex: number, dates = appliedDates) => {
@@ -138,8 +142,17 @@ export default function RazorpayPayments() {
 
   const visibleItems = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return items.filter((payment) => {
+    const minValue = minimumAmount === "" ? NaN : Number(minimumAmount);
+    const maxValue = maximumAmount === "" ? NaN : Number(maximumAmount);
+    const minPaise = Number.isFinite(minValue) ? minValue * 100 : undefined;
+    const maxPaise = Number.isFinite(maxValue) ? maxValue * 100 : undefined;
+    const filtered = items.filter((payment) => {
       const matchesStatus = status === "all" || payment.status?.toLowerCase() === status;
+      const matchesMethod = method === "all" || (payment.method || "other") === method;
+      const amount = Number(payment.amount) || 0;
+      const matchesAmount =
+        (minPaise === undefined || amount >= minPaise) &&
+        (maxPaise === undefined || amount <= maxPaise);
       const searchable = [
         payment.id,
         payment.order_id,
@@ -147,19 +160,46 @@ export default function RazorpayPayments() {
         payment.contact,
         payment.email,
         payment.method,
+        payment.description,
         payment.acquirer_data?.rrn,
         payment.acquirer_data?.bank_transaction_id,
       ].filter(Boolean).join(" ").toLowerCase();
-      return matchesStatus && (!term || searchable.includes(term));
+      return matchesStatus && matchesMethod && matchesAmount && (!term || searchable.includes(term));
     });
-  }, [items, search, status]);
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "oldest":
+          return (a.created_at || 0) - (b.created_at || 0);
+        case "amount-high":
+          return (Number(b.amount) || 0) - (Number(a.amount) || 0);
+        case "amount-low":
+          return (Number(a.amount) || 0) - (Number(b.amount) || 0);
+        default:
+          return (b.created_at || 0) - (a.created_at || 0);
+      }
+    });
+  }, [items, search, status, method, minimumAmount, maximumAmount, sortBy]);
 
-  const capturedAmount = items
+  const capturedAmount = visibleItems
     .filter((payment) => payment.status?.toLowerCase() === "captured")
     .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-  const refundedCount = items.filter((payment) =>
+  const refundedPayments = visibleItems.filter((payment) =>
     payment.status?.toLowerCase() === "refunded" || Number(payment.amount_refunded) > 0
-  ).length;
+  );
+  const refundedAmount = refundedPayments.reduce((sum, payment) => sum + (Number(payment.amount_refunded) || 0), 0);
+  const paymentMethods = [...new Set(items.map((payment) => payment.method || "other"))].sort();
+  const hasActiveFilters = Boolean(
+    search ||
+    status !== "all" ||
+    method !== "all" ||
+    minimumAmount ||
+    maximumAmount ||
+    sortBy !== "newest" ||
+    appliedDates.from ||
+    appliedDates.to ||
+    fromDate ||
+    toDate
+  );
 
   const applyDateFilter = () => {
     if (fromDate && toDate && fromDate > toDate) {
@@ -168,19 +208,18 @@ export default function RazorpayPayments() {
     }
     const dates = { from: fromDate, to: toDate };
     setAppliedDates(dates);
-    setSearch("");
-    setStatus("all");
-    void loadPayments(0, dates);
   };
 
-  const clearDateFilter = () => {
+  const clearAllFilters = () => {
     setFromDate("");
     setToDate("");
-    const dates = { from: "", to: "" };
-    setAppliedDates(dates);
+    setAppliedDates({ from: "", to: "" });
     setSearch("");
     setStatus("all");
-    void loadPayments(0, dates);
+    setMethod("all");
+    setMinimumAmount("");
+    setMaximumAmount("");
+    setSortBy("newest");
   };
 
   const lastItemNumber = page * PAGE_SIZE + items.length;
@@ -205,19 +244,19 @@ export default function RazorpayPayments() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Transactions on this page</p>
-          <p className="mt-1 text-3xl font-bold text-[#162B4D]">{items.length}</p>
-          <p className="mt-1 text-xs text-gray-400">Showing page {page + 1}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Matching transactions</p>
+          <p className="mt-1 text-3xl font-bold text-[#162B4D]">{visibleItems.length}</p>
+          <p className="mt-1 text-xs text-gray-400">On the loaded page, after filters</p>
         </div>
         <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Captured on this page</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Captured amount</p>
           <p className="mt-1 text-3xl font-bold text-emerald-700">{formatAmount(capturedAmount)}</p>
-          <p className="mt-1 text-xs text-gray-400">Sum of captured payment amounts</p>
+          <p className="mt-1 text-xs text-gray-400">Matching captured payments on this page</p>
         </div>
         <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Refunded on this page</p>
-          <p className="mt-1 text-3xl font-bold text-violet-700">{refundedCount}</p>
-          <p className="mt-1 text-xs text-gray-400">Refunded or partially refunded payments</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Refunded amount</p>
+          <p className="mt-1 text-3xl font-bold text-violet-700">{formatAmount(refundedAmount)}</p>
+          <p className="mt-1 text-xs text-gray-400">{refundedPayments.length} matching refunded or partially refunded payments</p>
         </div>
       </div>
 
@@ -234,13 +273,13 @@ export default function RazorpayPayments() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <label className="relative">
-                <span className="sr-only">Search this page</span>
+                <span className="sr-only">Search payment details on this page</span>
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search this page"
-                  className="h-9 w-48 pl-9"
+                  placeholder="ID, customer, RRN..."
+                  className="h-9 w-52 pl-9"
                 />
               </label>
               <label className="sr-only" htmlFor="razorpay-status-filter">Filter by status</label>
@@ -259,26 +298,78 @@ export default function RazorpayPayments() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-wrap items-end gap-3">
             <label className="space-y-1 text-xs font-medium text-gray-500">
               From
-              <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="h-9 w-40" />
+              <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="h-9 w-40 text-sm" />
             </label>
             <label className="space-y-1 text-xs font-medium text-gray-500">
               To
-              <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="h-9 w-40" />
+              <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="h-9 w-40 text-sm" />
             </label>
             <Button onClick={applyDateFilter} disabled={loading} size="sm" className="h-9 bg-[#1A56DB] hover:bg-[#1447B4]">
-              Apply dates
+              Apply date range
             </Button>
-            {(appliedDates.from || appliedDates.to || fromDate || toDate) && (
-              <Button onClick={clearDateFilter} disabled={loading} variant="ghost" size="sm" className="h-9 text-gray-500">
-                Clear dates
+            <label className="space-y-1 text-xs font-medium text-gray-500">
+              Payment method
+              <select
+                value={method}
+                onChange={(event) => setMethod(event.target.value)}
+                className="block h-9 min-w-36 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700"
+              >
+                <option value="all">All methods</option>
+                {paymentMethods.map((paymentMethod) => (
+                  <option key={paymentMethod} value={paymentMethod}>
+                    {paymentMethod === "other" ? "Other" : paymentMethod[0].toUpperCase() + paymentMethod.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs font-medium text-gray-500">
+              Minimum amount (₹)
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={minimumAmount}
+                onChange={(event) => setMinimumAmount(event.target.value)}
+                placeholder="No minimum"
+                className="h-9 w-32 text-sm"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-gray-500">
+              Maximum amount (₹)
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={maximumAmount}
+                onChange={(event) => setMaximumAmount(event.target.value)}
+                placeholder="No maximum"
+                className="h-9 w-32 text-sm"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-gray-500">
+              Sort by
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+                className="block h-9 min-w-40 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="amount-high">Amount: high to low</option>
+                <option value="amount-low">Amount: low to high</option>
+              </select>
+            </label>
+            {hasActiveFilters && (
+              <Button onClick={clearAllFilters} disabled={loading} variant="ghost" size="sm" className="h-9 text-gray-500">
+                Clear all filters
               </Button>
             )}
           </div>
           <p className="text-xs text-gray-400">
-            Razorpay returns transactions in pages of 100. Use Next to continue through older transactions; search and status filters apply to the current page.
+            Date range is applied to Razorpay results. Search, status, method, amount, and sorting apply to the loaded page of up to 100 transactions.
           </p>
         </div>
 
@@ -311,11 +402,12 @@ export default function RazorpayPayments() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] text-sm">
+            <table className="w-full min-w-[1024px] text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Payment ID</th>
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bank RRN</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Method</th>
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Customer</th>
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Created on</th>
                   <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Amount</th>
@@ -393,6 +485,7 @@ function FragmentRow({
       <tr className="transition-colors hover:bg-gray-50">
         <td className="whitespace-nowrap px-5 py-3 font-medium text-[#162B4D]">{payment.id}</td>
         <td className="whitespace-nowrap px-5 py-3 text-gray-600">{rrn}</td>
+        <td className="whitespace-nowrap px-5 py-3 capitalize text-gray-600">{payment.method || "—"}</td>
         <td className="px-5 py-3">
           <div className="font-medium text-gray-700">{customer}</div>
           {payment.email && payment.contact && <div className="text-xs text-gray-400">{payment.email}</div>}
@@ -415,7 +508,7 @@ function FragmentRow({
       </tr>
       {expanded && (
         <tr className="bg-slate-50">
-          <td colSpan={7} className="px-5 py-4">
+          <td colSpan={8} className="px-5 py-4">
             <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
               <Detail label="Payment method" value={payment.method} />
               <Detail label="Contact" value={payment.contact} />
