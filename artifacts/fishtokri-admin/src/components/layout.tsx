@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, FileText, Receipt, Package, History, Menu, X, FileBarChart, FileSpreadsheet, Trash2, Calculator, RefreshCw, Settings, Clock, MessageSquare, BookUser } from "lucide-react";
+import { LayoutDashboard, Warehouse, Users, LogOut, Building2, Store, Truck, UserCircle, ShoppingBasket, ClipboardList, Handshake, ChevronLeft, ChevronRight, Boxes, ChevronDown, FolderOpen, Landmark, ArrowDownCircle, ArrowUpCircle, CreditCard, SlidersHorizontal, FileText, Receipt, Package, History, Menu, X, FileBarChart, FileSpreadsheet, Trash2, Calculator, RefreshCw, Settings, Clock, MessageSquare, BookUser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 import { useNewOrderPopup } from "@/hooks/use-new-order-popup";
@@ -44,6 +44,7 @@ const masterAdminNavItems = [
       { href: "/banking/payments", label: "Payments", icon: ArrowUpCircle },
     ],
   },
+  { href: "/razorpay-payments", label: "Razorpay Payments", icon: CreditCard },
   { href: "/admin-users", label: "Admin Users", icon: Users },
   { href: "/customers", label: "Customers", icon: ShoppingBasket },
   { href: "/delivery-report", label: "Delivery Report", icon: FileBarChart },

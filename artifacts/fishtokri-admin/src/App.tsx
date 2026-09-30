@@ -34,6 +34,7 @@ import BankingOverview from "@/pages/banking-overview";
 import BankingAccounts from "@/pages/banking-accounts";
 import BankingReceipts from "@/pages/banking-receipts";
 import BankingPayments from "@/pages/banking-payments";
+import RazorpayPayments from "@/pages/razorpay-payments";
 import DeliveryReport from "@/pages/delivery-report";
 import DeliveryReportPerson from "@/pages/delivery-report-person";
 import DayEndReport from "@/pages/day-end-report";
@@ -232,6 +233,11 @@ function App() {
             </Route>
             <Route path="/banking/payments">
               <ProtectedRoute component={BankingPayments} allowedRoles={HUB_OWNERS} />
+            </Route>
+
+            {/* Razorpay transaction feed — Master Admin only */}
+            <Route path="/razorpay-payments">
+              <ProtectedRoute component={RazorpayPayments} allowedRoles={MASTER_ONLY} />
             </Route>
 
             {/* Admin Users — Master Admin only */}
