@@ -187,7 +187,16 @@ export default function RazorpayPayments() {
     payment.status?.toLowerCase() === "refunded" || Number(payment.amount_refunded) > 0
   );
   const refundedAmount = refundedPayments.reduce((sum, payment) => sum + (Number(payment.amount_refunded) || 0), 0);
-  const paymentMethods = [...new Set(items.map((payment) => payment.method || "other"))].sort();
+  const paymentMethods = [...new Set([
+    ...items.map((payment) => payment.method || "other"),
+    ...(method === "all" ? [] : [method]),
+  ])].sort();
+  const amountRangeInvalid =
+    minimumAmount !== "" &&
+    maximumAmount !== "" &&
+    Number.isFinite(Number(minimumAmount)) &&
+    Number.isFinite(Number(maximumAmount)) &&
+    Number(minimumAmount) > Number(maximumAmount);
   const hasActiveFilters = Boolean(
     search ||
     status !== "all" ||
@@ -362,6 +371,11 @@ export default function RazorpayPayments() {
                 <option value="amount-low">Amount: low to high</option>
               </select>
             </label>
+            {amountRangeInvalid && (
+              <p className="pb-2 text-xs font-medium text-red-600">
+                Minimum amount must not exceed maximum amount.
+              </p>
+            )}
             {hasActiveFilters && (
               <Button onClick={clearAllFilters} disabled={loading} variant="ghost" size="sm" className="h-9 text-gray-500">
                 Clear all filters
