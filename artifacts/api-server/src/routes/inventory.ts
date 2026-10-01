@@ -458,15 +458,53 @@ router.get("/movements", async (req, res) => {
     const productId = String(req.query.productId || "");
     const orderId = String(req.query.orderId || "");
     const type = String(req.query.type || "");
+    const search = String(req.query.search || "").trim();
+    const fromValue = String(req.query.from || "");
+    const toValue = String(req.query.to || "");
+    const fromDate = fromValue ? new Date(fromValue) : null;
+    const toDate = toValue ? new Date(toValue) : null;
+    if ((fromDate && Number.isNaN(fromDate.getTime())) || (toDate && Number.isNaN(toDate.getTime()))) {
+      res.status(400).json({ error: "ValidationError", message: "Invalid movement date range" });
+      return;
+    }
+    if (fromDate && toDate && fromDate > toDate) {
+      res.status(400).json({ error: "ValidationError", message: "Start date must be before end date" });
+      return;
+    }
     const limit = Math.min(2000, Math.max(1, Number(req.query.limit) || 100));
+    const sortBy = String(req.query.sortBy || "newest");
+    const movementSorts: Record<string, any> = {
+      newest: { createdAt: -1, _id: -1 },
+      oldest: { createdAt: 1, _id: 1 },
+      product_asc: { productName: 1, createdAt: -1, _id: -1 },
+      decrease: { change: 1, createdAt: -1, _id: -1 },
+      increase: { change: -1, createdAt: -1, _id: -1 },
+    };
     const filter: any = {};
     if (productId) filter.productId = productId;
     if (orderId) filter.orderId = orderId;
     if (type) filter.type = type;
+    if (fromDate || toDate) {
+      filter.createdAt = {
+        ...(fromDate ? { $gte: fromDate } : {}),
+        ...(toDate ? { $lt: toDate } : {}),
+      };
+    }
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = { $regex: escapedSearch, $options: "i" };
+      filter.$or = [
+        { productName: searchRegex },
+        { orderRef: searchRegex },
+        { orderId: searchRegex },
+        { reason: searchRegex },
+        { subReason: searchRegex },
+      ];
+    }
     const rows = await ctx.conn.db
       .collection(MOVEMENTS_COLLECTION)
       .find(filter)
-      .sort({ createdAt: -1 })
+      .sort(movementSorts[sortBy] ?? movementSorts.newest)
       .limit(limit)
       .toArray();
 

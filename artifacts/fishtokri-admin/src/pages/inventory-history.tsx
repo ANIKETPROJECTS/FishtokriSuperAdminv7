@@ -42,9 +42,50 @@ type Movement = {
   createdAt: string;
 };
 
+type DatePreset = "all" | "today" | "last7" | "last30" | "custom";
+type MovementSort = "newest" | "oldest" | "product_asc" | "decrease" | "increase";
+
 function formatDateTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function toLocalDateInputValue(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function dateInputToLocalStart(value: string) {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function getDateBounds(preset: DatePreset, fromDate: string, toDate: string) {
+  if (preset === "all") return {};
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(today);
+  endOfToday.setDate(endOfToday.getDate() + 1);
+
+  if (preset === "today") {
+    return { from: today.toISOString(), to: endOfToday.toISOString() };
+  }
+  if (preset === "last7" || preset === "last30") {
+    const from = new Date(today);
+    from.setDate(from.getDate() - (preset === "last7" ? 6 : 29));
+    return { from: from.toISOString(), to: endOfToday.toISOString() };
+  }
+
+  const from = dateInputToLocalStart(fromDate);
+  const to = dateInputToLocalStart(toDate);
+  if (to) to.setDate(to.getDate() + 1);
+  return {
+    ...(from ? { from: from.toISOString() } : {}),
+    ...(to ? { to: to.toISOString() } : {}),
+  };
 }
 
 type SubReasonMeta = { label: string; tone: string };
@@ -102,6 +143,10 @@ export default function InventoryHistory() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<MovementSort>("newest");
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   useEffect(() => {
     apiFetch("/api/super-hubs")
@@ -141,32 +186,62 @@ export default function InventoryHistory() {
     if (sh) setSelectedSubHub(sh);
   }, [selectedSubHubId, subHubs]);
 
-  function loadHistory() {
-    if (!selectedSubHubId) { setMovements([]); return; }
+  const dateBounds = useMemo(
+    () => getDateBounds(datePreset, fromDate, toDate),
+    [datePreset, fromDate, toDate],
+  );
+
+  useEffect(() => {
+    if (!selectedSubHubId) {
+      setMovements([]);
+      setLoading(false);
+      return;
+    }
+
+    let isCurrentRequest = true;
     setLoading(true);
-    apiFetch(`/api/inventory/movements?subHubId=${selectedSubHubId}&limit=2000`)
-      .then((d) => setMovements(d.movements ?? []))
-      .catch((err) => toast({ title: "Failed to load history", description: err.message, variant: "destructive" }))
-      .finally(() => setLoading(false));
-  }
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({
+        subHubId: selectedSubHubId,
+        limit: "2000",
+        sortBy,
+      });
+      if (typeFilter !== "all") params.set("type", typeFilter);
+      if (search.trim()) params.set("search", search.trim());
+      if (dateBounds.from) params.set("from", dateBounds.from);
+      if (dateBounds.to) params.set("to", dateBounds.to);
 
-  useEffect(loadHistory, [selectedSubHubId]);
+      apiFetch(`/api/inventory/movements?${params.toString()}`)
+        .then((d) => {
+          if (isCurrentRequest) setMovements(d.movements ?? []);
+        })
+        .catch((err) => {
+          if (isCurrentRequest) {
+            toast({ title: "Failed to load history", description: err.message, variant: "destructive" });
+          }
+        })
+        .finally(() => {
+          if (isCurrentRequest) setLoading(false);
+        });
+    }, search.trim() ? 250 : 0);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return movements.filter((m) => {
-      if (typeFilter !== "all" && m.type !== typeFilter) return false;
-      if (!q) return true;
-      return (
-        m.productName.toLowerCase().includes(q) ||
-        (m.orderRef ?? "").toLowerCase().includes(q) ||
-        (m.reason ?? "").toLowerCase().includes(q) ||
-        (m.subReason ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [movements, search, typeFilter]);
+    return () => {
+      isCurrentRequest = false;
+      window.clearTimeout(timer);
+    };
+  }, [selectedSubHubId, typeFilter, sortBy, search, dateBounds.from, dateBounds.to, toast]);
 
-  const pagedMovements = usePaginated(filtered, 20, `${search}|${typeFilter}`);
+  const pagedMovements = usePaginated(
+    movements,
+    20,
+    `${search}|${typeFilter}|${sortBy}|${datePreset}|${fromDate}|${toDate}`,
+  );
+
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    typeFilter !== "all" ||
+    sortBy !== "newest" ||
+    datePreset !== "all";
 
   const headerSlot = document.getElementById("page-header-slot");
   const headerContent = (
@@ -218,25 +293,111 @@ export default function InventoryHistory() {
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by product, order, or reason..."
-                  className="pl-9 h-10"
-                />
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_190px_190px] gap-3">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Input
+                    data-testid="input-history-search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search by product, order, or reason..."
+                    className="pl-9 h-10"
+                  />
+                </div>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger data-testid="select-history-type" className="h-10 w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All movements</SelectItem>
+                    <SelectItem value="order_deduct">Order deductions</SelectItem>
+                    <SelectItem value="order_restore">Order restores</SelectItem>
+                    <SelectItem value="adjustment">Manual adjustments</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as MovementSort)}>
+                  <SelectTrigger data-testid="select-history-sort" className="h-10 w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest first</SelectItem>
+                    <SelectItem value="oldest">Oldest first</SelectItem>
+                    <SelectItem value="product_asc">Product A–Z</SelectItem>
+                    <SelectItem value="decrease">Largest decrease</SelectItem>
+                    <SelectItem value="increase">Largest increase</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-10 w-full sm:w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All movements</SelectItem>
-                  <SelectItem value="order_deduct">Order deductions</SelectItem>
-                  <SelectItem value="order_restore">Order restores</SelectItem>
-                  <SelectItem value="adjustment">Manual adjustments</SelectItem>
-                </SelectContent>
-              </Select>
+
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="w-full sm:w-52">
+                  <label htmlFor="history-date-preset" className="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Date range</label>
+                  <Select
+                    value={datePreset}
+                    onValueChange={(value) => {
+                      const preset = value as DatePreset;
+                      setDatePreset(preset);
+                      if (preset === "custom" && !fromDate && !toDate) {
+                        const today = toLocalDateInputValue(new Date());
+                        setFromDate(today);
+                        setToDate(today);
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="history-date-preset" data-testid="select-history-date-range" className="h-9 w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All time</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="last7">Last 7 days</SelectItem>
+                      <SelectItem value="last30">Last 30 days</SelectItem>
+                      <SelectItem value="custom">Custom range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {datePreset === "custom" && (
+                  <>
+                    <div className="w-full sm:w-44">
+                      <label htmlFor="history-from-date" className="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">From</label>
+                      <Input
+                        id="history-from-date"
+                        data-testid="input-history-from-date"
+                        type="date"
+                        value={fromDate}
+                        max={toDate || undefined}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="w-full sm:w-44">
+                      <label htmlFor="history-to-date" className="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">To</label>
+                      <Input
+                        id="history-to-date"
+                        data-testid="input-history-to-date"
+                        type="date"
+                        value={toDate}
+                        min={fromDate || undefined}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  data-testid="button-history-clear-filters"
+                  disabled={!hasActiveFilters}
+                  onClick={() => {
+                    setSearch("");
+                    setTypeFilter("all");
+                    setSortBy("newest");
+                    setDatePreset("all");
+                    setFromDate("");
+                    setToDate("");
+                  }}
+                  className="sm:ml-auto h-9 px-3 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Clear filters
+                </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -256,7 +417,7 @@ export default function InventoryHistory() {
                   <tbody className="divide-y divide-gray-100">
                     {loading ? (
                       <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
-                    ) : filtered.length === 0 ? (
+                    ) : pagedMovements.total === 0 ? (
                       <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">No movements yet</td></tr>
                     ) : pagedMovements.pageItems.map((m) => {
                       const isPositive = m.change >= 0;
