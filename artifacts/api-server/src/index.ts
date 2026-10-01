@@ -1,7 +1,10 @@
 import app from "./app.js";
 import { logger } from "./lib/logger.js";
 import { connectDB } from "./db/index.js";
-import { runInventoryBackgroundDeduction } from "./routes/inventory.js";
+import {
+  initializeInventoryDeductionBaseline,
+  runInventoryBackgroundDeduction,
+} from "./routes/inventory.js";
 import { getSubHubDbConnection } from "./db/sub-hub-connections.js";
 
 /**
@@ -117,7 +120,8 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 connectDB()
-  .then(() => {
+  .then(async () => {
+    await initializeInventoryDeductionBaseline();
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
@@ -136,8 +140,8 @@ connectDB()
         );
       }, 30_000);
 
-      // Run shortly after startup and poll every 60s for recent orders only.
-      // Older missed deductions are intentionally not backfilled into a later day.
+      // Run after the read-only startup baseline is initialized. The fallback
+      // scan has no createdAt age limit but protects every pre-existing order.
       setTimeout(() => {
         runInventoryBackgroundDeduction().catch((e) =>
           logger.error({ err: e }, "bg inventory deduction (startup) failed")

@@ -915,17 +915,36 @@ type OrderForSync = {
 
 const ACTIVE_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
 const ACTIVE_STATUS_REGEX = "^(pending|confirmed|out_for_delivery|delivered|takeaway)$";
-// The worker polls every minute; this allows one missed poll without backfilling a later day's stock.
-const AUTO_DEDUCTION_MAX_AGE_MS = 2 * 60 * 1000;
+const MAX_AUTO_DEDUCTION_BATCH_SIZE = 200;
+const STATUS_TRANSITION_DEDUCTION_MAX_AGE_MS = 2 * 60 * 1000;
+// Orders that existed before this process started are protected from automatic
+// recovery. This lets new missed orders be retried regardless of createdAt age
+// without backfilling existing order, inventory, or movement records.
+let preexistingOrderIds: Set<string> | null = null;
 
-function isWithinAutomaticDeductionWindow(order: { createdAt?: Date | string }, now = Date.now()) {
+export async function initializeInventoryDeductionBaseline(): Promise<void> {
+  const conn = await getSubHubDbConnection("orders");
+  const ordersDb = conn.db;
+  if (!ordersDb) throw new Error("Orders database connection is unavailable");
+
+  const existing = await ordersDb.collection("orders")
+    .find({}, { projection: { _id: 1 } })
+    .toArray();
+  preexistingOrderIds = new Set(existing.map((order: any) => String(order._id)));
+  logger.info(
+    { protectedExistingOrderCount: preexistingOrderIds.size },
+    "initializeInventoryDeductionBaseline: existing orders protected from fallback recovery"
+  );
+}
+
+function isWithinStatusTransitionDeductionWindow(order: { createdAt?: Date | string }, now = Date.now()) {
   const createdAtMs = order.createdAt instanceof Date
     ? order.createdAt.getTime()
     : typeof order.createdAt === "string"
       ? Date.parse(order.createdAt)
       : Number.NaN;
   const ageMs = now - createdAtMs;
-  return Number.isFinite(createdAtMs) && ageMs >= 0 && ageMs <= AUTO_DEDUCTION_MAX_AGE_MS;
+  return Number.isFinite(createdAtMs) && ageMs >= 0 && ageMs <= STATUS_TRANSITION_DEDUCTION_MAX_AGE_MS;
 }
 
 function orderShouldDeduct(order: OrderForSync) {
@@ -1237,6 +1256,11 @@ export async function autoDeductUndedcutedOrders(
   ordersDb: any,
   orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; createdAt?: Date | string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
 ): Promise<void> {
+  if (preexistingOrderIds === null) {
+    logger.warn("autoDeductUndedcutedOrders: baseline is not initialized — skipping");
+    return;
+  }
+
   // Log a sample of raw order structure so we can see what customer-app orders look like
   if (orders.length > 0) {
     const sample = orders[0] as any;
@@ -1271,7 +1295,7 @@ export async function autoDeductUndedcutedOrders(
       ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) &&
       o.inventoryDeducted !== true &&
       (o as any).isDeleted !== true &&
-      isWithinAutomaticDeductionWindow(o)
+      !preexistingOrderIds!.has(String(o._id))
   );
   logger.info(
     { candidateCount: candidates.length, skippedCount: orders.length - candidates.length },
@@ -1283,7 +1307,12 @@ export async function autoDeductUndedcutedOrders(
     try {
       // Atomically claim this order for deduction: only succeeds if inventoryDeducted is still not true
       const claimed = await ordersDb.collection("orders").findOneAndUpdate(
-        { _id: order._id, inventoryDeducted: { $ne: true } },
+        {
+          _id: order._id,
+          inventoryDeducted: { $ne: true },
+          isDeleted: { $ne: true },
+          status: { $regex: ACTIVE_STATUS_REGEX, $options: "i" },
+        },
         { $set: { inventoryDeducted: true } },
         { returnDocument: "before" }
       );
@@ -1336,30 +1365,46 @@ export async function applyOrderInventoryOnCreate(order: OrderForSync, subReason
  */
 export async function runInventoryBackgroundDeduction(): Promise<void> {
   try {
+    if (preexistingOrderIds === null) {
+      logger.warn("runInventoryBackgroundDeduction: baseline is not initialized — skipping");
+      return;
+    }
     const conn = await getSubHubDbConnection("orders");
     const ordersDb = conn.db;
     if (!ordersDb) throw new Error("Orders database connection is unavailable");
-    // Only repair very recent orders. Old missed deductions must not be applied
-    // days later, where they would distort historical daily stock calculations.
-    const now = new Date();
-    const recentCutoff = new Date(now.getTime() - AUTO_DEDUCTION_MAX_AGE_MS);
-    const candidates = await ordersDb.collection("orders")
+    // Status is filtered in MongoDB before selecting the 200-order batch, so
+    // cancelled or otherwise inactive orders cannot consume its capacity.
+    const cursor = ordersDb.collection("orders")
       .find({
         inventoryDeducted: { $ne: true },
         isDeleted: { $ne: true },
-        createdAt: { $gte: recentCutoff, $lte: now },
         status: { $regex: ACTIVE_STATUS_REGEX, $options: "i" },
       })
       .sort({ createdAt: 1 })
-      .toArray();
+      .project({ _id: 1, subHubId: 1, subHubName: 1, status: 1, createdAt: 1, items: 1 });
+
+    const candidates: any[] = [];
+    let protectedExistingCount = 0;
+    try {
+      for await (const order of cursor) {
+        if (preexistingOrderIds.has(String(order._id))) {
+          protectedExistingCount++;
+          continue;
+        }
+        candidates.push(order);
+        if (candidates.length >= MAX_AUTO_DEDUCTION_BATCH_SIZE) break;
+      }
+    } finally {
+      await cursor.close();
+    }
 
     logger.info(
-      { candidateCount: candidates.length, oldestCreatedAt: candidates[0]?.createdAt ?? null },
+      { candidateCount: candidates.length, protectedExistingCount, batchLimit: MAX_AUTO_DEDUCTION_BATCH_SIZE },
       "runInventoryBackgroundDeduction: scan complete"
     );
 
     if (candidates.length === 0) return;
-    logger.info({ count: candidates.length }, "runInventoryBackgroundDeduction: processing recent undeducted orders");
+    logger.info({ count: candidates.length }, "runInventoryBackgroundDeduction: processing undeducted orders");
     await autoDeductUndedcutedOrders(ordersDb, candidates as any[]);
   } catch (err) {
     logger.error({ err }, "runInventoryBackgroundDeduction: failed");
@@ -1385,7 +1430,7 @@ function itemsSignature(items: any): string {
 export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
   const wantsDeducted = orderShouldDeduct(next);
   if (!wasDeducted && wantsDeducted) {
-    if (!isWithinAutomaticDeductionWindow(next)) {
+    if (!isWithinStatusTransitionDeductionWindow(next)) {
       logger.warn(
         { orderId: String(next._id), createdAt: next.createdAt ?? null },
         "applyOrderInventoryOnUpdate: skipped late first-time inventory deduction"
