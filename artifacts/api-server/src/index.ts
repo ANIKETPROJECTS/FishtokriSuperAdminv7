@@ -136,8 +136,8 @@ connectDB()
         );
       }, 30_000);
 
-      // Run once at startup (after 15s) to catch any orders that missed deduction
-      // while the server was down, then keep polling every 60s.
+      // Run shortly after startup and poll every 60s for recent orders only.
+      // Older missed deductions are intentionally not backfilled into a later day.
       setTimeout(() => {
         runInventoryBackgroundDeduction().catch((e) =>
           logger.error({ err: e }, "bg inventory deduction (startup) failed")

@@ -909,10 +909,24 @@ type OrderForSync = {
   subHubId?: string;
   subHubName?: string;
   status?: string;
+  createdAt?: Date | string;
   items?: Array<{ productId?: string; name?: string; quantity?: number; unit?: string }>;
 };
 
 const ACTIVE_STATUSES = new Set(["pending", "confirmed", "out_for_delivery", "delivered", "takeaway"]);
+const ACTIVE_STATUS_REGEX = "^(pending|confirmed|out_for_delivery|delivered|takeaway)$";
+// The worker polls every minute; this allows one missed poll without backfilling a later day's stock.
+const AUTO_DEDUCTION_MAX_AGE_MS = 2 * 60 * 1000;
+
+function isWithinAutomaticDeductionWindow(order: { createdAt?: Date | string }, now = Date.now()) {
+  const createdAtMs = order.createdAt instanceof Date
+    ? order.createdAt.getTime()
+    : typeof order.createdAt === "string"
+      ? Date.parse(order.createdAt)
+      : Number.NaN;
+  const ageMs = now - createdAtMs;
+  return Number.isFinite(createdAtMs) && ageMs >= 0 && ageMs <= AUTO_DEDUCTION_MAX_AGE_MS;
+}
 
 function orderShouldDeduct(order: OrderForSync) {
   if (!order || !order.subHubId) return false;
@@ -1221,7 +1235,7 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
  */
 export async function autoDeductUndedcutedOrders(
   ordersDb: any,
-  orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
+  orders: Array<{ _id: any; status?: string; subHubId?: string; subHubName?: string; createdAt?: Date | string; items?: any[]; inventoryDeducted?: boolean; isDeleted?: boolean }>
 ): Promise<void> {
   // Log a sample of raw order structure so we can see what customer-app orders look like
   if (orders.length > 0) {
@@ -1253,7 +1267,11 @@ export async function autoDeductUndedcutedOrders(
   }
 
   const candidates = orders.filter(
-    (o) => ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) && o.inventoryDeducted !== true && (o as any).isDeleted !== true
+    (o) =>
+      ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase()) &&
+      o.inventoryDeducted !== true &&
+      (o as any).isDeleted !== true &&
+      isWithinAutomaticDeductionWindow(o)
   );
   logger.info(
     { candidateCount: candidates.length, skippedCount: orders.length - candidates.length },
@@ -1319,28 +1337,30 @@ export async function applyOrderInventoryOnCreate(order: OrderForSync, subReason
 export async function runInventoryBackgroundDeduction(): Promise<void> {
   try {
     const conn = await getSubHubDbConnection("orders");
-    // Fetch ALL non-deducted orders regardless of status case — autoDeductUndedcutedOrders
-    // re-filters using .toLowerCase() so it handles "Pending", "pending", etc.
-    const candidates = await conn.db.collection("orders")
-      .find({ inventoryDeducted: { $ne: true }, isDeleted: { $ne: true } })
-      .sort({ createdAt: -1 })
-      .limit(200)
+    const ordersDb = conn.db;
+    if (!ordersDb) throw new Error("Orders database connection is unavailable");
+    // Only repair very recent orders. Old missed deductions must not be applied
+    // days later, where they would distort historical daily stock calculations.
+    const now = new Date();
+    const recentCutoff = new Date(now.getTime() - AUTO_DEDUCTION_MAX_AGE_MS);
+    const candidates = await ordersDb.collection("orders")
+      .find({
+        inventoryDeducted: { $ne: true },
+        isDeleted: { $ne: true },
+        createdAt: { $gte: recentCutoff, $lte: now },
+        status: { $regex: ACTIVE_STATUS_REGEX, $options: "i" },
+      })
+      .sort({ createdAt: 1 })
       .toArray();
 
-    // Filter in JS so case differences in status ("Pending" vs "pending") don't cause misses
-    const undeducted = candidates.filter((o: any) =>
-      ACTIVE_STATUSES.has(String(o.status ?? "").toLowerCase())
-    );
-
     logger.info(
-      { candidateCount: candidates.length, undeductedCount: undeducted.length,
-        statuses: [...new Set(candidates.map((o: any) => o.status))] },
+      { candidateCount: candidates.length, oldestCreatedAt: candidates[0]?.createdAt ?? null },
       "runInventoryBackgroundDeduction: scan complete"
     );
 
-    if (undeducted.length === 0) return;
-    logger.info({ count: undeducted.length }, "runInventoryBackgroundDeduction: processing undeducted orders");
-    await autoDeductUndedcutedOrders(conn.db, undeducted as any[]);
+    if (candidates.length === 0) return;
+    logger.info({ count: candidates.length }, "runInventoryBackgroundDeduction: processing recent undeducted orders");
+    await autoDeductUndedcutedOrders(ordersDb, candidates as any[]);
   } catch (err) {
     logger.error({ err }, "runInventoryBackgroundDeduction: failed");
   }
@@ -1365,6 +1385,13 @@ function itemsSignature(items: any): string {
 export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
   const wantsDeducted = orderShouldDeduct(next);
   if (!wasDeducted && wantsDeducted) {
+    if (!isWithinAutomaticDeductionWindow(next)) {
+      logger.warn(
+        { orderId: String(next._id), createdAt: next.createdAt ?? null },
+        "applyOrderInventoryOnUpdate: skipped late first-time inventory deduction"
+      );
+      return false;
+    }
     await withDeductionLock(() => applyDelta(next, "deduct", "order_placed"));
     return true;
   }
