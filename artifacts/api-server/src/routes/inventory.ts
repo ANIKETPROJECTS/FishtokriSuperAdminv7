@@ -1428,6 +1428,14 @@ function itemsSignature(items: any): string {
 }
 
 export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
+  if (preexistingOrderIds === null || preexistingOrderIds.has(String(next._id))) {
+    logger.info(
+      { orderId: String(next._id), baselineInitialized: preexistingOrderIds !== null },
+      "applyOrderInventoryOnUpdate: skipped inventory sync for baseline order"
+    );
+    return wasDeducted;
+  }
+
   const wantsDeducted = orderShouldDeduct(next);
   if (!wasDeducted && wantsDeducted) {
     if (!isWithinStatusTransitionDeductionWindow(next)) {
