@@ -493,13 +493,59 @@ router.get("/movements", async (req, res) => {
     if (search) {
       const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const searchRegex = { $regex: escapedSearch, $options: "i" };
-      filter.$or = [
+      const movementSearchClauses: any[] = [
         { productName: searchRegex },
         { orderRef: searchRegex },
         { orderId: searchRegex },
         { reason: searchRegex },
         { subReason: searchRegex },
+        { batchNumbers: searchRegex },
       ];
+      const searchWords = search.split(/\s+/).filter(Boolean);
+      const orderSearchClauses = searchWords.map((word) => {
+        const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const wordRegex = { $regex: escapedWord, $options: "i" };
+        const fields: any[] = [
+          { orderId: wordRegex },
+          { orderNumber: wordRegex },
+          { customerName: wordRegex },
+          { phone: wordRegex },
+          { customerPhone: wordRegex },
+          { email: wordRegex },
+          { customerEmail: wordRegex },
+          { customerId: wordRegex },
+          { userId: wordRegex },
+          { "customer.phone": wordRegex },
+          { "customer.email": wordRegex },
+          { "customer.name": wordRegex },
+          { "customer.id": wordRegex },
+          { "customer._id": wordRegex },
+        ];
+        const phoneDigits = word.replace(/\D/g, "");
+        if (phoneDigits.length >= 3) {
+          const formattedPhoneRegex = {
+            $regex: phoneDigits.split("").join("\\D*"),
+            $options: "i",
+          };
+          fields.push(
+            { phone: formattedPhoneRegex },
+            { customerPhone: formattedPhoneRegex },
+            { "customer.phone": formattedPhoneRegex },
+          );
+        }
+        return { $or: fields };
+      });
+      const ordersConn = await getSubHubDbConnection("orders");
+      const matchingOrders = await ordersConn.db.collection("orders")
+        .find({ $and: orderSearchClauses }, { projection: { _id: 1 } })
+        .limit(10000)
+        .toArray();
+      if (matchingOrders.length > 0) {
+        movementSearchClauses.push({
+          orderId: { $in: matchingOrders.map((order: any) => String(order._id)) },
+        });
+      }
+      filter.$or = movementSearchClauses;
     }
     const rows = await ctx.conn.db
       .collection(MOVEMENTS_COLLECTION)

@@ -242,6 +242,10 @@ export default function InventoryHistory() {
     typeFilter !== "all" ||
     sortBy !== "newest" ||
     datePreset !== "all";
+  const hasResultFilters =
+    search.trim().length > 0 ||
+    typeFilter !== "all" ||
+    datePreset !== "all";
 
   const headerSlot = document.getElementById("page-header-slot");
   const headerContent = (
@@ -301,7 +305,7 @@ export default function InventoryHistory() {
                     data-testid="input-history-search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by product, order, or reason..."
+                    placeholder="Search product, order ID, customer name, phone, or reason..."
                     className="pl-9 h-10"
                   />
                 </div>
@@ -418,7 +422,7 @@ export default function InventoryHistory() {
                     {loading ? (
                       <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">Loading...</td></tr>
                     ) : pagedMovements.total === 0 ? (
-                      <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">No movements yet</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">{hasResultFilters ? "No movements match these filters." : "No movements yet"}</td></tr>
                     ) : pagedMovements.pageItems.map((m) => {
                       const isPositive = m.change >= 0;
                       const typeMeta = m.type === "order_deduct"
