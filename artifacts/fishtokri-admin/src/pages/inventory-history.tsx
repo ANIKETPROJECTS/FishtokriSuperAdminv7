@@ -144,7 +144,7 @@ export default function InventoryHistory() {
   function loadHistory() {
     if (!selectedSubHubId) { setMovements([]); return; }
     setLoading(true);
-    apiFetch(`/api/inventory/movements?subHubId=${selectedSubHubId}&limit=300`)
+    apiFetch(`/api/inventory/movements?subHubId=${selectedSubHubId}&limit=2000`)
       .then((d) => setMovements(d.movements ?? []))
       .catch((err) => toast({ title: "Failed to load history", description: err.message, variant: "destructive" }))
       .finally(() => setLoading(false));
