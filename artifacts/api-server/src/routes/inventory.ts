@@ -6,6 +6,7 @@ import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { logger } from "../lib/logger.js";
+import { getInventoryUpdateAction } from "./inventory-update-policy.mjs";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
@@ -1430,15 +1431,19 @@ function itemsSignature(items: any): string {
 export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
   const wantsDeducted = orderShouldDeduct(next);
   const wasActiveForInventory = orderShouldDeduct(prev);
-  const needsCancellationRestore =
-    wasDeducted && wasActiveForInventory && !wantsDeducted;
   const isBaselineProtected =
     preexistingOrderIds === null || preexistingOrderIds.has(String(next._id));
+  const action = getInventoryUpdateAction({
+    baselineProtected: isBaselineProtected,
+    wasDeducted,
+    wasActive: wasActiveForInventory,
+    wantsDeducted,
+  });
 
   // Never backfill a baseline order or reconcile it just because it was edited.
   // A previously deducted order transitioning out of an active status is the
   // inverse of a recorded deduction, so it must still restore stock once.
-  if (isBaselineProtected && !needsCancellationRestore) {
+  if (action === "skip") {
     logger.info(
       {
         orderId: String(next._id),
@@ -1451,7 +1456,7 @@ export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: Orde
     return wasDeducted;
   }
 
-  if (!wasDeducted && wantsDeducted) {
+  if (action === "deduct") {
     if (!isWithinStatusTransitionDeductionWindow(next)) {
       logger.warn(
         { orderId: String(next._id), createdAt: next.createdAt ?? null },
@@ -1462,11 +1467,11 @@ export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: Orde
     await withDeductionLock(() => applyDelta(next, "deduct", "order_placed"));
     return true;
   }
-  if (needsCancellationRestore) {
+  if (action === "restore") {
     await withDeductionLock(() => applyDelta({ ...prev, _id: next._id }, "restore", "order_cancelled"));
     return false;
   }
-  if (wasDeducted && wantsDeducted) {
+  if (action === "reconcile") {
     const prevSig = `${prev?.subHubId ?? ""}::${itemsSignature((prev as any)?.items)}`;
     const nextSig = `${next?.subHubId ?? ""}::${itemsSignature((next as any)?.items)}`;
     if (prevSig !== nextSig) {
