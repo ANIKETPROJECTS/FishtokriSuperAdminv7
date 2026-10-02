@@ -1428,15 +1428,29 @@ function itemsSignature(items: any): string {
 }
 
 export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: OrderForSync, wasDeducted: boolean) {
-  if (preexistingOrderIds === null || preexistingOrderIds.has(String(next._id))) {
+  const wantsDeducted = orderShouldDeduct(next);
+  const wasActiveForInventory = orderShouldDeduct(prev);
+  const needsCancellationRestore =
+    wasDeducted && wasActiveForInventory && !wantsDeducted;
+  const isBaselineProtected =
+    preexistingOrderIds === null || preexistingOrderIds.has(String(next._id));
+
+  // Never backfill a baseline order or reconcile it just because it was edited.
+  // A previously deducted order transitioning out of an active status is the
+  // inverse of a recorded deduction, so it must still restore stock once.
+  if (isBaselineProtected && !needsCancellationRestore) {
     logger.info(
-      { orderId: String(next._id), baselineInitialized: preexistingOrderIds !== null },
+      {
+        orderId: String(next._id),
+        baselineInitialized: preexistingOrderIds !== null,
+        wasDeducted,
+        wantsDeducted,
+      },
       "applyOrderInventoryOnUpdate: skipped inventory sync for baseline order"
     );
     return wasDeducted;
   }
 
-  const wantsDeducted = orderShouldDeduct(next);
   if (!wasDeducted && wantsDeducted) {
     if (!isWithinStatusTransitionDeductionWindow(next)) {
       logger.warn(
@@ -1448,7 +1462,7 @@ export async function applyOrderInventoryOnUpdate(prev: OrderForSync, next: Orde
     await withDeductionLock(() => applyDelta(next, "deduct", "order_placed"));
     return true;
   }
-  if (wasDeducted && !wantsDeducted) {
+  if (needsCancellationRestore) {
     await withDeductionLock(() => applyDelta({ ...prev, _id: next._id }, "restore", "order_cancelled"));
     return false;
   }
