@@ -9,5 +9,6 @@
 - [Product preorder slot rules](product-preorder-slot-rules.md) — missing weekday slot rules mean all active slots; an explicit empty list means no slots for that weekday.
 - [Sub-hub Mongo debugging](sub-hub-mongo-debugging.md) — use API-scoped DB helpers; run test writes only in an inactive temporary sub-hub and remove all fixtures.
 - [Batch deduction priority](inventory-batch-expiry-priority.md) — order deductions use expiry and availability only; stock edit, receipt, and creation times never set priority.
+- [Batch restoration provenance](inventory-batch-restoration.md) — every order restore must return each deducted quantity to its original batch across cancellation, rejection, deletion, and other restore paths.
 - [Delivery timing coverage](delivery-timing-coverage.md) — calculate each lifecycle duration only when both endpoint timestamps exist; expose coverage instead of guessing missing durations.
 - [Inventory deduction freshness](inventory-deduction-freshness.md) — unlimited-age recovery applies only to orders inserted after startup; a read-only baseline protects existing records.

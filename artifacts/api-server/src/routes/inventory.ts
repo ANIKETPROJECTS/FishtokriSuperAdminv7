@@ -7,7 +7,13 @@ import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { logger } from "../lib/logger.js";
 import { getInventoryUpdateAction } from "./inventory-update-policy.mjs";
-import { sortBatchesByExpiry } from "./inventory-batch-order.mjs";
+import {
+  getOutstandingDeductionMovements,
+  planBatchConsumption,
+  restoreBatchAllocations,
+  sortBatchesByExpiry,
+  type BatchAllocation,
+} from "./inventory-batch-order.mjs";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
@@ -116,6 +122,17 @@ function batchesTotal(batches: Batch[] | undefined | null): number {
   return batches.reduce((s, b) => s + (Number(b?.quantity) || 0), 0);
 }
 
+function batchSnapshot(batch: Batch) {
+  return {
+    batchNumber: batch.batchNumber || "",
+    shelfLifeDays: batch.shelfLifeDays ?? null,
+    receivedDate: batch.receivedDate ?? null,
+    expiryDate: batch.expiryDate ?? null,
+    notes: batch.notes ?? "",
+    createdAt: batch.createdAt,
+  };
+}
+
 function availableBatchesTotal(batches: Batch[] | undefined | null, now: Date = new Date()): number {
   if (!Array.isArray(batches)) return 0;
   const nowMs = now.getTime();
@@ -132,26 +149,30 @@ function availableBatchesTotal(batches: Batch[] | undefined | null, now: Date = 
  * admins can still see and remove them manually.
  * If non-expired batches are insufficient, `remaining` will be > 0.
  */
-function consumeBatches(batches: Batch[], qty: number, now: Date = new Date()): { batches: Batch[]; remaining: number } {
+function consumeBatches(
+  batches: Batch[],
+  qty: number,
+  now: Date = new Date(),
+): { batches: Batch[]; remaining: number; allocations: BatchAllocation[] } {
   const nowMs = now.getTime();
 
   // Split into expired (untouched) and active (eligible for deduction)
   const expired = batches.filter((b) => b.expiryDate && new Date(b.expiryDate).getTime() < nowMs);
   const active  = batches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs);
 
-  let remaining = qty;
+  const plan = planBatchConsumption(active, qty);
+  const allocations: BatchAllocation[] = plan.allocations.map((allocation) => {
+    const sourceBatch = active.find((batch) => String(batch._id) === String(allocation.batchId));
+    if (!sourceBatch) throw new Error(`Batch ${String(allocation.batchId)} disappeared while planning a deduction`);
+    sourceBatch.quantity -= allocation.quantity;
+    return { ...allocation, batchSnapshot: batchSnapshot(sourceBatch) };
+  });
   const sorted = sortBatchesByExpiry(active);
-  for (const b of sorted) {
-    if (remaining <= 0) break;
-    const take = Math.min(b.quantity, remaining);
-    b.quantity -= take;
-    remaining -= take;
-  }
 
   // Keep ALL batches — including emptied ones (quantity=0) so they appear in
   // the "Completed Batches" tab in the admin UI.  Expired batches are always kept.
   const result = [...expired, ...sorted];
-  return { batches: result, remaining };
+  return { batches: result, remaining: plan.remaining, allocations };
 }
 
 /**
@@ -1069,6 +1090,241 @@ async function expandOrderItems(
   return Array.from(aggregated.values());
 }
 
+async function restoreOrderDeductionsFromMovements(
+  orderId: string,
+  orderRef: string,
+  products: any,
+  combos: any,
+  movements: any,
+  subReason?: string,
+): Promise<number> {
+  const orderMovements = await movements
+    .find({ orderId, type: { $in: ["order_deduct", "order_restore"] } })
+    .sort({ createdAt: 1, _id: 1 })
+    .toArray();
+  const deductions = orderMovements.filter((movement: any) => movement.type === "order_deduct");
+  const restores = orderMovements.filter((movement: any) => movement.type === "order_restore");
+  const outstanding = getOutstandingDeductionMovements(deductions, restores);
+  if (outstanding.length === 0) {
+    logger.info({ orderId }, "restoreOrderDeductions: no outstanding deduction movements");
+    return 0;
+  }
+
+  const byProduct = new Map<string, any[]>();
+  for (const movement of outstanding) {
+    if (!movement.productId) continue;
+    const productId = String(movement.productId);
+    const group = byProduct.get(productId) ?? [];
+    group.push(movement);
+    byProduct.set(productId, group);
+  }
+
+  let restoredCount = 0;
+  for (const [productId, sourceMovements] of byProduct) {
+    const productObjectId = toId(productId);
+    if (!productObjectId) {
+      logger.warn({ orderId, productId }, "restoreOrderDeductions: invalid product ID in movement ledger");
+      continue;
+    }
+    const product = await products.findOne({ _id: productObjectId });
+    if (!product) {
+      logger.warn({ orderId, productId }, "restoreOrderDeductions: product missing; leaving deduction outstanding");
+      continue;
+    }
+
+    let newBatches: Batch[] = Array.isArray(product.batches)
+      ? product.batches.map((batch: any) => normalizeBatch(batch))
+      : [];
+    const exactAllocations: BatchAllocation[] = [];
+    const legacySources: any[] = [];
+    const noBatchSources: Array<{ movement: any; quantity: number }> = [];
+    const reversesMovementIds = sourceMovements.map((movement) => movement._id);
+
+    for (const movement of sourceMovements) {
+      if (Array.isArray(movement.batchAllocations)) {
+        for (const allocation of movement.batchAllocations) {
+          if ((Number(allocation.quantity) || 0) <= 0) continue;
+          exactAllocations.push({
+            ...allocation,
+            deductionMovementId: movement._id,
+          });
+        }
+
+        const legacyQuantity = Math.max(
+          0,
+          Number(movement.legacyQuantity) ||
+            (movement.batchAllocations.length === 0 ? Math.abs(Number(movement.change) || 0) : 0),
+        );
+        if (legacyQuantity > 0) noBatchSources.push({ movement, quantity: legacyQuantity });
+      } else {
+        legacySources.push(movement);
+      }
+    }
+
+    const exactResult = restoreBatchAllocations(newBatches, exactAllocations);
+    if (exactResult.unmatchedAllocations.length > 0) {
+      throw new Error(`Could not resolve source batches for order ${orderId}, product ${productId}`);
+    }
+    newBatches = exactResult.batches;
+    const restoredAllocations: BatchAllocation[] = [...exactResult.restoredAllocations];
+    let legacyQuantity = 0;
+
+    for (const movement of legacySources) {
+      const quantity = Math.abs(Number(movement.change) || 0);
+      if (quantity <= 0) continue;
+      const batchNumbers = String(movement.batchNumbers ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      if (batchNumbers.length > 1) {
+        logger.warn(
+          { orderId, productId, batchNumbers, quantity },
+          "restoreOrderDeductions: legacy movement lacks the exact split across source batches",
+        );
+      }
+
+      const sourceBatchNumber = batchNumbers[0];
+      if (sourceBatchNumber) {
+        const existingBatch = newBatches.find((batch) => batch.batchNumber === sourceBatchNumber);
+        if (existingBatch) {
+          const legacyAllocation: BatchAllocation = {
+            batchNumber: sourceBatchNumber,
+            quantity,
+            deductionMovementId: movement._id,
+          };
+          const restored = restoreBatchAllocations(newBatches, [legacyAllocation]);
+          newBatches = restored.batches;
+          restoredAllocations.push(...restored.restoredAllocations);
+          continue;
+        }
+
+        const now = new Date();
+        const recreatedId = new mongoose.Types.ObjectId();
+        const recreatedSnapshot = {
+          batchNumber: sourceBatchNumber,
+          shelfLifeDays: null,
+          receivedDate: now,
+          expiryDate: toDate(movement.expiryDate),
+          notes: "Restored from an older order movement without a saved batch ID",
+          createdAt: now,
+        };
+        const legacyAllocation: BatchAllocation = {
+          batchId: recreatedId,
+          batchNumber: sourceBatchNumber,
+          quantity,
+          deductionMovementId: movement._id,
+          batchSnapshot: recreatedSnapshot,
+        };
+        const restored = restoreBatchAllocations(newBatches, [legacyAllocation]);
+        newBatches = restored.batches;
+        restoredAllocations.push(...restored.restoredAllocations);
+        continue;
+      }
+
+      if (newBatches.length > 0) {
+        const recordedExpiry = toDate(movement.expiryDate)?.getTime();
+        const target =
+          (recordedExpiry != null
+            ? newBatches.find((batch) => batch.expiryDate?.getTime() === recordedExpiry)
+            : undefined) ?? sortBatchesByExpiry(newBatches)[0];
+        const legacyAllocation: BatchAllocation = {
+          batchId: target._id,
+          batchNumber: target.batchNumber,
+          quantity,
+          deductionMovementId: movement._id,
+          batchSnapshot: batchSnapshot(target),
+        };
+        const restored = restoreBatchAllocations(newBatches, [legacyAllocation]);
+        newBatches = restored.batches;
+        restoredAllocations.push(...restored.restoredAllocations);
+      } else {
+        noBatchSources.push({ movement, quantity });
+      }
+    }
+
+    for (const { movement, quantity } of noBatchSources) {
+      if (newBatches.length === 0) {
+        legacyQuantity += quantity;
+        continue;
+      }
+
+      logger.warn(
+        { orderId, productId, quantity },
+        "restoreOrderDeductions: legacy quantity had no source batch; assigning it to the earliest-expiring existing batch",
+      );
+      const target = sortBatchesByExpiry(newBatches)[0];
+      const fallbackAllocation: BatchAllocation = {
+        batchId: target._id,
+        batchNumber: target.batchNumber,
+        quantity,
+        deductionMovementId: movement._id,
+        batchSnapshot: batchSnapshot(target),
+      };
+      const restored = restoreBatchAllocations(newBatches, [fallbackAllocation]);
+      newBatches = restored.batches;
+      restoredAllocations.push(...restored.restoredAllocations);
+    }
+
+    const restoredBatchQuantity = restoredAllocations.reduce(
+      (total, allocation) => total + (Number(allocation.quantity) || 0),
+      0,
+    );
+    const totalRestored = restoredBatchQuantity + legacyQuantity;
+    if (totalRestored <= 0) continue;
+
+    let balance = 0;
+    if (newBatches.length > 0) {
+      const persisted = await persistBatches(products, productObjectId, newBatches, {}, combos);
+      balance = persisted.quantity;
+    } else {
+      await products.updateOne(
+        { _id: productObjectId },
+        { $inc: { quantity: legacyQuantity }, $set: { updatedAt: new Date() } },
+      );
+      const after = await products.findOne(
+        { _id: productObjectId },
+        { projection: { quantity: 1 } },
+      );
+      balance = Number(after?.quantity) || 0;
+    }
+
+    const batchNumbers = [...new Set(
+      restoredAllocations
+        .map((allocation) => allocation.batchNumber ?? allocation.batchSnapshot?.batchNumber)
+        .filter((value): value is string => Boolean(value)),
+    )];
+    const sourceExpiry = restoredAllocations
+      .map((allocation) => allocation.batchSnapshot?.expiryDate)
+      .find((value) => value != null);
+
+    await movements.insertOne({
+      type: "order_restore",
+      productId,
+      productName: product.name ?? "",
+      unit: product.unit ?? "",
+      change: totalRestored,
+      balance,
+      orderId,
+      orderRef,
+      ...(subReason ? { subReason } : {}),
+      ...(batchNumbers.length > 0 ? { batchNumbers: batchNumbers.join(", ") } : {}),
+      batchAllocations: restoredAllocations,
+      ...(legacyQuantity > 0 ? { legacyQuantity } : {}),
+      reversesMovementIds,
+      ...(sourceExpiry ? { expiryDate: sourceExpiry } : {}),
+      createdAt: new Date(),
+    });
+    restoredCount++;
+    logger.info(
+      { orderId, productId, restoredQuantity: totalRestored, batchNumbers },
+      "restoreOrderDeductions: restored source batch allocations",
+    );
+  }
+
+  return restoredCount;
+}
+
 async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", subReason?: string): Promise<number> {
   if (!order.subHubId) {
     logger.warn({ orderId: String(order._id) }, "applyDelta: skipped — no subHubId on order");
@@ -1097,6 +1353,17 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
   const now = new Date();
   const orderId = String(order._id);
   const orderRef = `#${orderId.slice(-6).toUpperCase()}`;
+
+  if (direction === "restore") {
+    return restoreOrderDeductionsFromMovements(
+      orderId,
+      orderRef,
+      products,
+      combos,
+      movements,
+      subReason,
+    );
+  }
 
   // Expand combos into their constituent products before applying stock changes
   const items = await expandOrderItems(products, combos, Array.isArray(order.items) ? order.items : []);
@@ -1153,30 +1420,24 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
     let newBatches = currentBatches;
     let appliedExpiry: Date | null = null;
     let appliedBatchNumbers: string | undefined;
+    let batchAllocations: BatchAllocation[] = [];
     if (direction === "deduct") {
       if (currentBatches.length > 0) {
         const now2 = new Date();
-        const nowMs2 = now2.getTime();
         const available = availableBatchesTotal(currentBatches, now2);
         const consumed = consumeBatches(currentBatches, qty, now2);
         if (consumed.remaining > 0) {
           throw new InsufficientStockError(existing.name ?? it.name ?? "Unknown product", available, qty);
         }
         newBatches = consumed.batches;
+        batchAllocations = consumed.allocations;
         logger.info({ orderId, productId: String(pid), batchesAfter: newBatches.length, totalAfter: batchesTotal(newBatches) }, "applyDelta: consumeBatches result");
-        // Pick expiry from the oldest active (non-expired) batch that was consumed
-        const activeSorted = sortBatchesByExpiry(
-          currentBatches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs2)
-        );
-        appliedExpiry = activeSorted[0]?.expiryDate ?? null;
-        // Track which batch numbers were consumed (expiry order) for the movement record
-        const consumedNames: string[] = [];
-        let rem = qty;
-        for (const b of activeSorted) {
-          if (rem <= 0) break;
-          if (b.batchNumber) consumedNames.push(b.batchNumber);
-          rem -= b.quantity;
-        }
+        appliedExpiry = consumed.allocations[0]?.batchSnapshot?.expiryDate
+          ? new Date(consumed.allocations[0].batchSnapshot.expiryDate)
+          : null;
+        const consumedNames = consumed.allocations
+          .map((allocation) => allocation.batchNumber)
+          .filter((name): name is string => Boolean(name));
         if (consumedNames.length > 0) appliedBatchNumbers = consumedNames.join(", ");
       } else {
         // legacy product with no batches — just decrement quantity
@@ -1190,38 +1451,11 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
           productName: (after as any)?.name ?? it.name ?? "",
           unit: (after as any)?.unit ?? it.unit ?? "",
           change: -qty, balance: Number((after as any)?.quantity) || 0,
-          orderId, orderRef, ...(subReason ? { subReason } : {}), createdAt: now,
+          orderId, orderRef, ...(subReason ? { subReason } : {}),
+          batchAllocations: [], legacyQuantity: qty, createdAt: now,
         });
         deductedCount++;
         continue;
-      }
-    } else {
-      // restore: add quantity back into the most recently received active (non-expired) batch
-      // to avoid creating extra batches on every cancellation/delete.
-      const nowMs3 = now.getTime();
-      const activeBatches = currentBatches.filter(
-        (b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs3
-      );
-      const sortedByRecent = [...activeBatches].sort((a, b) => {
-        const at = a.receivedDate ? new Date(a.receivedDate).getTime() : 0;
-        const bt = b.receivedDate ? new Date(b.receivedDate).getTime() : 0;
-        return bt - at; // most recent first
-      });
-      const targetBatch = sortedByRecent[0];
-      if (targetBatch) {
-        newBatches = currentBatches.map((b) =>
-          b._id && targetBatch._id && String(b._id) === String(targetBatch._id)
-            ? { ...b, quantity: b.quantity + qty }
-            : b
-        );
-        if (targetBatch.batchNumber) appliedBatchNumbers = targetBatch.batchNumber;
-      } else {
-        // No active batch — create a plain new batch (no RESTORE label)
-        newBatches = [...currentBatches, normalizeBatch({
-          quantity: qty,
-          receivedDate: now,
-          createdAt: now,
-        })];
       }
     }
 
@@ -1231,16 +1465,17 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
       "applyDelta: stock persisted ✓"
     );
     await movements.insertOne({
-      type: direction === "deduct" ? "order_deduct" : "order_restore",
+      type: "order_deduct",
       productId: String(pid),
       productName: existing.name ?? it.name ?? "",
       unit: existing.unit ?? it.unit ?? "",
-      change: direction === "deduct" ? -qty : qty,
+      change: -qty,
       balance: persisted.quantity,
       orderId,
       orderRef,
       ...(subReason ? { subReason } : {}),
       ...(appliedBatchNumbers ? { batchNumbers: appliedBatchNumbers } : {}),
+      batchAllocations,
       expiryDate: appliedExpiry || undefined,
       createdAt: now,
     });
@@ -1418,7 +1653,7 @@ export async function runInventoryBackgroundDeduction(): Promise<void> {
 export async function applyOrderInventoryOnDelete(order: OrderForSync, wasDeducted: boolean) {
   if (!wasDeducted) return false;
   if (!order?.subHubId) return false;
-  const restored = await applyDelta(order, "restore", "order_deleted");
+  const restored = await withDeductionLock(() => applyDelta(order, "restore", "order_deleted"));
   return restored > 0;
 }
 
