@@ -115,6 +115,15 @@ function batchesTotal(batches: Batch[] | undefined | null): number {
   return batches.reduce((s, b) => s + (Number(b?.quantity) || 0), 0);
 }
 
+function availableBatchesTotal(batches: Batch[] | undefined | null, now: Date = new Date()): number {
+  if (!Array.isArray(batches)) return 0;
+  const nowMs = now.getTime();
+  return batches.reduce((total, batch) => {
+    if (batch.expiryDate && new Date(batch.expiryDate).getTime() < nowMs) return total;
+    return total + (Number(batch.quantity) || 0);
+  }, 0);
+}
+
 function sortBatchesFIFO(batches: Batch[]): Batch[] {
   // earliest expiry first; batches without expiry sort to the end
   return [...batches].sort((a, b) => {
@@ -1113,6 +1122,7 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
   // the lock only after the first has already deducted — it then sees available=0
   // and throws InsufficientStockError before any mutation occurs.
   if (direction === "deduct") {
+    const stockCheckNow = new Date();
     for (const it of items) {
       const pid = toId(it.productId);
       if (!pid || it.quantity <= 0) continue;
@@ -1121,9 +1131,9 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
       const currentBatches: Batch[] = Array.isArray(product.batches)
         ? product.batches.map((b: any) => normalizeBatch(b))
         : [];
-      // Available stock: use batch totals if batches exist, otherwise the raw quantity field
+      // Expired batches remain visible to admins but cannot satisfy an order.
       const available = currentBatches.length > 0
-        ? batchesTotal(currentBatches)
+        ? availableBatchesTotal(currentBatches, stockCheckNow)
         : Math.max(0, Number(product.quantity) || 0);
       if (available < it.quantity) {
         logger.warn(
@@ -1158,7 +1168,11 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
       if (currentBatches.length > 0) {
         const now2 = new Date();
         const nowMs2 = now2.getTime();
+        const available = availableBatchesTotal(currentBatches, now2);
         const consumed = consumeBatches(currentBatches, qty, now2);
+        if (consumed.remaining > 0) {
+          throw new InsufficientStockError(existing.name ?? it.name ?? "Unknown product", available, qty);
+        }
         newBatches = consumed.batches;
         logger.info({ orderId, productId: String(pid), batchesAfter: newBatches.length, totalAfter: batchesTotal(newBatches) }, "applyDelta: consumeBatches result");
         // Pick expiry from the oldest active (non-expired) batch that was consumed
