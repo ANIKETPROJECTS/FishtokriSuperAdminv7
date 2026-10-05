@@ -7,6 +7,7 @@ import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { logger } from "../lib/logger.js";
 import { getInventoryUpdateAction } from "./inventory-update-policy.mjs";
+import { sortBatchesByExpiry } from "./inventory-batch-order.mjs";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
@@ -124,20 +125,8 @@ function availableBatchesTotal(batches: Batch[] | undefined | null, now: Date = 
   }, 0);
 }
 
-function sortBatchesFIFO(batches: Batch[]): Batch[] {
-  // earliest expiry first; batches without expiry sort to the end
-  return [...batches].sort((a, b) => {
-    const ax = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
-    const bx = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
-    if (ax !== bx) return ax - bx;
-    const ac = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bc = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return ac - bc;
-  });
-}
-
 /**
- * Consume `qty` units from batches FIFO (earliest expiry first),
+ * Consume `qty` units from batches by earliest expiry first,
  * skipping any batches that have already expired.
  * Expired batches are preserved unchanged in the returned list so
  * admins can still see and remove them manually.
@@ -151,7 +140,7 @@ function consumeBatches(batches: Batch[], qty: number, now: Date = new Date()): 
   const active  = batches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs);
 
   let remaining = qty;
-  const sorted = sortBatchesFIFO(active);
+  const sorted = sortBatchesByExpiry(active);
   for (const b of sorted) {
     if (remaining <= 0) break;
     const take = Math.min(b.quantity, remaining);
@@ -437,7 +426,7 @@ router.get("/products", async (req, res) => {
           quantity: qty,
           status: p.status ?? "available",
           imageUrl: p.imageUrl ?? "",
-          batches: sortBatchesFIFO(batches).map((b) => ({
+          batches: sortBatchesByExpiry(batches).map((b) => ({
             id: String(b._id ?? ""),
             batchNumber: b.batchNumber ?? "",
             quantity: Number(b.quantity) || 0,
@@ -692,7 +681,7 @@ router.post("/adjustments", async (req, res) => {
         const rmQty = Math.max(0, Number(it.removeQuantity) || 0);
         if (rmQty <= 0) continue;
 
-        // If a specific batchId is provided, reduce from that batch first then FIFO for remainder
+        // If a specific batchId is provided, reduce from that batch first then earliest-expiry order for the remainder
         if (it.batchId) {
           const targetIdx = currentBatches.findIndex((b) => String(b._id) === String(it.batchId));
           if (targetIdx >= 0) {
@@ -703,7 +692,7 @@ router.post("/adjustments", async (req, res) => {
             target.quantity -= take;
             const remaining = rmQty - take;
             if (remaining > 0) {
-              // FIFO consume from the rest
+              // Consume from the rest in earliest-expiry order
               const others = working.filter((_, i) => i !== targetIdx);
               const consumed = consumeBatches(others, remaining);
               newBatches = [working[targetIdx], ...consumed.batches];
@@ -713,18 +702,18 @@ router.post("/adjustments", async (req, res) => {
               delta = -take;
             }
           } else {
-            // batchId not found — fall back to FIFO
+            // batchId not found — fall back to earliest-expiry order
             const consumed = consumeBatches(currentBatches, rmQty);
             newBatches = consumed.batches;
             delta = -(rmQty - consumed.remaining);
-            // Capture first FIFO batch for movement tracking
+            // Capture first earliest-expiry batch for movement tracking
             if (!appliedBatch && currentBatches.length > 0) appliedBatch = currentBatches[0];
           }
         } else {
           const consumed = consumeBatches(currentBatches, rmQty);
           newBatches = consumed.batches;
           delta = -(rmQty - consumed.remaining);
-          // Capture first FIFO batch for movement tracking
+          // Capture first earliest-expiry batch for movement tracking
           if (!appliedBatch && currentBatches.length > 0) appliedBatch = currentBatches[0];
         }
         if (delta === 0) continue;
@@ -837,7 +826,7 @@ router.get("/products/:productId/batches", async (req, res) => {
       name: product.name,
       unit: product.unit ?? "",
       quantity: batchesTotal(batches) || (Number(product.quantity) || 0),
-      batches: sortBatchesFIFO(batches),
+      batches: sortBatchesByExpiry(batches),
     });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch batches");
@@ -1176,11 +1165,11 @@ async function applyDelta(order: OrderForSync, direction: "deduct" | "restore", 
         newBatches = consumed.batches;
         logger.info({ orderId, productId: String(pid), batchesAfter: newBatches.length, totalAfter: batchesTotal(newBatches) }, "applyDelta: consumeBatches result");
         // Pick expiry from the oldest active (non-expired) batch that was consumed
-        const activeSorted = sortBatchesFIFO(
+        const activeSorted = sortBatchesByExpiry(
           currentBatches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs2)
         );
         appliedExpiry = activeSorted[0]?.expiryDate ?? null;
-        // Track which batch numbers were consumed (FIFO order) for the movement record
+        // Track which batch numbers were consumed (expiry order) for the movement record
         const consumedNames: string[] = [];
         let rem = qty;
         for (const b of activeSorted) {
