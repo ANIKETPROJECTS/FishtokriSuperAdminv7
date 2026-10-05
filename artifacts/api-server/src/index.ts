@@ -6,12 +6,12 @@ import {
   runInventoryBackgroundDeduction,
 } from "./routes/inventory.js";
 import { getSubHubDbConnection } from "./db/sub-hub-connections.js";
+import { runFtwPaymentLifecycleSweep } from "./services/ftw-order-lifecycle.js";
 
 /**
- * Background job: auto-set paymentMode="upi" and upiVariant="RZPAY" on any
- * pending storefront order (orderId starts with "FT" but NOT "FTS") that
- * doesn't yet have them. Runs at startup and every 30 s thereafter so it
- * doesn't depend on which tab the admin currently has open.
+ * Background job: auto-set paymentMode="upi" and upiVariant="RZPAY" on
+ * eligible storefront orders. Pending or failed FTW checkout records are
+ * excluded so their provisional payment details remain untouched.
  */
 async function autoFixStorefrontPaymentMode() {
   try {
@@ -19,21 +19,21 @@ async function autoFixStorefrontPaymentMode() {
     const col = conn.db.collection("orders");
 
     // Fetch all active (non-terminal) orders and filter in JS to avoid relying
-    // on MongoDB regex lookahead support. Storefront orders (FTN/FTW) are
-    // pre-paid at Razorpay checkout so they arrive with paymentStatus:"paid"
-    // and status:"pending" — we must NOT filter by paymentStatus here.
+    // on MongoDB regex lookahead support. FTN orders may arrive pre-paid, but
+    // FTW provisional orders must retain their own pending/failed payment state.
     const candidates: any[] = await col
       .find({
         status: { $nin: ["delivered", "cancelled", "rejected"] },
         isDeleted: { $ne: true },
       })
-      .project({ _id: 1, orderId: 1, paymentMode: 1, upiVariant: 1 })
+      .project({ _id: 1, orderId: 1, paymentMode: 1, upiVariant: 1, paymentStatus: 1 })
       .toArray();
 
     // Keep only storefront orders: orderId starts with FT but NOT FTS
     const toFix = candidates.filter((o: any) => {
-      const oid = String(o.orderId ?? "").replace(/^#+/, "");
+      const oid = String(o.orderId ?? "").replace(/^#+/, "").toUpperCase();
       if (!oid.startsWith("FT") || oid.startsWith("FTS")) return false;
+      if (oid.startsWith("FTW") && ["pending", "failed"].includes(String(o.paymentStatus ?? "").trim().toLowerCase())) return false;
       const alreadyUpi = String(o.paymentMode ?? "").toLowerCase() === "upi";
       const alreadyRzpay = String(o.upiVariant ?? "") === "RZPAY";
       return !alreadyUpi || !alreadyRzpay;
@@ -73,7 +73,14 @@ async function fixPaidOrdersDueAmount() {
 
     // Fix 1: takeaway orders that are not yet marked as paid.
     const takeawayFix = await col.updateMany(
-      { deliveryType: "takeaway", paymentStatus: { $ne: "paid" } },
+      {
+        deliveryType: "takeaway",
+        paymentStatus: { $ne: "paid" },
+        $nor: [{
+          orderId: { $regex: "^#*FTW", $options: "i" },
+          paymentStatus: { $regex: "^(pending|failed)$", $options: "i" },
+        }],
+      },
       [
         {
           $set: {
@@ -93,7 +100,7 @@ async function fixPaidOrdersDueAmount() {
 
     // Fix 2: any order already "paid" but with a stale dueAmount > 0.
     const dueFix = await col.updateMany(
-      { paymentStatus: "paid", dueAmount: { $gt: 0 } },
+      { paymentStatus: { $in: ["paid", "completed"] }, dueAmount: { $gt: 0 } },
       { $set: { dueAmount: 0 } }
     );
     if (dueFix.modifiedCount > 0) {
@@ -128,6 +135,13 @@ connectDB()
         process.exit(1);
       }
       logger.info({ port }, "Server listening");
+
+      runFtwPaymentLifecycleSweep().catch(() => {});
+      setInterval(() => {
+        runFtwPaymentLifecycleSweep().catch((e) =>
+          logger.error({ err: e }, "FTW payment lifecycle sweep failed")
+        );
+      }, 5_000);
 
       // Migration: fix paid orders that still have dueAmount > 0 (old takeaway bug).
       fixPaidOrdersDueAmount().catch(() => {});

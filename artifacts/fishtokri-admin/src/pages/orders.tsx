@@ -138,6 +138,81 @@ function displayStatus(status: string, deliveryType?: string) {
   return status;
 }
 
+const FTW_PAYMENT_TIMEOUT_MS = 5 * 60 * 1000;
+
+function isFtwOrder(order: any): boolean {
+  return String(order?.orderId ?? "").trim().replace(/^#+/, "").toUpperCase().startsWith("FTW");
+}
+
+function isFtwPaymentOnHold(order: any): boolean {
+  if (!isFtwOrder(order)) return false;
+  return ["pending", "failed"].includes(String(order?.paymentStatus ?? "").trim().toLowerCase());
+}
+
+function isFullyPaidStatus(status: unknown): boolean {
+  return ["paid", "completed"].includes(String(status ?? "").trim().toLowerCase());
+}
+
+function paymentStatusLabel(status: unknown): string {
+  const value = String(status ?? "").trim().toLowerCase();
+  if (isFullyPaidStatus(value)) return "Fully Paid";
+  if (value === "partial") return "Partial";
+  if (value === "pending") return "Awaiting UPI";
+  if (value === "failed") return "Payment Failed";
+  return "Unpaid";
+}
+
+function paymentStatusTone(status: unknown): string {
+  const value = String(status ?? "").trim().toLowerCase();
+  if (isFullyPaidStatus(value)) return "text-green-600";
+  if (value === "partial" || value === "pending") return "text-amber-600";
+  return "text-red-500";
+}
+
+function getFtwPaymentExpiryMs(order: any): number | null {
+  const savedExpiry = order?.paymentExpiresAt ? new Date(order.paymentExpiresAt).getTime() : Number.NaN;
+  if (Number.isFinite(savedExpiry)) return savedExpiry;
+  const createdAt = order?.createdAt ? new Date(order.createdAt).getTime() : Number.NaN;
+  return Number.isFinite(createdAt) ? createdAt + FTW_PAYMENT_TIMEOUT_MS : null;
+}
+
+function isFtwPaymentRestoreBlocked(order: any): boolean {
+  if (!isFtwOrder(order)) return false;
+  const status = String(order?.paymentStatus ?? "").trim().toLowerCase();
+  if (status === "failed") return true;
+  const expiryMs = getFtwPaymentExpiryMs(order);
+  return status === "pending" && expiryMs !== null && expiryMs <= Date.now();
+}
+
+function FtwPaymentCountdown({ order, mongoServerNow }: { order: any; mongoServerNow?: string | Date | null }) {
+  const expiryMs = getFtwPaymentExpiryMs(order);
+  const parsedServerNow = mongoServerNow ? new Date(mongoServerNow).getTime() : Number.NaN;
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (expiryMs === null) {
+      setRemainingMs(null);
+      return;
+    }
+    const serverStart = Number.isFinite(parsedServerNow) ? parsedServerNow : Date.now();
+    const browserStart = Date.now();
+    const update = () => setRemainingMs(Math.max(0, expiryMs - (serverStart + Date.now() - browserStart)));
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [expiryMs, parsedServerNow]);
+
+  const displayTime = remainingMs === null
+    ? "—"
+    : `${Math.floor(remainingMs / 60000)}:${String(Math.floor((remainingMs % 60000) / 1000)).padStart(2, "0")}`;
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700" aria-live="off">
+      <Clock className="w-3 h-3" />
+      {remainingMs === 0 ? "Payment window expired" : `Awaiting UPI · ${displayTime}`}
+    </span>
+  );
+}
+
 function StatusBadge({ status, deliveryType }: { status: string; deliveryType?: string }) {
   const eff = displayStatus(status, deliveryType);
   const cfg = STATUS_CONFIG[eff] ?? { label: eff, color: "text-gray-600", bg: "bg-gray-50 border-gray-200", icon: Clock };
@@ -780,6 +855,7 @@ export default function Orders() {
 
   // Data
   const [orders, setOrders] = useState<any[]>([]);
+  const [mongoServerNow, setMongoServerNow] = useState<string | Date | null>(null);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -897,6 +973,7 @@ export default function Orders() {
   // Payment
   type PaymentEntry = { mode: string; amount: string; reference: string };
   const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
+  const [preservedFtwCompletedEditOrderId, setPreservedFtwCompletedEditOrderId] = useState("");
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [mainPaymentMode, setMainPaymentMode] = useState<"upi" | "cash">("cash");
   const [useWallet, setUseWallet] = useState(false);
@@ -953,6 +1030,7 @@ export default function Orders() {
     setExtraDiscount("");
     setExtraDiscountType("percentage");
     setPaymentStatus("unpaid");
+    setPreservedFtwCompletedEditOrderId("");
     setPaymentEntries([]);
     setMainPaymentMode("cash");
     setUseWallet(false);
@@ -1897,9 +1975,11 @@ export default function Orders() {
         // Unpaid is still selected, the order is recorded as fully paid via wallet instead
         // (the Unpaid button is greyed out in the UI in that case, but the cashier may not
         // have switched off it yet, so the payload still reflects the true payment state).
-        paymentStatus: orderDeliveryType === "takeaway"
-          ? (takeawayUnpaid ? (takeawayWalletAmount >= newOrderTotal && newOrderTotal > 0 ? "paid" : takeawayWalletAmount > 0 ? "partial" : "unpaid") : "paid")
-          : paymentStatus,
+        paymentStatus: editingOrderId && preservedFtwCompletedEditOrderId === editingOrderId
+          ? "completed"
+          : orderDeliveryType === "takeaway"
+            ? (takeawayUnpaid ? (takeawayWalletAmount >= newOrderTotal && newOrderTotal > 0 ? "paid" : takeawayWalletAmount > 0 ? "partial" : "unpaid") : "paid")
+            : paymentStatus,
         paidAmount: orderDeliveryType === "takeaway" ? (takeawayUnpaid ? takeawayWalletAmount : newOrderTotal) : paidTotal,
         dueAmount: orderDeliveryType === "takeaway" ? (takeawayUnpaid ? Math.max(0, newOrderTotal - takeawayWalletAmount) : 0) : undefined,
         paymentMode: orderDeliveryType === "takeaway"
@@ -2001,6 +2081,8 @@ export default function Orders() {
 
   // UPI Variant management functions
   const assignUpiVariant = async (orderId: string, variant: string) => {
+    const targetOrder = orders.find((order) => String(order._id) === orderId);
+    if (isFtwPaymentOnHold(targetOrder)) return;
     setAssigningVariantOrderId(orderId);
     try {
       await apiFetch(`/api/orders/${orderId}`, { method: "PUT", body: JSON.stringify({ upiVariant: variant || null }) });
@@ -2014,6 +2096,7 @@ export default function Orders() {
   const changePaymentMode = async (orderId: string, modeKey: string) => {
     const order = orders.find((o) => String(o._id) === orderId);
     if (!order) return;
+    if (isFtwPaymentOnHold(order)) return;
     setChangingPayModeOrderId(orderId);
     try {
       const total = Number(order.total) || 0;
@@ -2156,7 +2239,7 @@ export default function Orders() {
   const displayedOrders = useMemo(() => {
     let list = orders;
     if (payFilter) {
-      list = list.filter((o) => o.paymentStatus === "paid");
+      list = list.filter((o) => isFullyPaidStatus(o.paymentStatus));
       if (payModeFilter) {
         list = list.filter((o) => {
           const mode = String(o.paymentMode || "").toLowerCase();
@@ -2231,22 +2314,22 @@ export default function Orders() {
       const data = await apiFetch(`/api/orders?${params}`);
       const loadedOrders = data.orders ?? [];
       setOrders(loadedOrders);
+      setMongoServerNow(data.mongoServerNow ?? null);
       setTotal(data.total ?? 0);
       setPages(data.pages ?? 1);
 
-      // Auto-apply UPI + RZPAY for ALL storefront orders (orderId starts with "FT" but
-      // not "FTS" which is admin-generated). Covers FTW, FTN, and any future FT* prefixes.
-      // Skip cancelled/paid orders. ftwInFlightRef guards against concurrent duplicate calls
-      // for the same order; it is cleared on completion so every poll re-verifies the DB value.
+      // Auto-apply UPI + RZPAY for eligible storefront orders. Provisional FTW
+      // payment records must retain their checkout-provided fields unchanged.
       const ftwToFix: any[] = loadedOrders.filter((o: any) => {
         // Strip leading '#' — orderId may be stored as "#FTW..." or "FTW..."
-        const oid = String(o.orderId ?? "").replace(/^#+/, "");
+        const oid = String(o.orderId ?? "").replace(/^#+/, "").toUpperCase();
         if (!oid.startsWith("FT") || oid.startsWith("FTS")) return false;
         if (ftwInFlightRef.current.has(String(o._id))) return false;
-        // Only touch brand-new pending orders — leave delivered, confirmed, cancelled,
-        // paid and any other historical orders completely untouched.
+        const paymentStatus = String(o.paymentStatus ?? "").trim().toLowerCase();
+        if (oid.startsWith("FTW") && ["pending", "failed"].includes(paymentStatus)) return false;
+        // Only touch brand-new pending orders — leave historical orders untouched.
         if (String(o.status ?? "").toLowerCase() !== "pending") return false;
-        if (String(o.paymentStatus ?? "").toLowerCase() === "paid") return false;
+        if (isFullyPaidStatus(paymentStatus)) return false;
         const effectiveMode = orderPaymentModeKey(o);
         const alreadyUpi = effectiveMode === "upi";
         const needsVariant = alreadyUpi && String(o.upiVariant ?? "") !== "RZPAY";
@@ -2366,6 +2449,10 @@ export default function Orders() {
 
   const handleStatusUpdate = async () => {
     if (!selectedOrder || !editStatus) return;
+    if (isFtwPaymentOnHold(selectedOrder)) {
+      toast({ title: "Payment pending", description: "This FTW order is on hold until payment is completed.", variant: "destructive" });
+      return;
+    }
 
     // When cancelling via the status dropdown, open the reason dialog instead of
     // submitting directly — cancellation reason is required for the WhatsApp message.
@@ -2376,7 +2463,7 @@ export default function Orders() {
     }
 
     // When marking as delivered, prompt for payment collection unless already fully paid.
-    if (editStatus === "delivered" && selectedOrder.paymentStatus !== "paid") {
+    if (editStatus === "delivered" && !isFullyPaidStatus(selectedOrder.paymentStatus)) {
       const total = Number(selectedOrder.total) > 0
         ? Number(selectedOrder.total)
         : orderTotal(selectedOrder.items);
@@ -2531,6 +2618,7 @@ export default function Orders() {
   };
 
   const acceptOrder = async (order: any, overrideSubHubId?: string, overrideSubHubName?: string) => {
+    if (isFtwPaymentOnHold(order)) return;
     // If the order has no sub-hub yet, pause and show the sub-hub picker.
     const resolvedSubHubId = overrideSubHubId ?? order.subHubId ?? "";
     if (!resolvedSubHubId) {
@@ -2595,6 +2683,10 @@ export default function Orders() {
 
   const submitReject = async () => {
     if (!rejectingOrder) return;
+    if (isFtwPaymentOnHold(rejectingOrder)) {
+      toast({ title: "Payment pending", description: "This FTW order cannot be rejected before payment is completed.", variant: "destructive" });
+      return;
+    }
     const reason = rejectReason.trim();
     if (!reason) {
       toast({ title: "Reason required", description: "Please enter a reason for cancellation.", variant: "destructive" });
@@ -2628,6 +2720,8 @@ export default function Orders() {
   };
 
   const inlineAssign = async (orderId: string, personId: string) => {
+    const targetOrder = orders.find((order) => String(order._id) === orderId);
+    if (isFtwPaymentOnHold(targetOrder)) return;
     setInlineAssigningId(orderId);
     try {
       const person = deliveryPersons.find((p) => p.id === personId);
@@ -2646,6 +2740,7 @@ export default function Orders() {
 
   const handleAssignDelivery = async () => {
     if (!selectedOrder) return;
+    if (isFtwPaymentOnHold(selectedOrder)) return;
     setAssigningDelivery(true);
     const resolvedId = selectedDeliveryPersonId === "__none__" ? "" : selectedDeliveryPersonId;
     try {
@@ -2666,6 +2761,9 @@ export default function Orders() {
 
   const populateCreateFormFromOrder = useCallback((o: any) => {
     setEditingOrderId(String(o._id));
+    const ftwPaymentWasCompleted =
+      isFtwOrder(o) && String(o.paymentStatus ?? "").trim().toLowerCase() === "completed";
+    setPreservedFtwCompletedEditOrderId(ftwPaymentWasCompleted ? String(o._id) : "");
     // Restore the order mode before populating the shared POS form. The
     // default is "normal", which previously caused preorder edits to be saved
     // back as normal orders.
@@ -2753,7 +2851,12 @@ export default function Orders() {
       : (Array.isArray(o.coupons) ? o.coupons.map((c: any) => String(c.id ?? c._id ?? "")).filter(Boolean) : []);
     setAppliedCouponIds(couponIds);
     // Payment
-    const ps = ["paid", "partial", "unpaid"].includes(o.paymentStatus) ? o.paymentStatus : "unpaid";
+    const savedPaymentStatus = String(o.paymentStatus ?? "").trim().toLowerCase();
+    const ps: "paid" | "partial" | "unpaid" = savedPaymentStatus === "completed"
+      ? "paid"
+      : ["paid", "partial", "unpaid"].includes(savedPaymentStatus)
+        ? savedPaymentStatus as "paid" | "partial" | "unpaid"
+        : "unpaid";
     setPaymentStatus(ps);
     const pays = Array.isArray(o.payments) ? o.payments : [];
     setPaymentEntries(pays.map((p: any) => ({
@@ -3233,8 +3336,8 @@ export default function Orders() {
                         <td className="px-4 py-3">
                           <span className="font-bold text-[#162B4D]">{formatRupees(tot)}</span>
                           {o.paymentStatus && (
-                            <p className={`text-[10px] font-semibold mt-0.5 ${o.paymentStatus === "paid" ? "text-green-600" : o.paymentStatus === "partial" ? "text-amber-600" : "text-red-500"}`}>
-                              {o.paymentStatus === "paid" ? "Fully Paid" : o.paymentStatus === "partial" ? "Partial" : "Unpaid"}
+                            <p className={`text-[10px] font-semibold mt-0.5 ${paymentStatusTone(o.paymentStatus)}`}>
+                              {paymentStatusLabel(o.paymentStatus)}
                             </p>
                           )}
                         </td>
@@ -3304,6 +3407,13 @@ export default function Orders() {
                         {o.orderId && (
                           <p className="text-[10px] font-mono font-bold text-[#364F9F] mt-0.5">{o.orderId}</p>
                         )}
+                        {isFtwPaymentOnHold(o) && (
+                          <div className="mt-1.5">
+                            {String(o.paymentStatus ?? "").trim().toLowerCase() === "pending"
+                              ? <FtwPaymentCountdown order={o} mongoServerNow={mongoServerNow} />
+                              : <span className="text-[11px] font-semibold text-red-600">Payment failed · cleaning up</span>}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-4">
                         {items.length === 0 ? (
@@ -3335,7 +3445,7 @@ export default function Orders() {
                         {/* Payment mode change dropdown */}
                         <select
                           value={orderPaymentModeKey(o)}
-                          disabled={changingPayModeOrderId === String(o._id)}
+                          disabled={isFtwPaymentOnHold(o) || changingPayModeOrderId === String(o._id)}
                           onChange={(e) => changePaymentMode(String(o._id), e.target.value)}
                           className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 text-gray-700 bg-white cursor-pointer hover:border-blue-300 transition-colors max-w-[120px] font-medium"
                         >
@@ -3351,7 +3461,7 @@ export default function Orders() {
                           <div className="mt-1">
                             <select
                               value={o.upiVariant || ""}
-                              disabled={assigningVariantOrderId === String(o._id)}
+                              disabled={isFtwPaymentOnHold(o) || assigningVariantOrderId === String(o._id)}
                               onChange={(e) => assignUpiVariant(String(o._id), e.target.value)}
                               className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 text-gray-600 bg-white cursor-pointer hover:border-blue-300 transition-colors max-w-[120px]"
                             >
@@ -3360,6 +3470,11 @@ export default function Orders() {
                             </select>
                           </div>
                         )}
+                        {o.paymentStatus && (
+                          <p className={`mt-1 text-[10px] font-semibold ${paymentStatusTone(o.paymentStatus)}`}>
+                            {paymentStatusLabel(o.paymentStatus)}
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-4">
                         {o.subHubName
@@ -3367,7 +3482,11 @@ export default function Orders() {
                           : <span className="text-sm text-black">—</span>}
                       </td>
                       <td className="px-3 py-4">
-                        {o.deliveryType === "takeaway" ? (
+                        {isFtwPaymentOnHold(o) ? (
+                          <span className="text-sm text-gray-400 italic">On hold</span>
+                        ) : isFtwPaymentOnHold(o) ? (
+                          <span className="text-sm text-gray-400 italic">On hold</span>
+                        ) : o.deliveryType === "takeaway" ? (
                           <span className="text-sm text-black italic">Takeaway</span>
                         ) : slot ? (
                           <span className="text-sm font-medium text-black whitespace-nowrap">{slot}</span>
@@ -3384,6 +3503,11 @@ export default function Orders() {
                       <td className="px-4 py-4">
                         {activeTab === "deleted" ? (
                           <span className="text-sm text-gray-400 italic">Deleted</span>
+                        ) : isFtwPaymentOnHold(o) ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-semibold text-amber-700">On hold</span>
+                            <span className="text-[10px] text-gray-500">Waiting for payment</span>
+                          </div>
                         ) : o.status === "pending" ? (
                           <div className="flex items-center gap-1.5">
                             <button
@@ -3445,11 +3569,11 @@ export default function Orders() {
                           {activeTab === "deleted" ? (
                             <>
                               <button
-                                title="Restore Order"
+                                title={isFtwPaymentRestoreBlocked(o) ? "Failed or expired FTW payment orders cannot be restored" : "Restore Order"}
                                 aria-label={`Restore order ${o.orderId || o._id}`}
                                 data-testid={`button-restore-order-${String(o._id)}`}
                                 onClick={() => handleRestoreOrder(o)}
-                                disabled={restoringOrderId === String(o._id)}
+                                disabled={restoringOrderId === String(o._id) || isFtwPaymentRestoreBlocked(o)}
                                 className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-emerald-50 transition-colors disabled:opacity-50"
                               >
                                 <RotateCcw className="w-[18px] h-[18px] text-emerald-600" />
@@ -3470,7 +3594,8 @@ export default function Orders() {
                               <button
                                 title="Edit"
                                 onClick={() => openEditOrder(o)}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-blue-50 transition-colors"
+                                disabled={isFtwPaymentOnHold(o)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-40"
                               >
                                 <MaskIcon src={iconEdit} color="#1A56DB" className="w-[18px] h-[18px]" />
                               </button>
@@ -3588,7 +3713,7 @@ export default function Orders() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-gray-500">Status</Label>
                   <Select value={editForm.status} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectTrigger disabled={isFtwPaymentOnHold(editingOrder)} className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {ALL_STATUSES.map((s) => (
                         <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>
@@ -5322,19 +5447,26 @@ export default function Orders() {
                     + (Number(selectedOrder.instantDeliveryCharge) || 0)
                     + (Number(selectedOrder.deliveryCharge) || 0)
                   );
-                  // For unpaid orders, never fall back to summing the payments[] array —
-                  // those entries represent the intended payment method, not collected cash.
+                   // For unpaid or pending orders, never fall back to summing payments[] —
+                   // those entries may represent intended checkout methods, not collected cash.
+                   const isPaid = isFullyPaidStatus(status);
                    const paid = _grand === 0
                      ? 0
-                     : status === "unpaid"
+                      : isPaid
+                        ? (Number(selectedOrder.paidAmount) || pays.reduce((s, p) => s + (Number(p?.amount) || 0), 0) || _grand)
+                        : ["unpaid", "pending", "failed"].includes(status)
                        ? (Number(selectedOrder.paidAmount) || 0)
                        : (Number(selectedOrder.paidAmount) || pays.reduce((s, p) => s + (Number(p?.amount) || 0), 0));
                    const due = _grand === 0
                      ? 0
-                     : status === "paid" ? 0 : (Number(selectedOrder.dueAmount) || Math.max(0, _grand - paid));
+                      : isPaid ? 0 : (Number(selectedOrder.dueAmount) || Math.max(0, _grand - paid));
                   if (!pays.length && !status && !paid) return null;
-                  const statusStyle = status === "paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : status === "partial" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-600 border-red-200";
-                  const statusLabel = status === "paid" ? "Fully Paid" : status === "partial" ? "Partial" : "Unpaid";
+                   const statusStyle = isPaid
+                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                     : status === "partial" || status === "pending"
+                       ? "bg-amber-50 text-amber-700 border-amber-200"
+                       : "bg-red-50 text-red-600 border-red-200";
+                   const statusLabel = paymentStatusLabel(status);
                   return (
                     <div className="px-6 py-6">
                       <div className="flex items-center justify-between mb-5">
@@ -5645,7 +5777,7 @@ export default function Orders() {
                           </div>
                           <button
                             onClick={() => { setSelectedDeliveryPersonId("__none__"); setTimeout(() => handleAssignDelivery(), 0); }}
-                            disabled={assigningDelivery}
+                            disabled={assigningDelivery || isFtwPaymentOnHold(selectedOrder)}
                             className="text-xs font-bold text-red-600 hover:bg-red-600 hover:text-white border border-red-200 bg-white px-3 py-1.5 rounded-lg transition-colors"
                           >
                             Remove
@@ -5665,7 +5797,7 @@ export default function Orders() {
                       )}
                       <div className="flex gap-2">
                         <Select value={selectedDeliveryPersonId} onValueChange={setSelectedDeliveryPersonId}>
-                          <SelectTrigger className="h-11 flex-1 text-sm rounded-xl font-semibold">
+                          <SelectTrigger disabled={isFtwPaymentOnHold(selectedOrder)} className="h-11 flex-1 text-sm rounded-xl font-semibold">
                             <SelectValue placeholder="Select delivery partner..." />
                           </SelectTrigger>
                           <SelectContent>
@@ -5693,7 +5825,7 @@ export default function Orders() {
                         </Select>
                         <Button
                           onClick={handleAssignDelivery}
-                          disabled={assigningDelivery || !selectedDeliveryPersonId}
+                          disabled={assigningDelivery || !selectedDeliveryPersonId || isFtwPaymentOnHold(selectedOrder)}
                           className="bg-[#364F9F] hover:bg-[#2C418A] h-11 px-5 text-white font-bold rounded-xl"
                         >
                           {assigningDelivery ? "Saving..." : "Assign"}
@@ -5716,6 +5848,18 @@ export default function Orders() {
                     <SolidStatusBadge status={selectedOrder.status} deliveryType={selectedOrder.deliveryType} />
                   </div>
                   <div className="space-y-3">
+                    {isFtwPaymentOnHold(selectedOrder) && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
+                        {String(selectedOrder.paymentStatus ?? "").trim().toLowerCase() === "pending" ? (
+                          <>
+                            <p className="text-sm font-bold text-amber-800">FTW payment is pending. Order actions are on hold.</p>
+                            <FtwPaymentCountdown order={selectedOrder} mongoServerNow={mongoServerNow} />
+                          </>
+                        ) : (
+                          <p className="text-sm font-bold text-red-700">FTW payment failed. The order will be moved to Deleted and inventory restored.</p>
+                        )}
+                      </div>
+                    )}
                     {(() => {
                       const isTakeaway = selectedOrder.deliveryType === "takeaway";
                       const isPreorder = String(selectedOrder.orderType ?? "").toLowerCase() === "preorder";
@@ -5739,7 +5883,7 @@ export default function Orders() {
                         <>
                           <div className="flex gap-2">
                             <Select value={editStatus} onValueChange={setEditStatus}>
-                              <SelectTrigger className="h-11 flex-1 text-sm rounded-xl font-semibold"><SelectValue /></SelectTrigger>
+                              <SelectTrigger disabled={isFtwPaymentOnHold(selectedOrder)} className="h-11 flex-1 text-sm rounded-xl font-semibold"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 {statusOptions.map((s) => {
                                   const disabled = requiresAssignee(s);
@@ -5756,7 +5900,7 @@ export default function Orders() {
                             </Select>
                             <Button
                               onClick={handleStatusUpdate}
-                              disabled={savingStatus || blocked || editStatus === displayStatus(selectedOrder.status, selectedOrder.deliveryType)}
+                              disabled={savingStatus || blocked || isFtwPaymentOnHold(selectedOrder) || editStatus === displayStatus(selectedOrder.status, selectedOrder.deliveryType)}
                               className="bg-[#F05B4E] hover:bg-[#D94A3D] h-11 px-5 text-white font-bold rounded-xl"
                             >
                               {savingStatus ? "Saving..." : "Update"}

@@ -1,11 +1,11 @@
 ---
-name: Storefront order paymentStatus on arrival
-description: FTN/FTW storefront orders arrive pre-paid (paymentStatus:"paid") even when status:"pending" — filtering by paymentStatus ne "paid" skips them.
+name: Storefront payment lifecycle differs by source
+description: Preserve FTN's legacy paid-on-arrival behavior while keeping FTW pending, completed, and failed payments on their own lifecycle.
 ---
 
 ## Rule
-When scanning for storefront (FT*) orders that need auto-fix, do **not** filter by `paymentStatus: { $ne: "paid" }`. Some FTW records can have a Razorpay transaction ID while still carrying `paymentStatus: "unpaid"`, empty `payments`, and a full `dueAmount`.
+Treat FTN and FTW payment states separately. Keep FTN's existing paid-on-arrival behavior unchanged. FTW orders begin pending and must remain on hold until payment is completed; treat `completed` as fully paid. A failed FTW payment must remain recorded until Admin soft-deletes the order and restores inventory. Payment auto-fixes must not overwrite pending or failed FTW records.
 
-**Why:** Storefront orders (FTN, FTW) are intended to be pre-paid via Razorpay at checkout. Most arrive in the DB with `paymentStatus: "paid"` and `status: "pending"`, but some FTW records have a Razorpay transaction ID without the corresponding paid fields.
+**Why:** A blanket assumption that all storefront orders are already paid can unlock FTW fulfillment too early or erase the failure signal needed for inventory recovery.
 
-**How to apply:** The `autoFixStorefrontPaymentMode` background job in `artifacts/api-server/src/index.ts` filters only by `status: { $nin: ["delivered", "cancelled", "rejected"] }` and `isDeleted: { $ne: true }` — never by paymentStatus. A future server-side safeguard should reconcile FTW/Razorpay records rather than relying only on the storefront callback.
+**How to apply:** When changing FT* payment callbacks, migrations, or Admin payment logic, branch by order source instead of applying one payment rule to all storefront orders. FTW checkout must write `completed` on successful settlement and retain `failed` until Admin cleanup; it must not hard-delete failed orders first.

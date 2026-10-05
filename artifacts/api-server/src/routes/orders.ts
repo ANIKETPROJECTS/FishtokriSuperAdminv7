@@ -15,6 +15,11 @@ import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { HubUser } from "../db/models/hub-user.js";
 import { sendOrderConfirmed, sendOutForDelivery, sendOrderCancelled } from "../services/whatsapp.js";
+import {
+  ensureFtwPendingPaymentExpiryDates,
+  isFtwOrder,
+  isFtwPaymentOnHold,
+} from "../services/ftw-order-lifecycle.js";
 
 const router = Router();
 router.use(requireAuth as any);
@@ -552,6 +557,11 @@ router.get("/", async (req: ScopedRequest, res) => {
   try {
     const conn = await getOrdersDb();
     const db = conn.db;
+    try {
+      await ensureFtwPendingPaymentExpiryDates(db.collection(COLLECTION));
+    } catch (err) {
+      req.log.error({ err }, "Could not initialize FTW payment expiry timestamps");
+    }
 
     const {
       q = "",
@@ -730,7 +740,23 @@ router.get("/", async (req: ScopedRequest, res) => {
     ]);
 
     const displayOrders = await enrichOrderTimeslots(orders as any[], req.log);
-    res.json({ orders: displayOrders, total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) });
+    let mongoServerNow = new Date();
+    if (displayOrders.some((order: any) => isFtwPaymentOnHold(order) && String(order.paymentStatus).toLowerCase() === "pending")) {
+      try {
+        const hello = await db.admin().command({ hello: 1 });
+        if (hello.localTime instanceof Date) mongoServerNow = hello.localTime;
+      } catch (err) {
+        req.log.warn({ err }, "Could not read MongoDB server time for FTW payment countdown");
+      }
+    }
+    res.json({
+      orders: displayOrders,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum),
+      mongoServerNow,
+    });
 
     // Fire-and-forget: deduct inventory for any active orders that arrived without
     // going through applyOrderInventoryOnCreate (e.g. customer-app-created orders).
@@ -1581,6 +1607,13 @@ router.post("/dispatch-by-qr", async (req: ScopedRequest, res) => {
       res.status(404).json({ error: "NotFound", message: "Order not found" });
       return;
     }
+    if (isFtwPaymentOnHold(existing)) {
+      res.status(409).json({
+        error: "FtwPaymentPending",
+        message: "This FTW order cannot be dispatched until payment is completed.",
+      });
+      return;
+    }
     const orderStatus = String(existing.status ?? "").toLowerCase();
     if (["cancelled", "canceled", "delivered", "rejected"].includes(orderStatus)) {
       const statusLabel = orderStatus === "delivered"
@@ -1701,6 +1734,7 @@ router.get("/:id", async (req: ScopedRequest, res) => {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
     const conn = await getOrdersDb();
+    await ensureFtwPendingPaymentExpiryDates(conn.db.collection(COLLECTION));
     const order = await conn.db.collection(COLLECTION).findOne({ _id: oid });
     if (!order || !isOrderInScope(req.scope, order, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
@@ -1722,6 +1756,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       assignedDeliveryPersonId, assignedDeliveryPersonName,
       customerName, phone, email, address, deliveryArea, deliveryAddressDetail,
       paymentStatus, payments, paidAmount, paymentMode, upiVariant,
+      razorpayPaymentId, razorpayOrderId, upiTransactionId, gatewayTransactionId,
       items, deliveryType,
       superHubId, superHubName, subHubId, subHubName,
       scheduleType, deliveryDate, timeslotId, timeslotLabel, timeslotStart, timeslotEnd,
@@ -1794,11 +1829,15 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       })).filter((it: any) => it.name && it.quantity > 0);
     }
 
-    if (paymentStatus !== undefined && ["paid", "partial", "unpaid"].includes(String(paymentStatus))) {
-      update.paymentStatus = String(paymentStatus);
+    if (paymentStatus !== undefined && ["paid", "completed", "failed", "partial", "unpaid"].includes(String(paymentStatus).trim().toLowerCase())) {
+      update.paymentStatus = String(paymentStatus).trim().toLowerCase();
     }
     if (paymentMode !== undefined) update.paymentMode = paymentMode ? String(paymentMode) : "";
     if (upiVariant !== undefined) update.upiVariant = upiVariant ? String(upiVariant).trim() : null;
+    if (razorpayPaymentId !== undefined) update.razorpayPaymentId = String(razorpayPaymentId ?? "").trim();
+    if (razorpayOrderId !== undefined) update.razorpayOrderId = String(razorpayOrderId ?? "").trim();
+    if (upiTransactionId !== undefined) update.upiTransactionId = String(upiTransactionId ?? "").trim();
+    if (gatewayTransactionId !== undefined) update.gatewayTransactionId = String(gatewayTransactionId ?? "").trim();
     if (Array.isArray(payments)) {
       update.payments = payments
         .map((p: any) => ({
@@ -1838,7 +1877,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         update.paymentMode = "";
         update.paymentStatus = "paid";
       }
-      update.dueAmount = totalNum === 0 || String(effectivePaymentStatus) === "paid"
+      update.dueAmount = totalNum === 0 || ["paid", "completed"].includes(String(effectivePaymentStatus).toLowerCase())
         ? 0
         : Math.max(0, totalNum - paidNum);
     } else if (total !== undefined) {
@@ -1857,12 +1896,53 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         update.paymentMode = "";
         update.paymentStatus = "paid";
       }
-      update.dueAmount = String(effectivePaymentStatus) === "paid" ? 0 : Math.max(0, (Number(total) || 0) - existingPaid);
+      update.dueAmount = ["paid", "completed"].includes(String(effectivePaymentStatus).toLowerCase())
+        ? 0
+        : Math.max(0, (Number(total) || 0) - existingPaid);
     }
     const conn = await getOrdersDb();
     const prev = await conn.db.collection(COLLECTION).findOne({ _id: oid });
     if (!prev || !isOrderInScope(req.scope, prev, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
+    }
+    const ftwPaymentHold = isFtwPaymentOnHold(prev);
+    const successfulFtwSettlement =
+      isFtwOrder(prev) &&
+      String(prev.paymentStatus ?? "").trim().toLowerCase() === "pending" &&
+      String(paymentStatus ?? "").trim().toLowerCase() === "completed";
+    const failedFtwPaymentSignal =
+      isFtwOrder(prev) &&
+      String(prev.paymentStatus ?? "").trim().toLowerCase() === "pending" &&
+      String(paymentStatus ?? "").trim().toLowerCase() === "failed";
+    const isStatusTransition = status !== undefined && String(status) !== String(prev.status ?? "");
+    const otherPaymentDetailsChanged =
+      payments !== undefined ||
+      paidAmount !== undefined ||
+      paymentMode !== undefined ||
+      upiVariant !== undefined ||
+      razorpayPaymentId !== undefined ||
+      razorpayOrderId !== undefined ||
+      upiTransactionId !== undefined ||
+      gatewayTransactionId !== undefined;
+    const paymentDetailsChanged =
+      (paymentStatus !== undefined && !successfulFtwSettlement && !failedFtwPaymentSignal) ||
+      (otherPaymentDetailsChanged && !successfulFtwSettlement);
+    const fulfillmentAssignmentChanged =
+      assignedDeliveryPersonId !== undefined ||
+      assignedDeliveryPersonName !== undefined ||
+      subHubId !== undefined ||
+      subHubName !== undefined;
+    if (ftwPaymentHold && (isStatusTransition || paymentDetailsChanged || fulfillmentAssignmentChanged)) {
+      res.status(409).json({
+        error: "FtwPaymentPending",
+        message: "This FTW order is on hold until payment is completed.",
+      });
+      return;
+    }
+    if (successfulFtwSettlement) {
+      const settledTotal = Number(update.total ?? prev.total) || 0;
+      update.paidAmount = Math.max(0, Number(paidAmount) || settledTotal);
+      update.dueAmount = 0;
     }
     addDeliveryLifecycleTimestamps(update, prev, { status, assignedDeliveryPersonId }, updateTime);
     // Validate preorder constraints after loading the current order so partial
@@ -1941,7 +2021,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     }
 
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
-      { _id: oid },
+      { _id: oid, isDeleted: { $ne: true } },
       { $set: update },
       { returnDocument: "after" }
     );
@@ -2336,12 +2416,47 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
     if (!existing || !isOrderInScope(req.scope, existing, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found or not in deleted state" }); return;
     }
+    const failedFtwPayment =
+      isFtwPaymentOnHold(existing) &&
+      String(existing.paymentStatus ?? "").trim().toLowerCase() === "failed";
+    const expiredFtwPayment = isFtwOrder(existing) &&
+      String(existing.paymentStatus ?? "").trim().toLowerCase() === "pending" &&
+      !!(await conn.db.collection(COLLECTION).findOne(
+        {
+          _id: oid,
+          paymentExpiresAt: { $type: "date" },
+          $expr: { $lte: ["$paymentExpiresAt", "$$NOW"] },
+        },
+        { projection: { _id: 1 } },
+      ));
+    if (failedFtwPayment || expiredFtwPayment) {
+      res.status(409).json({
+        error: "FtwPaymentExpired",
+        message: "A failed or expired FTW payment order cannot be restored.",
+      });
+      return;
+    }
 
     // Atomically claim the restore: the filter requires isDeleted: true, so if two
     // requests race (e.g. a double-click) only the first one's update matches —
     // the second gets null back and is rejected instead of re-deducting inventory.
     const claimed = await conn.db.collection(COLLECTION).findOneAndUpdate(
-      { _id: oid, isDeleted: true },
+      {
+        _id: oid,
+        isDeleted: true,
+        $nor: [
+          {
+            orderId: { $regex: "^#*FTW", $options: "i" },
+            paymentStatus: { $regex: "^failed$", $options: "i" },
+          },
+          {
+            orderId: { $regex: "^#*FTW", $options: "i" },
+            paymentStatus: { $regex: "^pending$", $options: "i" },
+            paymentExpiresAt: { $type: "date" },
+            $expr: { $lte: ["$paymentExpiresAt", "$$NOW"] },
+          },
+        ],
+      },
       { $set: { isDeleted: false, inventoryDeducted: true }, $unset: { deletedAt: "" } },
       { returnDocument: "before" }
     );
