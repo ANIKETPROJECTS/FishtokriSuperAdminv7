@@ -819,6 +819,10 @@ export default function Orders() {
   // Restore order (from Deleted tab)
   const [restoringOrderId, setRestoringOrderId] = useState<string | null>(null);
 
+  // Permanent deletion is available only from the Deleted tab.
+  const [permanentlyDeletingOrder, setPermanentlyDeletingOrder] = useState<any>(null);
+  const [confirmingPermanentDelete, setConfirmingPermanentDelete] = useState(false);
+
   // Accept / Reject order
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [rejectingOrder, setRejectingOrder] = useState<any>(null);
@@ -2892,6 +2896,29 @@ export default function Orders() {
     } finally { setRestoringOrderId(null); }
   };
 
+  const handlePermanentlyDeleteOrder = async () => {
+    const order = permanentlyDeletingOrder;
+    if (!order) return;
+    setConfirmingPermanentDelete(true);
+    try {
+      await apiFetch(`/api/orders/${order._id}/permanent`, { method: "DELETE" });
+      toast({
+        title: "Order permanently deleted",
+        description: `${order.orderId || "Order"} was removed from the orders database.`,
+      });
+      setOrders((prev) => prev.filter((o) => String(o._id) !== String(order._id)));
+      setTotal((current) => Math.max(0, current - 1));
+      if (selectedOrder && String(selectedOrder._id) === String(order._id)) setSelectedOrder(null);
+      setPermanentlyDeletingOrder(null);
+      if (orders.length === 1 && page > 1) setPage((current) => Math.max(1, current - 1));
+      loadStats();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setConfirmingPermanentDelete(false);
+    }
+  };
+
   const clearFilters = () => {
     setSearch(""); setStatusFilter(""); setDeliveryTypeFilter("");
     setDateFrom(""); setDateTo(""); setSortField("createdAt"); setSortDir("desc");
@@ -3419,11 +3446,23 @@ export default function Orders() {
                             <>
                               <button
                                 title="Restore Order"
+                                aria-label={`Restore order ${o.orderId || o._id}`}
+                                data-testid={`button-restore-order-${String(o._id)}`}
                                 onClick={() => handleRestoreOrder(o)}
                                 disabled={restoringOrderId === String(o._id)}
                                 className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-emerald-50 transition-colors disabled:opacity-50"
                               >
                                 <RotateCcw className="w-[18px] h-[18px] text-emerald-600" />
+                              </button>
+                              <button
+                                title="Permanently Delete Order"
+                                aria-label={`Permanently delete order ${o.orderId || o._id}`}
+                                data-testid={`button-permanent-delete-order-${String(o._id)}`}
+                                onClick={() => setPermanentlyDeletingOrder(o)}
+                                disabled={confirmingPermanentDelete}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+                              >
+                                <Trash className="w-[18px] h-[18px] text-red-600" />
                               </button>
                             </>
                           ) : (
@@ -3619,6 +3658,58 @@ export default function Orders() {
                   className="bg-red-600 hover:bg-red-700 h-9 text-white"
                 >
                   {confirmingDelete ? "Moving..." : "Move to Deleted"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Permanent delete confirmation (only available for orders in Deleted) */}
+      <Dialog
+        open={!!permanentlyDeletingOrder}
+        onOpenChange={(open) => {
+          if (!open && !confirmingPermanentDelete) setPermanentlyDeletingOrder(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          {permanentlyDeletingOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-red-700 flex items-center gap-2">
+                  <Trash className="w-4 h-4" />
+                  Permanently Delete Order
+                </DialogTitle>
+              </DialogHeader>
+              <div className="py-2 space-y-3">
+                <p className="text-sm text-gray-700" data-testid="text-permanent-delete-warning">
+                  Permanently delete{" "}
+                  <span className="font-semibold text-[#162B4D]">
+                    {permanentlyDeletingOrder.orderId || "this order"}
+                  </span>
+                  ? Its order record will be removed from MongoDB and cannot be restored.
+                </p>
+                <p className="text-xs text-gray-500">
+                  Related inventory movement history will remain for audit.
+                </p>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  data-testid="button-cancel-permanent-delete"
+                  onClick={() => setPermanentlyDeletingOrder(null)}
+                  disabled={confirmingPermanentDelete}
+                  className="h-9"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  data-testid="button-confirm-permanent-delete"
+                  onClick={handlePermanentlyDeleteOrder}
+                  disabled={confirmingPermanentDelete}
+                  className="bg-red-600 hover:bg-red-700 h-9 text-white"
+                >
+                  {confirmingPermanentDelete ? "Deleting..." : "Delete Permanently"}
                 </Button>
               </DialogFooter>
             </>
