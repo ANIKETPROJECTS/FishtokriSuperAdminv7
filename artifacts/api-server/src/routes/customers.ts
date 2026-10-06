@@ -4,10 +4,32 @@ import { getCustomersConnection } from "../db/customers-connection.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
+import { customerExportPasswordMatches } from "../lib/customer-export-password.mjs";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
 router.use(loadScope as any);
+
+router.post("/verify-export-password", (req, res) => {
+  const configuredPassword = process.env.CUSTOMER_EXPORT_PASSWORD;
+  if (!configuredPassword) {
+    res.status(503).json({
+      error: "ExportPasswordNotConfigured",
+      message: "Customer export password is not configured",
+    });
+    return;
+  }
+
+  if (!customerExportPasswordMatches(req.body?.password, configuredPassword)) {
+    res.status(401).json({
+      error: "InvalidExportPassword",
+      message: "The export password is incorrect",
+    });
+    return;
+  }
+
+  res.json({ ok: true });
+});
 
 /**
  * For a non-master user, returns the set of customer identifiers (phones,

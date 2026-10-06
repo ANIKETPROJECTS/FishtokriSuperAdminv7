@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { filterCustomerRecords } from "../src/lib/customer-export.mjs";
+import { filterCustomerRecords, toCustomerExportRow } from "../src/lib/customer-export.mjs";
 
 const customers = [
   {
@@ -61,4 +61,16 @@ test("preserves full-list wallet sorting after filtering", () => {
   });
 
   assert.deepEqual(result.map((customer) => customer.id), ["newer-match", "older-match"]);
+});
+
+test("exports only the Full Name and Phone columns", () => {
+  const row = toCustomerExportRow({
+    name: "Anita Patil",
+    phone: "0987654321",
+    email: "anita@example.com",
+    walletBalance: 250,
+  });
+
+  assert.deepEqual(row, { "Full Name": "Anita Patil", Phone: "0987654321" });
+  assert.deepEqual(Object.keys(row), ["Full Name", "Phone"]);
 });

@@ -57,3 +57,10 @@ export function filterCustomerRecords(customers, filters = {}) {
 
   return result;
 }
+
+export function toCustomerExportRow(customer) {
+  return {
+    "Full Name": String(customer.name ?? ""),
+    Phone: String(customer.phone ?? ""),
+  };
+}

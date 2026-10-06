@@ -26,7 +26,7 @@ import iconEdit from "@/assets/icon-edit.png";
 import iconDelete from "@/assets/icon-delete.png";
 import { isPaymentStatusPaid, paymentStatusDisplayLabel } from "@/lib/invoice-payment-status.mjs";
 import * as XLSX from "xlsx";
-import { filterCustomerRecords } from "@/lib/customer-export.mjs";
+import { filterCustomerRecords, toCustomerExportRow } from "@/lib/customer-export.mjs";
 
 function MaskIcon({ src, color = "#1A56DB", className = "w-4 h-4" }: { src: string; color?: string; className?: string }) {
   return (
@@ -122,6 +122,19 @@ async function fetchAllCustomers(params: { search?: string; sort?: string }): Pr
   }
 
   return results;
+}
+
+async function verifyCustomerExportPassword(password: string): Promise<void> {
+  const res = await fetch(`${getBase()}/api/customers/verify-export-password`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ password }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.message || "Could not verify the export password");
 }
 
 async function fetchCustomer(id: string): Promise<Customer> {
@@ -304,25 +317,6 @@ function addressText(address: any) {
   return parts.length ? parts.join(", ") : JSON.stringify(address, null, 2);
 }
 
-function addWorkbookSheet(workbook: XLSX.WorkBook, name: string, columns: string[], rows: Record<string, any>[]) {
-  const worksheet = XLSX.utils.aoa_to_sheet([
-    columns,
-    ...rows.map((row) => columns.map((column) => row[column] ?? "")),
-  ]);
-  worksheet["!cols"] = columns.map((column) => ({
-    wch: Math.min(32, Math.max(14, column.length + 2)),
-  }));
-  XLSX.utils.book_append_sheet(workbook, worksheet, name);
-}
-
-function jsonForExcel(value: any) {
-  try {
-    return JSON.stringify(value ?? null);
-  } catch {
-    return "";
-  }
-}
-
 function statusLabel(status: any) {
   return String(status || "unknown").replace(/_/g, " ");
 }
@@ -338,6 +332,9 @@ export default function Customers() {
   const [detailCustomerId, setDetailCustomerId] = useState<string | null>(null);
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportPasswordDialogOpen, setIsExportPasswordDialogOpen] = useState(false);
+  const [exportPassword, setExportPassword] = useState("");
+  const [exportPasswordError, setExportPasswordError] = useState("");
 
   const [filterOrders, setFilterOrders] = useState<"all" | "has" | "none">("all");
   const [filterEmail, setFilterEmail] = useState<"all" | "yes" | "no">("all");
@@ -411,9 +408,26 @@ export default function Customers() {
     setFilterWallet("all"); setFilterJoinedFrom(""); setFilterJoinedTo(""); setPage(1);
   };
 
+  const openExportPasswordDialog = () => {
+    setExportPassword("");
+    setExportPasswordError("");
+    setIsExportPasswordDialogOpen(true);
+  };
+
   const handleExportExcel = async () => {
+    if (!exportPassword) {
+      setExportPasswordError("Enter the export password to continue.");
+      return;
+    }
+
     setIsExporting(true);
+    let passwordVerified = false;
     try {
+      await verifyCustomerExportPassword(exportPassword);
+      passwordVerified = true;
+      setIsExportPasswordDialogOpen(false);
+      setExportPassword("");
+
       const allCustomers = await fetchAllCustomers({ search: debouncedSearch, sort });
       const exportCustomers = filterCustomerRecords(allCustomers, {
         filterOrders,
@@ -425,137 +439,30 @@ export default function Customers() {
         sort,
       });
 
-      const customerRows = exportCustomers.map((customer) => {
-        const { current, history, all } = splitOrders(customer);
-        return {
-          "Customer ID": customer.id,
-          Name: customer.name || "",
-          Phone: customer.phone || "",
-          Email: customer.email || "",
-          "Date of Birth": customer.dateOfBirth || "",
-          "Wallet Balance (₹)": Number(customer.walletBalance) || 0,
-          "Total Spend (₹)": getCustomerTotalSpend(customer),
-          "Total Due (₹)": Number(customer.totalDue) || 0,
-          "Total Orders": all.length,
-          "Active Orders": current.length,
-          "Order History": history.length,
-          "Saved Addresses": customer.addresses?.length ?? 0,
-          "Active Coupons": customer.activeCoupons?.length ?? 0,
-          "Used Coupons": customer.usedCoupons?.length ?? 0,
-          "Wallet Transactions": customer.walletTransactions?.length ?? 0,
-          "Joined At": customer.createdAt || "",
-          "Updated At": customer.updatedAt || "",
-        };
-      });
-
-      const orderRows: Record<string, any>[] = [];
-      const addressRows: Record<string, any>[] = [];
-      const walletTransactionRows: Record<string, any>[] = [];
-      const couponRows: Record<string, any>[] = [];
-
-      for (const customer of exportCustomers) {
-        const { current, history } = splitOrders(customer);
-        for (const [group, orders] of [["Active", current], ["History", history]] as const) {
-          for (const order of orders) {
-            orderRows.push({
-              "Customer ID": customer.id,
-              "Customer Name": customer.name || "",
-              "Customer Phone": customer.phone || "",
-              "Order Group": group,
-              "Order ID": getOrderId(order),
-              "Order Date": order.createdAt || order.placedAt || "",
-              "Delivery Date": order.deliveryDate || "",
-              Status: statusLabel(order.status),
-              "Payment Status": order.paymentStatus || "",
-              "Payment Mode": order.paymentMode || "",
-              "Total (₹)": getOrderTotal(order),
-              "Paid Amount (₹)": Number(order.paidAmount) || 0,
-              "Due Amount (₹)": Number(order.dueAmount) || 0,
-              Items: jsonForExcel(order.items ?? []),
-              Payments: jsonForExcel(order.payments ?? []),
-              "Full Order Details": jsonForExcel(order),
-            });
-          }
-        }
-
-        for (const [index, address] of (customer.addresses ?? []).entries()) {
-          addressRows.push({
-            "Customer ID": customer.id,
-            "Customer Name": customer.name || "",
-            Phone: customer.phone || "",
-            "Address Number": index + 1,
-            Label: address?.label || address?.type || "",
-            "Full Address": addressText(address),
-            "Address Details": jsonForExcel(address),
-          });
-        }
-
-        for (const transaction of customer.walletTransactions ?? []) {
-          walletTransactionRows.push({
-            "Customer ID": customer.id,
-            "Customer Name": customer.name || "",
-            Phone: customer.phone || "",
-            Date: transaction?.createdAt || transaction?.date || transaction?.timestamp || "",
-            Type: transaction?.type || transaction?.transactionType || "",
-            "Amount (₹)": Number(transaction?.amount ?? transaction?.delta) || 0,
-            "Balance After (₹)": transaction?.balanceAfter ?? transaction?.balance ?? "",
-            Reason: transaction?.reason || transaction?.note || transaction?.description || "",
-            "Transaction Details": jsonForExcel(transaction),
-          });
-        }
-
-        for (const [type, coupons] of [
-          ["Active", customer.activeCoupons ?? []],
-          ["Used", customer.usedCoupons ?? []],
-        ] as const) {
-          for (const coupon of coupons) {
-            couponRows.push({
-              "Customer ID": customer.id,
-              "Customer Name": customer.name || "",
-              Phone: customer.phone || "",
-              "Coupon Type": type,
-              "Coupon Code": coupon?.code || coupon?.couponCode || "",
-              "Coupon Name": coupon?.name || coupon?.title || "",
-              "Coupon Details": jsonForExcel(coupon),
-            });
-          }
-        }
-      }
-
+      const worksheet = XLSX.utils.aoa_to_sheet([
+        ["Full Name", "Phone"],
+        ...exportCustomers.map((customer) => {
+          const row = toCustomerExportRow(customer);
+          return [row["Full Name"], row.Phone];
+        }),
+      ]);
+      worksheet["!cols"] = [{ wch: 32 }, { wch: 20 }];
       const workbook = XLSX.utils.book_new();
-      addWorkbookSheet(workbook, "Customers", [
-        "Customer ID", "Name", "Phone", "Email", "Date of Birth",
-        "Wallet Balance (₹)", "Total Spend (₹)", "Total Due (₹)",
-        "Total Orders", "Active Orders", "Order History", "Saved Addresses",
-        "Active Coupons", "Used Coupons", "Wallet Transactions", "Joined At", "Updated At",
-      ], customerRows);
-      addWorkbookSheet(workbook, "Orders", [
-        "Customer ID", "Customer Name", "Customer Phone", "Order Group", "Order ID",
-        "Order Date", "Delivery Date", "Status", "Payment Status", "Payment Mode",
-        "Total (₹)", "Paid Amount (₹)", "Due Amount (₹)", "Items", "Payments", "Full Order Details",
-      ], orderRows);
-      addWorkbookSheet(workbook, "Addresses", [
-        "Customer ID", "Customer Name", "Phone", "Address Number", "Label", "Full Address", "Address Details",
-      ], addressRows);
-      addWorkbookSheet(workbook, "Wallet Transactions", [
-        "Customer ID", "Customer Name", "Phone", "Date", "Type", "Amount (₹)",
-        "Balance After (₹)", "Reason", "Transaction Details",
-      ], walletTransactionRows);
-      addWorkbookSheet(workbook, "Coupons", [
-        "Customer ID", "Customer Name", "Phone", "Coupon Type", "Coupon Code", "Coupon Name", "Coupon Details",
-      ], couponRows);
-
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Customers");
       XLSX.writeFile(workbook, `customers-${new Date().toISOString().slice(0, 10)}.xlsx`);
+
       toast({
         title: "Customer Excel exported",
-        description: `${exportCustomers.length} customer${exportCustomers.length === 1 ? "" : "s"} exported with the applied filters.`,
+        description: `${exportCustomers.length} matching customer${exportCustomers.length === 1 ? "" : "s"} exported.`,
       });
     } catch (error) {
-      toast({
-        title: "Customer export failed",
-        description: error instanceof Error ? error.message : "Could not export customer details.",
-        variant: "destructive",
-      });
+      const message = error instanceof Error ? error.message : "Could not export customer details.";
+      if (!passwordVerified) {
+        setExportPassword("");
+        setExportPasswordError(message);
+      } else {
+        toast({ title: "Customer export failed", description: message, variant: "destructive" });
+      }
     } finally {
       setIsExporting(false);
     }
@@ -599,9 +506,9 @@ export default function Customers() {
         <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="outline"
-            onClick={handleExportExcel}
+            onClick={openExportPasswordDialog}
             disabled={isLoading || isExporting}
-            title="Export all matching customers and their details"
+            title="Export matching customer names and phone numbers"
             className="h-9 px-3 text-sm font-semibold text-[#162B4D] border-gray-200"
           >
             <Download className="w-4 h-4 mr-1.5" />
@@ -882,6 +789,68 @@ export default function Customers() {
         onConfirm={() => { if (deleteCustomerId) deleteMutation.mutate(deleteCustomerId); }}
         isPending={deleteMutation.isPending}
       />
+      <Dialog
+        open={isExportPasswordDialogOpen}
+        onOpenChange={(open) => {
+          setIsExportPasswordDialogOpen(open);
+          if (!open) {
+            setExportPassword("");
+            setExportPasswordError("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-black">Password required</DialogTitle>
+            <DialogDescription>
+              Enter the export password to download the filtered customer list. This is required every time.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleExportExcel();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="customer-export-password">Export password</Label>
+              <Input
+                id="customer-export-password"
+                type="password"
+                autoComplete="off"
+                value={exportPassword}
+                onChange={(event) => {
+                  setExportPassword(event.target.value);
+                  if (exportPasswordError) setExportPasswordError("");
+                }}
+                aria-invalid={!!exportPasswordError}
+                aria-describedby={exportPasswordError ? "customer-export-password-error" : undefined}
+                disabled={isExporting}
+                autoFocus
+              />
+              {exportPasswordError && (
+                <p id="customer-export-password-error" role="alert" className="text-sm text-red-600">
+                  {exportPasswordError}
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsExportPasswordDialogOpen(false)}
+                disabled={isExporting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isExporting || !exportPassword}>
+                {isExporting ? "Verifying…" : "Verify & Export"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

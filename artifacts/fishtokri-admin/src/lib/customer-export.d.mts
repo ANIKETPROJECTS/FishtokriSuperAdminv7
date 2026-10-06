@@ -12,3 +12,8 @@ export declare function filterCustomerRecords<T extends Record<string, any>>(
   customers: T[],
   filters?: CustomerExportFilters,
 ): T[];
+
+export declare function toCustomerExportRow(customer: { name?: unknown; phone?: unknown }): {
+  "Full Name": string;
+  Phone: string;
+};
