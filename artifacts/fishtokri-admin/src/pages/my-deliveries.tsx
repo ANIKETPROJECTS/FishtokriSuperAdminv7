@@ -18,6 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { OrderQrScanner } from "@/components/OrderQrScanner";
+import { isPaymentStatusPaid, paymentStatusDisplayLabel } from "@/lib/invoice-payment-status.mjs";
 
 function getAdminData() {
   try { return JSON.parse(localStorage.getItem("fishtokri_admin") || "null"); } catch { return null; }
@@ -157,7 +158,7 @@ function OrderDetailDialog({
       ? [{ mode: order.paymentMode, amount: paid, reference: "" }]
       : [];
 
-  const paymentStatusColor = order.paymentStatus === "paid"
+  const paymentStatusColor = isPaymentStatusPaid(order.paymentStatus)
     ? "bg-green-500"
     : order.paymentStatus === "partial"
       ? "bg-amber-500"
@@ -344,7 +345,7 @@ function OrderDetailDialog({
               <p className="text-[10px] font-black text-black uppercase tracking-widest">Payment</p>
               {order.paymentStatus && (
                 <span className={`text-[11px] font-black text-white px-2.5 py-1 rounded-lg uppercase tracking-wide ${paymentStatusColor}`}>
-                  {order.paymentStatus}
+                  {paymentStatusDisplayLabel(order.paymentStatus)}
                 </span>
               )}
             </div>

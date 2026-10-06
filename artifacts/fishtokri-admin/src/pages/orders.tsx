@@ -155,7 +155,7 @@ function isFullyPaidStatus(status: unknown): boolean {
 
 function paymentStatusLabel(status: unknown): string {
   const value = String(status ?? "").trim().toLowerCase();
-  if (isFullyPaidStatus(value)) return "Fully Paid";
+  if (isFullyPaidStatus(value)) return "Paid";
   if (value === "partial") return "Partial";
   if (value === "pending") return "Awaiting UPI";
   if (value === "failed") return "Payment Failed";

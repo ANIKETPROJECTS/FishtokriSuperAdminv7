@@ -1,11 +1,16 @@
-export function isInvoicePaid(order) {
-  const paymentStatus = String(order?.paymentStatus ?? "").trim().toLowerCase();
-  if (paymentStatus === "paid") return true;
-  if (paymentStatus !== "completed") return false;
+export function normalizePaymentStatus(status) {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "completed" ? "paid" : normalized;
+}
 
-  const orderIdentifier = String(order?.orderId || order?.invoiceNo || "")
-    .trim()
-    .replace(/^#+/, "")
-    .toUpperCase();
-  return orderIdentifier.startsWith("FTW");
+export function isPaymentStatusPaid(status) {
+  return normalizePaymentStatus(status) === "paid";
+}
+
+export function paymentStatusDisplayLabel(status) {
+  return isPaymentStatusPaid(status) ? "Paid" : String(status ?? "");
+}
+
+export function isInvoicePaid(order) {
+  return isPaymentStatusPaid(order?.paymentStatus);
 }

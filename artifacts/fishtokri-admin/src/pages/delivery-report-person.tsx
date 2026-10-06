@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { DateFilterBar, ModeTag, modeMeta, avatarColor, initials, today, daysAgo } from "./delivery-report";
+import { normalizePaymentStatus, paymentStatusDisplayLabel } from "@/lib/invoice-payment-status.mjs";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const FONT = "Poppins, sans-serif";
@@ -92,7 +93,8 @@ function OrderCard({ order }: { order: any }) {
   };
 
   const ss = STATUS_STYLES[order.status] ?? { bg: "bg-black/10", text: "text-black", label: order.status };
-  const ps = PAY_STYLES[order.paymentStatus ?? ""] ?? { bg: "bg-black/10", text: "text-black" };
+  const paymentStatusKey = normalizePaymentStatus(order.paymentStatus);
+  const ps = PAY_STYLES[paymentStatusKey] ?? { bg: "bg-black/10", text: "text-black" };
 
   return (
     <div className="bg-white rounded-2xl border border-black/8 shadow-sm p-4" style={{ fontFamily: FONT }}>
@@ -110,7 +112,7 @@ function OrderCard({ order }: { order: any }) {
           </span>
           {order.paymentStatus && (
             <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${ps.bg} ${ps.text}`}>
-              {order.paymentStatus}
+              {paymentStatusDisplayLabel(order.paymentStatus)}
             </span>
           )}
         </div>

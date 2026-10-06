@@ -1,18 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isInvoicePaid } from "../src/lib/invoice-payment-status.mjs";
+import {
+  isInvoicePaid,
+  isPaymentStatusPaid,
+  normalizePaymentStatus,
+  paymentStatusDisplayLabel,
+} from "../src/lib/invoice-payment-status.mjs";
 
-test("treats completed FTW payments as paid on invoices", () => {
+test("normalizes completed payment status to Paid for every order", () => {
+  assert.equal(isPaymentStatusPaid("completed"), true);
+  assert.equal(normalizePaymentStatus(" COMPLETED "), "paid");
+  assert.equal(paymentStatusDisplayLabel("completed"), "Paid");
   assert.equal(isInvoicePaid({ orderId: "#FTW2026010063", paymentStatus: "completed" }), true);
-  assert.equal(isInvoicePaid({ invoiceNo: "FTW2026010063", paymentStatus: " COMPLETED " }), true);
+  assert.equal(isInvoicePaid({ orderId: "#FTN2026010063", paymentStatus: "completed" }), true);
 });
 
-test("does not treat completed non-FTW orders as paid", () => {
-  assert.equal(isInvoicePaid({ orderId: "#FTN2026010063", paymentStatus: "completed" }), false);
-  assert.equal(isInvoicePaid({ orderId: "ORD-10063", paymentStatus: "completed" }), false);
+test("preserves unpaid, partial, pending, and failed statuses", () => {
+  assert.equal(isPaymentStatusPaid("paid"), true);
+  assert.equal(isPaymentStatusPaid("partial"), false);
+  assert.equal(isPaymentStatusPaid("pending"), false);
+  assert.equal(isPaymentStatusPaid("failed"), false);
+  assert.equal(paymentStatusDisplayLabel("partial"), "partial");
+  assert.equal(isInvoicePaid({ orderId: "ORD-10063", paymentStatus: "unpaid" }), false);
 });
 
-test("keeps paid status and FTW pending or failed statuses distinct", () => {
+test("displays paid status for existing paid orders and keeps FTW pending or failed distinct", () => {
   assert.equal(isInvoicePaid({ orderId: "FTN-10063", paymentStatus: "paid" }), true);
   assert.equal(isInvoicePaid({ orderId: "FTW2026010063", paymentStatus: "pending" }), false);
   assert.equal(isInvoicePaid({ orderId: "FTW2026010063", paymentStatus: "failed" }), false);

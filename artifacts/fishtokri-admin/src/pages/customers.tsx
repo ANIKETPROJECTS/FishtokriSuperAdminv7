@@ -24,6 +24,7 @@ import {
 import iconView from "@/assets/icon-view.png";
 import iconEdit from "@/assets/icon-edit.png";
 import iconDelete from "@/assets/icon-delete.png";
+import { isPaymentStatusPaid, paymentStatusDisplayLabel } from "@/lib/invoice-payment-status.mjs";
 
 function MaskIcon({ src, color = "#1A56DB", className = "w-4 h-4" }: { src: string; color?: string; className?: string }) {
   return (
@@ -1609,7 +1610,7 @@ function OrderCard({ order, index }: { order: any; index: number }) {
      ? 0
      : (order.dueAmount != null ? Number(order.dueAmount) : Math.max(0, totalAmt - paidAmount));
   const subHubName = order.subHubName ?? order.subHub ?? order.location ?? "";
-  const isPaid = paymentStatus && normalize(paymentStatus) === "paid";
+  const isPaid = paymentStatus && isPaymentStatusPaid(paymentStatus);
   const isUnpaid = paymentStatus && ["unpaid", "pending", "due"].includes(normalize(paymentStatus));
 
   // Wallet applied — prefer payments[] array entry, fall back to walletUsed field
@@ -1753,7 +1754,7 @@ function OrderCard({ order, index }: { order: any; index: number }) {
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Payment</p>
             {paymentStatus && (
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${isPaid ? "bg-emerald-50 text-emerald-700 border-emerald-200" : isUnpaid ? "bg-red-50 text-red-600 border-red-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>{paymentStatus}</span>
+              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${isPaid ? "bg-emerald-50 text-emerald-700 border-emerald-200" : isUnpaid ? "bg-red-50 text-red-600 border-red-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>{paymentStatusDisplayLabel(paymentStatus)}</span>
             )}
           </div>
           {/* Per-mode payment lines */}

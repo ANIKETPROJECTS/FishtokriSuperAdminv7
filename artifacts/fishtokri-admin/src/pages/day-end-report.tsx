@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import * as XLSX from "xlsx";
 import { printHtmlWithQZ } from "@/lib/qz-print";
+import { normalizePaymentStatus, paymentStatusDisplayLabel } from "@/lib/invoice-payment-status.mjs";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
@@ -367,7 +368,7 @@ function orderChannel(o: any): "web" | "pos" | null {
         return words.every(word => haystack.includes(word));
       });
     }
-    if (ordPayFilter.size > 0) list = list.filter(o => ordPayFilter.has(String(o.paymentStatus || "").toLowerCase() as any));
+    if (ordPayFilter.size > 0) list = list.filter(o => ordPayFilter.has(normalizePaymentStatus(o.paymentStatus) as any));
     if (ordPayModeFilter.size > 0) list = list.filter(o => Array.from(ordPayModeFilter).some(m => orderMatchesPayMode(o, m)));
     if (ordStatusFilter.size > 0) list = list.filter(o => ordStatusFilter.has(String(o.status || "").toLowerCase() as any));
     if (ordSort === "total_desc") list.sort((a, b) => (b.total || 0) - (a.total || 0));
@@ -463,7 +464,7 @@ function orderChannel(o: any): "web" | "pos" | null {
       const due = orderDueAmount(o);
       const walletUsed = orderWalletUsed(o);
       const balDueCashUpi = (Number(o.total) || 0) - walletUsed;
-      rows.push([o.invoiceNo, placedDate, delivDate, o.customerName, o.phone, itemsQty, o.total, walletUsed > 0 ? walletUsed : "—", walletUsed > 0 ? balDueCashUpi : "—", due > 0 ? due : "—", o.deliveryPerson || "—", o.paymentMode, o.paymentStatus, String(o.status || "").replace(/_/g, " ")]);
+      rows.push([o.invoiceNo, placedDate, delivDate, o.customerName, o.phone, itemsQty, o.total, walletUsed > 0 ? walletUsed : "—", walletUsed > 0 ? balDueCashUpi : "—", due > 0 ? due : "—", o.deliveryPerson || "—", o.paymentMode, paymentStatusDisplayLabel(o.paymentStatus), String(o.status || "").replace(/_/g, " ")]);
     }
     rows.push([]);
     rows.push(["SUMMARY", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
@@ -855,8 +856,8 @@ function orderChannel(o: any): "web" | "pos" | null {
                   <td style={{ padding: "10px 14px", color: "#444", whiteSpace: "nowrap" }}>{o.deliveryPerson}</td>
                   <td style={{ padding: "10px 14px", fontWeight: 500, color: "#000", whiteSpace: "nowrap" }}>{(String(o.paymentMode || "").toLowerCase() === "upi" && o.upiVariant) ? o.upiVariant : o.paymentMode}</td>
                   <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, ...paymentBadgeStyle(o.paymentStatus) }}>
-                      {o.paymentStatus}
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, ...paymentBadgeStyle(normalizePaymentStatus(o.paymentStatus)) }}>
+                      {paymentStatusDisplayLabel(o.paymentStatus)}
                     </span>
                   </td>
                   <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
