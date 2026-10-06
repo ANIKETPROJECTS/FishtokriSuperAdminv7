@@ -6,3 +6,11 @@ export declare function isInvoicePaid(order: {
   orderId?: unknown;
   invoiceNo?: unknown;
 } | null | undefined): boolean;
+export declare function getInvoicePaymentAmounts(
+  order: {
+    paymentStatus?: unknown;
+    paidAmount?: unknown;
+    dueAmount?: unknown;
+  } | null | undefined,
+  grandTotal: unknown,
+): { paidAmount: number; dueAmount: number };

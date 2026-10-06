@@ -10,7 +10,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { printHtmlWithQZ } from "@/lib/qz-print";
 import { apiFetch } from "@/lib/api";
-import { isInvoicePaid } from "@/lib/invoice-payment-status.mjs";
+import { getInvoicePaymentAmounts, isInvoicePaid } from "@/lib/invoice-payment-status.mjs";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,8 +95,8 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
   const extraDiscAmt = Number(order.extraDiscount) || 0;
   const couponAmt = Math.max(0, discount - extraDiscAmt);
   const extraDiscType: string = order.extraDiscountType || "flat";
-  const paidAmt = grandTotal === 0 ? 0 : (Number(order.paidAmount) || 0);
-  const dueAmt = grandTotal === 0 ? 0 : (Number(order.dueAmount) || Math.max(0, grandTotal - paidAmt));
+  const isPaid = isInvoicePaid(order);
+  const { paidAmount: paidAmt, dueAmount: dueAmt } = getInvoicePaymentAmounts(order, grandTotal);
   const invPays: any[] = Array.isArray(order.payments) ? order.payments : [];
   const walletAmt = (() => {
     const w = invPays.find((p: any) => String(p?.mode || "").toLowerCase() === "wallet");
@@ -135,7 +135,6 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
   const timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
   const payMode = combinedPaymentLabel(order);
   const payStatusNorm = String(order.paymentStatus || "").trim().toLowerCase();
-  const isPaid = isInvoicePaid(order);
   const payLabel = isPaid ? "Paid" : payStatusNorm === "partial" ? "Partial" : "Unpaid";
   const payStatusColor =
     isPaid ? "#15803d" : payStatusNorm === "partial" ? "#b45309" : "#b91c1c";
@@ -185,7 +184,7 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
         ? `<div style="display:flex;justify-content:space-between;margin:4px 0;font-size:17px;"><span>Wallet Applied:</span><span>− ${walletAmt.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;margin:4px 0;font-size:18px;font-weight:700;"><span>Balance Due (Cash/UPI):</span><span>${Math.max(0, grandTotal - walletAmt).toFixed(2)}</span></div>`
         : "";
     const paidDueRow =
-      order.paidAmount !== undefined || order.dueAmount !== undefined
+      isPaid || order.paidAmount !== undefined || order.dueAmount !== undefined
         ? `<div style="display:flex;justify-content:space-between;margin:8px 0 0;font-size:17px;"><span>Paid: <strong style="color:#16a34a;">₹${paidAmt.toFixed(2)}</strong></span><span>Due: <strong style="color:${dueAmt > 0 ? "#ef4444" : "#16a34a"};">₹${dueAmt.toFixed(2)}</strong></span></div>`
         : "";
     const upiTxnRow = order.upiTransactionId
@@ -404,7 +403,7 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
                   </div>
                 </>
               )}
-              {(order.paidAmount !== undefined || order.dueAmount !== undefined) && (
+              {(isPaid || order.paidAmount !== undefined || order.dueAmount !== undefined) && (
                 <div className="flex justify-between text-[15px] mt-2">
                   <span>Paid: <strong className="text-green-600">{formatRupees(paidAmt)}</strong></span>
                   <span>Due: <strong className={dueAmt > 0 ? "text-red-500" : "text-green-600"}>{formatRupees(dueAmt)}</strong></span>

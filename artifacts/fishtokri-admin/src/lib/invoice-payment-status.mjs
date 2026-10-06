@@ -14,3 +14,15 @@ export function paymentStatusDisplayLabel(status) {
 export function isInvoicePaid(order) {
   return isPaymentStatusPaid(order?.paymentStatus);
 }
+
+export function getInvoicePaymentAmounts(order, grandTotal) {
+  const total = Math.max(0, Number(grandTotal) || 0);
+  if (total === 0) return { paidAmount: 0, dueAmount: 0 };
+
+  // A settled status is authoritative when legacy amount fields are stale or missing.
+  if (isInvoicePaid(order)) return { paidAmount: total, dueAmount: 0 };
+
+  const paidAmount = Number(order?.paidAmount) || 0;
+  const dueAmount = Number(order?.dueAmount) || Math.max(0, total - paidAmount);
+  return { paidAmount, dueAmount };
+}
