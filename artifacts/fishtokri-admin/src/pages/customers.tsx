@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
-  Plus, Search, Edit2, Trash2, Mail, Phone, Calendar,
+  Plus, Search, Edit2, Trash2, Mail, Phone, Calendar, Download,
   ArrowUpDown, SlidersHorizontal, X, LayoutGrid, LayoutList,
   MapPin, ShoppingBag, ChevronLeft, ChevronRight, Users,
   Home, Clock, CheckCircle2, ClipboardList, Package,
@@ -25,6 +25,8 @@ import iconView from "@/assets/icon-view.png";
 import iconEdit from "@/assets/icon-edit.png";
 import iconDelete from "@/assets/icon-delete.png";
 import { isPaymentStatusPaid, paymentStatusDisplayLabel } from "@/lib/invoice-payment-status.mjs";
+import * as XLSX from "xlsx";
+import { filterCustomerRecords } from "@/lib/customer-export.mjs";
 
 function MaskIcon({ src, color = "#1A56DB", className = "w-4 h-4" }: { src: string; color?: string; className?: string }) {
   return (
@@ -99,6 +101,27 @@ async function fetchCustomers(params: {
   });
   if (!res.ok) throw new Error("Failed to fetch customers");
   return res.json();
+}
+
+async function fetchAllCustomers(params: { search?: string; sort?: string }): Promise<Customer[]> {
+  const limit = 100;
+  const firstPage = await fetchCustomers({ ...params, page: 1, limit });
+  const totalPages = Math.ceil(Math.max(firstPage.total, firstPage.customers.length) / limit);
+  const results = [...firstPage.customers];
+
+  // Keep concurrent list requests bounded when exporting large customer sets.
+  for (let firstPageNumber = 2; firstPageNumber <= totalPages; firstPageNumber += 5) {
+    const pageNumbers = Array.from(
+      { length: Math.min(5, totalPages - firstPageNumber + 1) },
+      (_, index) => firstPageNumber + index,
+    );
+    const nextPages = await Promise.all(
+      pageNumbers.map((page) => fetchCustomers({ ...params, page, limit })),
+    );
+    results.push(...nextPages.flatMap((page) => page.customers));
+  }
+
+  return results;
 }
 
 async function fetchCustomer(id: string): Promise<Customer> {
@@ -281,6 +304,25 @@ function addressText(address: any) {
   return parts.length ? parts.join(", ") : JSON.stringify(address, null, 2);
 }
 
+function addWorkbookSheet(workbook: XLSX.WorkBook, name: string, columns: string[], rows: Record<string, any>[]) {
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    columns,
+    ...rows.map((row) => columns.map((column) => row[column] ?? "")),
+  ]);
+  worksheet["!cols"] = columns.map((column) => ({
+    wch: Math.min(32, Math.max(14, column.length + 2)),
+  }));
+  XLSX.utils.book_append_sheet(workbook, worksheet, name);
+}
+
+function jsonForExcel(value: any) {
+  try {
+    return JSON.stringify(value ?? null);
+  } catch {
+    return "";
+  }
+}
+
 function statusLabel(status: any) {
   return String(status || "unknown").replace(/_/g, " ");
 }
@@ -295,6 +337,7 @@ export default function Customers() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [detailCustomerId, setDetailCustomerId] = useState<string | null>(null);
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [filterOrders, setFilterOrders] = useState<"all" | "has" | "none">("all");
   const [filterEmail, setFilterEmail] = useState<"all" | "yes" | "no">("all");
@@ -333,21 +376,15 @@ export default function Customers() {
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
   const filteredCustomers = useMemo(() => {
-    let result = customers;
-    if (filterOrders === "has") result = result.filter((c) => splitOrders(c).all.length > 0);
-    if (filterOrders === "none") result = result.filter((c) => splitOrders(c).all.length === 0);
-    if (filterEmail === "yes") result = result.filter((c) => !!c.email?.trim());
-    if (filterEmail === "no") result = result.filter((c) => !c.email?.trim());
-    if (filterAddr === "yes") result = result.filter((c) => (c.addresses?.length ?? 0) > 0);
-    if (filterAddr === "no") result = result.filter((c) => (c.addresses?.length ?? 0) === 0);
-    if (filterWallet === "has") result = result.filter((c) => (Number(c.walletBalance) || 0) > 0);
-    if (filterWallet === "none") result = result.filter((c) => (Number(c.walletBalance) || 0) === 0);
-    if (filterJoinedFrom) result = result.filter((c) => new Date(c.createdAt) >= new Date(filterJoinedFrom));
-    if (filterJoinedTo) result = result.filter((c) => new Date(c.createdAt) <= new Date(filterJoinedTo + "T23:59:59"));
-    // Client-side wallet sort (the API also sorts server-side for cross-page correctness)
-    if (sort === "wallet_desc") result = [...result].sort((a, b) => (Number(b.walletBalance) || 0) - (Number(a.walletBalance) || 0));
-    if (sort === "wallet_asc") result = [...result].sort((a, b) => (Number(a.walletBalance) || 0) - (Number(b.walletBalance) || 0));
-    return result;
+    return filterCustomerRecords(customers, {
+      filterOrders,
+      filterEmail,
+      filterAddr,
+      filterWallet,
+      filterJoinedFrom,
+      filterJoinedTo,
+      sort,
+    });
   }, [customers, filterOrders, filterEmail, filterAddr, filterWallet, filterJoinedFrom, filterJoinedTo, sort]);
 
   const deleteMutation = useMutation({
@@ -372,6 +409,156 @@ export default function Customers() {
     setSearch(""); setDebouncedSearch(""); setSort("createdAt_desc");
     setFilterOrders("all"); setFilterEmail("all"); setFilterAddr("all");
     setFilterWallet("all"); setFilterJoinedFrom(""); setFilterJoinedTo(""); setPage(1);
+  };
+
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      const allCustomers = await fetchAllCustomers({ search: debouncedSearch, sort });
+      const exportCustomers = filterCustomerRecords(allCustomers, {
+        filterOrders,
+        filterEmail,
+        filterAddr,
+        filterWallet,
+        filterJoinedFrom,
+        filterJoinedTo,
+        sort,
+      });
+
+      const customerRows = exportCustomers.map((customer) => {
+        const { current, history, all } = splitOrders(customer);
+        return {
+          "Customer ID": customer.id,
+          Name: customer.name || "",
+          Phone: customer.phone || "",
+          Email: customer.email || "",
+          "Date of Birth": customer.dateOfBirth || "",
+          "Wallet Balance (₹)": Number(customer.walletBalance) || 0,
+          "Total Spend (₹)": getCustomerTotalSpend(customer),
+          "Total Due (₹)": Number(customer.totalDue) || 0,
+          "Total Orders": all.length,
+          "Active Orders": current.length,
+          "Order History": history.length,
+          "Saved Addresses": customer.addresses?.length ?? 0,
+          "Active Coupons": customer.activeCoupons?.length ?? 0,
+          "Used Coupons": customer.usedCoupons?.length ?? 0,
+          "Wallet Transactions": customer.walletTransactions?.length ?? 0,
+          "Joined At": customer.createdAt || "",
+          "Updated At": customer.updatedAt || "",
+        };
+      });
+
+      const orderRows: Record<string, any>[] = [];
+      const addressRows: Record<string, any>[] = [];
+      const walletTransactionRows: Record<string, any>[] = [];
+      const couponRows: Record<string, any>[] = [];
+
+      for (const customer of exportCustomers) {
+        const { current, history } = splitOrders(customer);
+        for (const [group, orders] of [["Active", current], ["History", history]] as const) {
+          for (const order of orders) {
+            orderRows.push({
+              "Customer ID": customer.id,
+              "Customer Name": customer.name || "",
+              "Customer Phone": customer.phone || "",
+              "Order Group": group,
+              "Order ID": getOrderId(order),
+              "Order Date": order.createdAt || order.placedAt || "",
+              "Delivery Date": order.deliveryDate || "",
+              Status: statusLabel(order.status),
+              "Payment Status": order.paymentStatus || "",
+              "Payment Mode": order.paymentMode || "",
+              "Total (₹)": getOrderTotal(order),
+              "Paid Amount (₹)": Number(order.paidAmount) || 0,
+              "Due Amount (₹)": Number(order.dueAmount) || 0,
+              Items: jsonForExcel(order.items ?? []),
+              Payments: jsonForExcel(order.payments ?? []),
+              "Full Order Details": jsonForExcel(order),
+            });
+          }
+        }
+
+        for (const [index, address] of (customer.addresses ?? []).entries()) {
+          addressRows.push({
+            "Customer ID": customer.id,
+            "Customer Name": customer.name || "",
+            Phone: customer.phone || "",
+            "Address Number": index + 1,
+            Label: address?.label || address?.type || "",
+            "Full Address": addressText(address),
+            "Address Details": jsonForExcel(address),
+          });
+        }
+
+        for (const transaction of customer.walletTransactions ?? []) {
+          walletTransactionRows.push({
+            "Customer ID": customer.id,
+            "Customer Name": customer.name || "",
+            Phone: customer.phone || "",
+            Date: transaction?.createdAt || transaction?.date || transaction?.timestamp || "",
+            Type: transaction?.type || transaction?.transactionType || "",
+            "Amount (₹)": Number(transaction?.amount ?? transaction?.delta) || 0,
+            "Balance After (₹)": transaction?.balanceAfter ?? transaction?.balance ?? "",
+            Reason: transaction?.reason || transaction?.note || transaction?.description || "",
+            "Transaction Details": jsonForExcel(transaction),
+          });
+        }
+
+        for (const [type, coupons] of [
+          ["Active", customer.activeCoupons ?? []],
+          ["Used", customer.usedCoupons ?? []],
+        ] as const) {
+          for (const coupon of coupons) {
+            couponRows.push({
+              "Customer ID": customer.id,
+              "Customer Name": customer.name || "",
+              Phone: customer.phone || "",
+              "Coupon Type": type,
+              "Coupon Code": coupon?.code || coupon?.couponCode || "",
+              "Coupon Name": coupon?.name || coupon?.title || "",
+              "Coupon Details": jsonForExcel(coupon),
+            });
+          }
+        }
+      }
+
+      const workbook = XLSX.utils.book_new();
+      addWorkbookSheet(workbook, "Customers", [
+        "Customer ID", "Name", "Phone", "Email", "Date of Birth",
+        "Wallet Balance (₹)", "Total Spend (₹)", "Total Due (₹)",
+        "Total Orders", "Active Orders", "Order History", "Saved Addresses",
+        "Active Coupons", "Used Coupons", "Wallet Transactions", "Joined At", "Updated At",
+      ], customerRows);
+      addWorkbookSheet(workbook, "Orders", [
+        "Customer ID", "Customer Name", "Customer Phone", "Order Group", "Order ID",
+        "Order Date", "Delivery Date", "Status", "Payment Status", "Payment Mode",
+        "Total (₹)", "Paid Amount (₹)", "Due Amount (₹)", "Items", "Payments", "Full Order Details",
+      ], orderRows);
+      addWorkbookSheet(workbook, "Addresses", [
+        "Customer ID", "Customer Name", "Phone", "Address Number", "Label", "Full Address", "Address Details",
+      ], addressRows);
+      addWorkbookSheet(workbook, "Wallet Transactions", [
+        "Customer ID", "Customer Name", "Phone", "Date", "Type", "Amount (₹)",
+        "Balance After (₹)", "Reason", "Transaction Details",
+      ], walletTransactionRows);
+      addWorkbookSheet(workbook, "Coupons", [
+        "Customer ID", "Customer Name", "Phone", "Coupon Type", "Coupon Code", "Coupon Name", "Coupon Details",
+      ], couponRows);
+
+      XLSX.writeFile(workbook, `customers-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast({
+        title: "Customer Excel exported",
+        description: `${exportCustomers.length} customer${exportCustomers.length === 1 ? "" : "s"} exported with the applied filters.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Customer export failed",
+        description: error instanceof Error ? error.message : "Could not export customer details.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const openEdit = (customer: Customer) => {
@@ -409,13 +596,25 @@ export default function Customers() {
 
       <div className="flex items-center justify-between gap-4 mb-5">
         <div />
-        <Button
-          onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }}
-          className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold flex-shrink-0"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          Add Customer
-        </Button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            variant="outline"
+            onClick={handleExportExcel}
+            disabled={isLoading || isExporting}
+            title="Export all matching customers and their details"
+            className="h-9 px-3 text-sm font-semibold text-[#162B4D] border-gray-200"
+          >
+            <Download className="w-4 h-4 mr-1.5" />
+            {isExporting ? "Exporting…" : "Export Excel"}
+          </Button>
+          <Button
+            onClick={() => { setEditingCustomer(null); setIsModalOpen(true); }}
+            className="bg-[#1A56DB] hover:bg-[#1447B4] text-white h-9 px-4 text-sm font-semibold flex-shrink-0"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            Add Customer
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
