@@ -10,6 +10,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { printHtmlWithQZ } from "@/lib/qz-print";
 import { apiFetch } from "@/lib/api";
+import { isInvoicePaid } from "@/lib/invoice-payment-status.mjs";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -133,12 +134,13 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
   })();
   const timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
   const payMode = combinedPaymentLabel(order);
-  const payStatusNorm = String(order.paymentStatus || "").toLowerCase();
-  const payLabel = payStatusNorm === "paid" ? "Paid" : payStatusNorm === "partial" ? "Partial" : "Unpaid";
+  const payStatusNorm = String(order.paymentStatus || "").trim().toLowerCase();
+  const isPaid = isInvoicePaid(order);
+  const payLabel = isPaid ? "Paid" : payStatusNorm === "partial" ? "Partial" : "Unpaid";
   const payStatusColor =
-    payStatusNorm === "paid" ? "#15803d" : payStatusNorm === "partial" ? "#b45309" : "#b91c1c";
+    isPaid ? "#15803d" : payStatusNorm === "partial" ? "#b45309" : "#b91c1c";
   const payStatusBg =
-    payStatusNorm === "paid" ? "#f0fdf4" : payStatusNorm === "partial" ? "#fffbeb" : "#fef2f2";
+    isPaid ? "#f0fdf4" : payStatusNorm === "partial" ? "#fffbeb" : "#fef2f2";
 
   const slotLabel = order.isExpress ? "Express order by Porter" : formatTimeSlot(order);
 
@@ -312,8 +314,9 @@ export function InvoiceModal({ order, onClose }: { order: any; onClose: () => vo
               <div className="text-[15px]">
                 <b>Payment :</b> {payMode}
                 <span
+                  data-testid="text-invoice-payment-status"
                   className={`ml-1 text-[13px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
-                    payStatusNorm === "paid"
+                    isPaid
                       ? "text-green-700 bg-green-50 border-green-200"
                       : payStatusNorm === "partial"
                         ? "text-amber-700 bg-amber-50 border-amber-200"
