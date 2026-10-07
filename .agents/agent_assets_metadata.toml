@@ -11,15 +11,32 @@ id = "_ULFns-qV2pt3QMkRUZNN"
 uri = "file://prompt.md"
 type = "text"
 title = "Coupon Logic Implementation Prompt"
+logical_id = "6f8a7293-6cb8-4862-bc83-dd7fa6a5be1f"
 
 [[outputs]]
 id = "w-muzyQInFcQM4RxNMka_"
 uri = "file://prompt2.md"
 type = "text"
 title = "Wallet Payment Integration Prompt"
+logical_id = "106d668b-6131-4c46-959e-c6cbca13daf6"
 
 [[outputs]]
 id = "0Vo8Z8oTByTZJ-6l4tk6Y"
 uri = "file://prompt3.md"
 type = "text"
 title = "Timeslot Order-Count Logic & Hiding Rules"
+logical_id = "af4d34eb-993b-40a2-adea-0873e23e0f03"
+
+[[outputs]]
+id = "Tfl0Qp2HII9ef4E2seT7D"
+uri = "file://attached_assets/frontend-my-orders-isdeleted-prompt.md"
+type = "text"
+title = "Frontend My Orders isDeleted Prompt"
+description = "Markdown prompt for hiding soft-deleted orders from the customer-facing My Orders section."
+logical_id = "84e25861-cd87-46f3-a4fc-90c3d836944b"
+content_hash = "sha256:642ddf7b8929da399fc74cf37de6c6293dfea791240f862361e2770341749af4"
+size = 1976
+mtime_ms = 1791337586632
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:bf84a5a0-6065-4cbc-a90a-122909921b84/84e25861-cd87-46f3-a4fc-90c3d836944b/90b8057f-f4c8-405a-8f43-e9c2022495b5"
+storage_version_token = "1791337588427106"
+content_type = "text/markdown"
