@@ -246,13 +246,17 @@ function SolidStatusBadge({ status, deliveryType }: { status: string; deliveryTy
 }
 
 function modeDisplayLabel(mode: string, upiVariant?: string): string {
-  const m = String(mode).toLowerCase().trim();
+  const m = String(mode).trim().replace(/^custom_/i, "").toLowerCase();
   if (m === "upi" && upiVariant) return String(upiVariant).trim();
   if (m === "upi") return "UPI";
   if (m === "card") return "Card";
   if (m === "wallet") return "Wallet";
   if (m === "cash" || m === "cod" || m === "") return "COD";
   return m.toUpperCase();
+}
+
+function customPaymentModeKey(mode: string): string {
+  return `custom_${String(mode).trim().toLowerCase()}`;
 }
 
 function combinedPaymentLabel(order: any): string {
@@ -266,11 +270,11 @@ function combinedPaymentLabel(order: any): string {
     return "Wallet + " + otherLabels.join(" + ");
   }
   // Fall back to paymentMode field
-  const rawMode = String(order?.paymentMode || modes[0] || "").toLowerCase().trim();
+  const rawMode = String(order?.paymentMode || modes[0] || "").trim().replace(/^custom_/i, "").toLowerCase();
   return modeDisplayLabel(rawMode, order?.upiVariant);
 }
 
-/** Returns one of the 7 composite-mode keys used by the change-mode dropdown. */
+/** Returns a stable key used by the payment-mode dropdown, including configured custom methods. */
 function orderPaymentModeKey(order: any): string {
   const pays: any[] = Array.isArray(order?.payments) ? order.payments : [];
   const modes = pays.map((p: any) => String(p?.mode || "").toLowerCase().trim()).filter(Boolean);
@@ -283,9 +287,14 @@ function orderPaymentModeKey(order: any): string {
     if (other === "card") return "wallet+card";
   }
   if (hasWallet) return "wallet";
-  const raw = String(order?.paymentMode || modes[0] || "").toLowerCase().trim();
+  const rawValue = String(order?.paymentMode || modes[0] || "").trim();
+  const raw = rawValue.toLowerCase();
   if (raw === "cash" || raw === "cod" || raw === "") return "cod";
-  return raw; // upi | card | etc.
+  if (raw.startsWith("custom_")) return customPaymentModeKey(rawValue.slice("custom_".length));
+  if (["upi", "card", "wallet", "bank_transfer", "other", "wallet+cod", "wallet+upi", "wallet+card"].includes(raw)) {
+    return raw;
+  }
+  return customPaymentModeKey(rawValue);
 }
 
 /** Does the given mode key involve a UPI leg? */
@@ -305,6 +314,8 @@ const CHANGE_PAYMENT_MODES = [
   { value: "wallet+cod",  label: "Wallet + COD" },
   { value: "wallet+upi",  label: "Wallet + UPI" },
   { value: "wallet+card", label: "Wallet + Card" },
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "other", label: "Other" },
 ];
 
 function formatTime12(t: string): string {
@@ -2160,8 +2171,14 @@ export default function Orders() {
           break;
         }
         default:
-          paymentMode = modeKey;
-          payments = [{ mode: modeKey, amount: total, reference: "" }];
+          if (modeKey.startsWith("custom_")) {
+            const configuredName = customPaymentTypes.find((type) => customPaymentModeKey(type) === modeKey);
+            paymentMode = configuredName || modeKey.slice("custom_".length);
+            payments = [{ mode: paymentMode, amount: total, reference: "" }];
+          } else {
+            paymentMode = modeKey;
+            payments = [{ mode: modeKey, amount: total, reference: "" }];
+          }
       }
 
       await apiFetch(`/api/orders/${orderId}`, {
@@ -3453,7 +3470,7 @@ export default function Orders() {
                             <option key={m.value} value={m.value}>{m.label}</option>
                           ))}
                           {customPaymentTypes.map((t) => (
-                            <option key={`custom_${t}`} value={`custom_${t}`}>{t}</option>
+                            <option key={customPaymentModeKey(t)} value={customPaymentModeKey(t)}>{t}</option>
                           ))}
                         </select>
                         {/* UPI variant sub-dropdown for UPI and Wallet+UPI modes */}

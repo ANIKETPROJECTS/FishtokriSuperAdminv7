@@ -52,7 +52,7 @@ export function formatTimeSlot(o: any): string | null {
 }
 
 function modeDisplayLabel(mode: string, upiVariant?: string): string {
-  const m = String(mode).toLowerCase().trim();
+  const m = String(mode).trim().replace(/^custom_/i, "").toLowerCase();
   if (m === "upi" && upiVariant) return String(upiVariant).trim();
   if (m === "upi") return "UPI";
   if (m === "card") return "Card";
