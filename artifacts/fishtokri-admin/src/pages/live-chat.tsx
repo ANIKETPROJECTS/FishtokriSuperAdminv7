@@ -28,6 +28,8 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type TemplateVariables = Record<string, unknown> | unknown[] | string;
+
 interface Contact {
   number: string;
   name: string;
@@ -37,6 +39,7 @@ interface Contact {
     template?: string;
     type?: string;
     text?: { body: string };
+    variables?: TemplateVariables;
     status?: string;
     from?: string;
   };
@@ -51,6 +54,7 @@ interface Message {
   from?: string;
   from_user_id?: string;
   text?: { body: string };
+  variables?: TemplateVariables;
   image?: { id: string; mime_type?: string; caption?: string };
   video?: { id: string; mime_type?: string; caption?: string };
   document?: { id: string; mime_type?: string; filename?: string; caption?: string };
@@ -81,6 +85,35 @@ function getInitials(name: string) {
   return (name || "?").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 }
 
+function parseTemplateVariables(variables?: TemplateVariables): Record<string, unknown> | unknown[] {
+  if (Array.isArray(variables)) return variables;
+  if (typeof variables === "string") {
+    try {
+      const parsed = JSON.parse(variables);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return variables && typeof variables === "object" ? variables : {};
+}
+
+function renderTemplateBody(body: string | undefined, variables?: TemplateVariables): string | null {
+  if (!body) return null;
+
+  const parsedVariables = parseTemplateVariables(variables);
+  const rendered = body.replace(/\{\{\s*(?:body)?(\d+)\s*\}\}/gi, (placeholder, index: string) => {
+    const value = Array.isArray(parsedVariables)
+      ? parsedVariables[Number(index) - 1]
+      : parsedVariables[`body${index}`] ?? parsedVariables[index];
+    return value === undefined || value === null ? placeholder : String(value);
+  });
+
+  // If Admark has no saved values for a placeholder, don't show template syntax
+  // to agents; the caller can fall back to the template name instead.
+  return /\{\{\s*(?:body)?\d+\s*\}\}/i.test(rendered) ? null : rendered;
+}
+
 const AVATAR_COLORS = [
   "bg-teal-500", "bg-purple-500", "bg-blue-500", "bg-green-500",
   "bg-amber-500", "bg-pink-500", "bg-indigo-500", "bg-rose-500",
@@ -93,10 +126,14 @@ function avatarColor(str: string) {
 function lastMessagePreview(c: Contact, templateMap: Record<string, string> = {}): string {
   const lm = c.lastmessage;
   if (!lm) return "";
-  if (lm.text?.body) return lm.text.body.slice(0, 55);
+  if (lm.text?.body) {
+    const renderedBody = renderTemplateBody(lm.text.body, lm.variables);
+    if (renderedBody) return renderedBody.slice(0, 55);
+    if (lm.template) return `📋 ${lm.template}`;
+  }
   if (lm.template) {
-    const body = templateMap[lm.template];
-    if (body) return body.split("\n")[0].slice(0, 55); // first line of template body
+    const body = renderTemplateBody(templateMap[lm.template], lm.variables);
+    if (body) return body.split("\n")[0].slice(0, 55); // first line of rendered template body
     return `📋 ${lm.template}`;
   }
   return "";
@@ -165,13 +202,16 @@ function MessageBubble({ msg, contactName, templateMap = {} }: { msg: Message; c
   const time = formatFullTime(msg.timestamp);
 
   if (isTemplate) {
-    const bodyText = msg.text?.body || (msg.template ? templateMap[msg.template] : null);
+    const bodyText = renderTemplateBody(
+      msg.text?.body || (msg.template ? templateMap[msg.template] : undefined),
+      msg.variables,
+    );
     return (
       <div className="flex justify-end mb-2">
         <div className="max-w-[72%]">
           <div className="bg-[#DCF8C6] rounded-2xl rounded-tr-sm px-3.5 py-2 shadow-sm">
             {bodyText ? (
-              <p className="text-[13px] text-gray-800 break-words whitespace-pre-wrap">{bodyText}</p>
+              <p data-testid={`live-chat-message-body-${msg.id}`} className="text-[13px] text-gray-800 break-words whitespace-pre-wrap">{bodyText}</p>
             ) : (
               <>
                 <span className="text-[9px] font-bold text-green-700 uppercase tracking-wide block mb-0.5">Template</span>

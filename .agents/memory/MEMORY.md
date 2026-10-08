@@ -13,3 +13,4 @@
 - [Delivery timing coverage](delivery-timing-coverage.md) — calculate each lifecycle duration only when both endpoint timestamps exist; expose coverage instead of guessing missing durations.
 - [Inventory deduction freshness](inventory-deduction-freshness.md) — unlimited-age recovery applies only to orders inserted after startup; a read-only baseline protects existing records.
 - [Secrets in process configuration](secrets-in-process-config.md) — after managing a Replit secret, check tracked process configs for plaintext copies and pass values through the environment.
+- [Admark template variables in chats](admark-chat-template-rendering.md) — Admark messages can carry `variables.bodyN`; resolve them against raw template text and avoid displaying unresolved tokens.
