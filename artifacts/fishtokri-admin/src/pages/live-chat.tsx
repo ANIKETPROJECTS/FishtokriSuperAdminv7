@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search, RefreshCw, Send, MessageSquare, Check, CheckCheck,
   Clock, X, ChevronLeft, Phone, AlertCircle, Paperclip,
-  Image, Video, FileText,
+  Image, Video, FileText, Music2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,9 +26,35 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
+async function apiBlobFetch(path: string) {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Request failed (${res.status})`);
+  }
+  return res.blob();
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type TemplateVariables = Record<string, unknown> | unknown[] | string;
+
+interface MessageMedia {
+  id?: string;
+  mime_type?: string;
+  caption?: string;
+  filename?: string;
+  url?: string;
+  cloudUrl?: string;
+}
+
+interface MessageReaction {
+  emoji?: string;
+  message_id?: string;
+  messageId?: string;
+}
 
 interface Contact {
   number: string;
@@ -40,6 +66,13 @@ interface Contact {
     type?: string;
     text?: { body: string };
     variables?: TemplateVariables;
+    image?: MessageMedia;
+    video?: MessageMedia;
+    audio?: MessageMedia;
+    document?: MessageMedia;
+    sticker?: MessageMedia;
+    reaction?: MessageReaction | string;
+    emoji?: string;
     status?: string;
     from?: string;
   };
@@ -55,11 +88,15 @@ interface Message {
   from_user_id?: string;
   text?: { body: string };
   variables?: TemplateVariables;
-  image?: { id: string; mime_type?: string; caption?: string };
-  video?: { id: string; mime_type?: string; caption?: string };
-  document?: { id: string; mime_type?: string; filename?: string; caption?: string };
-  audio?: { id: string; mime_type?: string };
+  image?: MessageMedia;
+  video?: MessageMedia;
+  document?: MessageMedia;
+  audio?: MessageMedia;
+  sticker?: MessageMedia;
+  reaction?: MessageReaction | string;
+  emoji?: string;
   cloudUrl?: string;
+  cloudId?: string;
   newMessage?: boolean;
 }
 
@@ -114,6 +151,11 @@ function renderTemplateBody(body: string | undefined, variables?: TemplateVariab
   return /\{\{\s*(?:body)?\d+\s*\}\}/i.test(rendered) ? null : rendered;
 }
 
+function getReactionEmoji(reaction?: MessageReaction | string, fallbackEmoji?: string): string {
+  if (typeof reaction === "string") return reaction;
+  return reaction?.emoji || fallbackEmoji || "";
+}
+
 const AVATAR_COLORS = [
   "bg-teal-500", "bg-purple-500", "bg-blue-500", "bg-green-500",
   "bg-amber-500", "bg-pink-500", "bg-indigo-500", "bg-rose-500",
@@ -131,6 +173,15 @@ function lastMessagePreview(c: Contact, templateMap: Record<string, string> = {}
     if (renderedBody) return renderedBody.slice(0, 55);
     if (lm.template) return `📋 ${lm.template}`;
   }
+  const type = (lm.type || "").toLowerCase();
+  if (type === "reaction" || lm.reaction) {
+    return `Reacted ${getReactionEmoji(lm.reaction, lm.emoji) || "to a message"}`;
+  }
+  if (type === "image") return "📷 Image";
+  if (type === "video") return "🎥 Video";
+  if (type === "audio") return "🎵 Audio";
+  if (type === "document") return `📄 ${lm.document?.filename || "Document"}`;
+  if (type === "sticker") return "🖼️ Sticker";
   if (lm.template) {
     const body = renderTemplateBody(templateMap[lm.template], lm.variables);
     if (body) return body.split("\n")[0].slice(0, 55); // first line of rendered template body
@@ -157,49 +208,162 @@ function Ticks({ status }: { status?: string }) {
   return <Clock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />;
 }
 
+type MediaKind = "image" | "video" | "document" | "audio" | "sticker";
+
+function getMediaKind(msg: Message): MediaKind | null {
+  const type = (msg.type || "").toLowerCase();
+  if (msg.sticker || type === "sticker") return "sticker";
+  if (msg.image || type === "image") return "image";
+  if (msg.video || type === "video") return "video";
+  if (msg.audio || type === "audio") return "audio";
+  if (msg.document || type === "document") return "document";
+  return null;
+}
+
+function getMediaDescriptor(msg: Message, kind: MediaKind): MessageMedia | undefined {
+  if (kind === "image") return msg.image;
+  if (kind === "video") return msg.video;
+  if (kind === "audio") return msg.audio;
+  if (kind === "document") return msg.document;
+  return msg.sticker;
+}
+
 // ── Message bubble ─────────────────────────────────────────────────────────────
 
 function MediaPreview({ msg }: { msg: Message }) {
-  const mediaUrl = msg.cloudUrl;
-  const isImage = msg.image || (msg.type === "image");
-  const isVideo = msg.video || (msg.type === "video");
-  const isDoc   = msg.document || (msg.type === "document");
-  const caption = (msg.image as any)?.caption || (msg.video as any)?.caption || (msg.document as any)?.caption || "";
-  const filename = (msg.document as any)?.filename || "Document";
+  const kind = getMediaKind(msg);
+  const media = kind ? getMediaDescriptor(msg, kind) : undefined;
+  const mediaId = media?.id || msg.cloudId;
+  const cloudUrl = media?.cloudUrl || msg.cloudUrl || "";
+  const directUrl = media?.url || cloudUrl;
+  const caption = media?.caption || "";
+  const filename = media?.filename || "Document";
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  if (isImage && mediaUrl) {
-    return (
-      <div>
-        <img src={mediaUrl} alt="Image" className="max-w-[220px] rounded-lg object-cover" />
-        {caption && <p className="text-[12px] text-gray-700 mt-1 break-words">{caption}</p>}
-      </div>
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!("IntersectionObserver" in window)) {
+      setIsNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px" },
     );
-  }
-  if (isVideo && mediaUrl) {
-    return (
-      <div>
-        <video src={mediaUrl} controls className="max-w-[220px] rounded-lg" />
-        {caption && <p className="text-[12px] text-gray-700 mt-1 break-words">{caption}</p>}
-      </div>
-    );
-  }
-  if (isImage || isVideo || isDoc) {
-    return (
-      <div className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
-        {isImage ? <Image className="w-4 h-4 text-gray-500" /> : isVideo ? <Video className="w-4 h-4 text-gray-500" /> : <FileText className="w-4 h-4 text-gray-500" />}
-        <span className="text-[12px] text-gray-700">{isDoc ? filename : isImage ? "Image" : "Video"}</span>
-        {caption && <span className="text-[11px] text-gray-500">· {caption}</span>}
-      </div>
-    );
-  }
-  return null;
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isNearViewport || !mediaId) return;
+    let active = true;
+    let objectUrl: string | null = null;
+    setLoading(true);
+    setLoadError(false);
+    setMediaUrl(null);
+    const cloudUrlQuery = cloudUrl ? `?cloudUrl=${encodeURIComponent(cloudUrl)}` : "";
+    apiBlobFetch(`/api/live-chat/media/${encodeURIComponent(mediaId)}${cloudUrlQuery}`)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setMediaUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) setLoadError(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [isNearViewport, mediaId, cloudUrl]);
+
+  if (!kind) return null;
+  const isImage = kind === "image" || kind === "sticker";
+  const displayedUrl = mediaUrl || (loadError ? directUrl : (!mediaId ? directUrl : ""));
+  const label = kind === "image" ? "Image" : kind === "video" ? "Video" : kind === "audio" ? "Audio" : kind === "sticker" ? "Sticker" : filename;
+  const Icon = kind === "image" || kind === "sticker" ? Image
+    : kind === "video" ? Video
+      : kind === "audio" ? Music2
+        : FileText;
+
+  return (
+    <div ref={containerRef} className="max-w-[260px]">
+      {displayedUrl && isImage && (
+        <img
+          src={displayedUrl}
+          alt={kind === "sticker" ? "WhatsApp sticker" : "Image"}
+          loading="lazy"
+          className={kind === "sticker" ? "max-w-[180px] max-h-[180px] object-contain" : "max-w-[240px] max-h-[320px] rounded-lg object-contain"}
+        />
+      )}
+      {displayedUrl && kind === "video" && (
+        <video src={displayedUrl} controls preload="metadata" className="max-w-[240px] max-h-[320px] rounded-lg" />
+      )}
+      {displayedUrl && kind === "audio" && (
+        <audio src={displayedUrl} controls preload="none" className="max-w-[240px]" />
+      )}
+      {displayedUrl && kind === "document" && (
+        <a href={displayedUrl} download={filename} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
+          <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
+          <span className="text-[12px] text-blue-700 underline break-all">{filename}</span>
+        </a>
+      )}
+      {!displayedUrl && (
+        <div className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
+          <Icon className="w-4 h-4 text-gray-500 flex-shrink-0" />
+          <span className="text-[12px] text-gray-700">
+            {loading ? `Loading ${label.toLowerCase()}…` : loadError ? `${label} unavailable` : label}
+          </span>
+        </div>
+      )}
+      {caption && <p className="text-[12px] text-gray-700 mt-1 break-words">{caption}</p>}
+    </div>
+  );
 }
 
 function MessageBubble({ msg, contactName, templateMap = {} }: { msg: Message; contactName: string; templateMap?: Record<string, string> }) {
   const isInbound = !!msg.from || !!msg.from_user_id;
   const isTemplate = !!msg.template && !msg.from;
-  const hasMedia = !!(msg.image || msg.video || msg.document || msg.audio);
+  const hasMedia = !!getMediaKind(msg);
   const time = formatFullTime(msg.timestamp);
+  const isReaction = (msg.type || "").toLowerCase() === "reaction" || !!msg.reaction;
+  const reactionEmoji = getReactionEmoji(msg.reaction, msg.emoji);
+
+  if (isReaction) {
+    return (
+      <div className={isInbound ? "flex items-end gap-2 mb-2" : "flex justify-end mb-2"}>
+        {isInbound && (
+          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0 ${avatarColor(contactName)}`}>
+            {getInitials(contactName)}
+          </div>
+        )}
+        <div className="max-w-[72%]">
+          <div className={`${isInbound ? "bg-white rounded-tl-sm border border-black/5" : "bg-[#DCF8C6] rounded-tr-sm"} rounded-2xl px-3.5 py-2 shadow-sm`}>
+            <span data-testid={`live-chat-reaction-${msg.id}`} className="text-[28px] leading-none" aria-label={reactionEmoji ? `Reaction ${reactionEmoji}` : "Reaction"}>
+              {reactionEmoji || "Reaction"}
+            </span>
+            <div className={`flex items-center gap-1 mt-1 ${isInbound ? "justify-start" : "justify-end"}`}>
+              <span className="text-[10px] text-gray-500">{time}</span>
+              {!isInbound && <Ticks status={msg.status} />}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isTemplate) {
     const bodyText = renderTemplateBody(

@@ -4,7 +4,7 @@
 - [WhatsApp template param newlines unreliable](whatsapp-template-param-newlines.md) — `\n` in a template variable can get collapsed (e.g. to " | "); number list entries instead of relying on line breaks.
 - [Wallet deduction per order-type payment path](wallet-deduction-per-order-type.md) — per-order-type payment overrides must derive from wallet-aware `paymentEntries`, not rebuild from `mainPaymentMode` alone.
 - [Two delivery-charge fields on orders](order-delivery-charge-fields.md) — admin orders use `deliveryCharge`, storefront/FTW orders use `slotCharge`; UI must check both, not just one.
-- [Admark media sending contract](admark-media-sending.md) — upload returns top-level `url`/`cloudUrl`; send attachments through documented `/api/send/bymedia` query parameters, not `/send-chat-message`.
+- [Admark media transfer contract](admark-media-sending.md) — use separate APIs for outbound attachments and inbound media-ID downloads; keep the Admark API key server-side.
 - [Product sales modes](product-sales-modes.md) — product sales mode is limited to normal or preorder-only; preorder products may have date/day or combined availability.
 - [Product preorder slot rules](product-preorder-slot-rules.md) — missing weekday slot rules mean all active slots; an explicit empty list means no slots for that weekday.
 - [Sub-hub Mongo debugging](sub-hub-mongo-debugging.md) — use API-scoped DB helpers; run test writes only in an inactive temporary sub-hub and remove all fixtures.

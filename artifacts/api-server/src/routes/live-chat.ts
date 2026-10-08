@@ -45,6 +45,71 @@ router.get("/messages/:number", async (req, res) => {
   }
 });
 
+// ── GET /api/live-chat/media/:mediaId ─────────────────────────────────────────
+// Resolve inbound WhatsApp media through Admark without exposing its API key
+// to the browser. Admark returns base64Content as JSON; this route returns bytes.
+router.get("/media/:mediaId", async (req, res) => {
+  try {
+    const { mediaId } = req.params;
+    if (!/^[a-zA-Z0-9._:-]{1,256}$/.test(mediaId)) {
+      res.status(400).json({ error: "Invalid media ID" });
+      return;
+    }
+    if (!apiKey()) {
+      res.status(503).json({ error: "Media service is not configured" });
+      return;
+    }
+
+    const url = new URL(`${WABA_BASE}/api/media-proxy/${encodeURIComponent(mediaId)}`);
+    const cloudUrl = typeof req.query.cloudUrl === "string" ? req.query.cloudUrl : "";
+    if (cloudUrl) {
+      try {
+        const parsedCloudUrl = new URL(cloudUrl);
+        if (parsedCloudUrl.protocol === "https:" && parsedCloudUrl.hostname === "verifiedwhatsapp.admarksolution.com") {
+          url.searchParams.set("cloudUrl", parsedCloudUrl.toString());
+        }
+      } catch {
+        // Ignore invalid or untrusted media URLs; Admark can resolve by media ID.
+      }
+    }
+
+    const upstream = await fetch(url.toString(), {
+      headers: { "api-key": apiKey() },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!upstream.ok) {
+      res.status(upstream.status === 404 ? 404 : 502).json({
+        error: upstream.status === 404 ? "Media not found or expired" : "Unable to retrieve media",
+      });
+      return;
+    }
+
+    const data = await upstream.json() as { base64Content?: unknown; mime_type?: unknown };
+    if (typeof data.base64Content !== "string" || !data.base64Content) {
+      res.status(502).json({ error: "Admark returned no media content" });
+      return;
+    }
+
+    const encodedContent = data.base64Content.replace(/^data:[^,]*;base64,/i, "");
+    const content = Buffer.from(encodedContent, "base64");
+    if (!content.length) {
+      res.status(502).json({ error: "Admark returned invalid media content" });
+      return;
+    }
+
+    const mimeType = typeof data.mime_type === "string" && /^[a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+$/.test(data.mime_type)
+      ? data.mime_type
+      : "application/octet-stream";
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Length", content.length);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(content);
+  } catch {
+    res.status(502).json({ error: "Unable to retrieve media" });
+  }
+});
+
 // ── POST /api/live-chat/send ──────────────────────────────────────────────────
 // Body: { number: string; message: string }
 router.post("/send", async (req, res) => {
