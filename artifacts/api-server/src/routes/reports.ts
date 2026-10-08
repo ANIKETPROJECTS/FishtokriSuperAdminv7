@@ -19,6 +19,26 @@ function toId(id: string): mongoose.mongo.BSON.ObjectId | null {
   try { return new mongoose.mongo.ObjectId(id); } catch { return null; }
 }
 
+function paymentModeIncludesCategory(value: unknown, category: "cash" | "upi" | "card" | "wallet"): boolean {
+  const parts = String(value ?? "")
+    .trim()
+    .replace(/^custom_/i, "")
+    .toLowerCase()
+    .split("+")
+    .map((part) => part.trim().replace(/[\s_-]+/g, ""))
+    .filter(Boolean);
+
+  return parts.some((part) => {
+    if (category === "cash") return part === "cod" || part.includes("cash");
+    if (category === "upi") {
+      return ["upi", "gpay", "googlepay", "paytm", "phonepe", "phonepay", "bhim", "amazonpay", "rzpay", "razorpay"]
+        .some((alias) => part.includes(alias));
+    }
+    if (category === "card") return part.includes("card") || ["visa", "mastercard", "amex"].includes(part);
+    return part.includes("wallet");
+  });
+}
+
 function scopeOrderFilter(req: ScopedRequest): Record<string, any> | null {
   const scope = req.scope;
   if (!scope || scope.isMaster) return {};
@@ -70,30 +90,46 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
       const upiLabel = o.upiVariant ? String(o.upiVariant).trim() : "UPI";
       let paymentMode = "—";
       if (payments.length > 0) {
-        let modes = [...new Set(payments.map((p: any) => (p.mode || "").toLowerCase()).filter(Boolean))];
-        // Business rule: an order cannot be both Cash and UPI simultaneously.
-        // If both exist in payments[] it is a data error — treat as UPI only (drop cash).
-        const isUpiVariant = (m: string) => m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe");
-        const hasCashMode = modes.some(m => m === "cash" || m === "cod");
-        const hasUpiMode  = modes.some(m => isUpiVariant(m));
-        if (hasCashMode && hasUpiMode) {
-          modes = modes.filter(m => m !== "cash" && m !== "cod");
+        const modesByKey = new Map<string, string>();
+        for (const p of payments) {
+          const rawMode = String(p.mode || "").trim().replace(/^custom_/i, "");
+          if (rawMode) modesByKey.set(rawMode.toLowerCase(), rawMode);
         }
+        const modes = [...modesByKey.values()];
+        const isUpiVariant = (value: string) => {
+          const m = value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+          return ["upi", "gpay", "googlepay", "paytm", "phonepe", "phonepay", "bhim", "amazonpay", "rzpay", "razorpay"]
+            .some((alias) => m.includes(alias));
+        };
         paymentMode = modes.map((m: string) => {
-          if (m === "cash" || m === "cod") return "Cash";
-          if (isUpiVariant(m)) return upiLabel;
-          if (m === "card") return "Card";
-          if (m === "wallet") return "Wallet";
-          if (m === "bank") return "Bank";
+          if (m.includes("+")) {
+            return m.split("+").map((part) => {
+              const token = part.trim();
+              const normalized = token.toLowerCase().replace(/[\s_-]+/g, "");
+              if (normalized === "cash") return "Cash";
+              if (normalized === "cod") return "COD";
+              if (normalized === "upi") return "UPI";
+              if (normalized === "card") return "Card";
+              if (normalized === "wallet") return "Wallet";
+              return token;
+            }).join("+");
+          }
+          const normalized = m.toLowerCase().trim();
+          if (normalized === "cash" || normalized === "cod") return normalized === "cod" ? "COD" : "Cash";
+          if (isUpiVariant(normalized)) return upiLabel;
+          if (normalized === "card") return "Card";
+          if (normalized === "wallet") return "Wallet";
+          if (normalized === "bank") return "Bank";
           return m.charAt(0).toUpperCase() + m.slice(1);
         }).join(", ");
       } else if (o.paymentMode) {
-        const m = String(o.paymentMode).toLowerCase();
+        const rawMode = String(o.paymentMode).trim().replace(/^custom_/i, "");
+        const m = rawMode.toLowerCase();
         if (m === "cash" || m === "cod") paymentMode = "Cash";
         else if (m === "upi") paymentMode = upiLabel;
         else if (m === "card") paymentMode = "Card";
         else if (m === "wallet") paymentMode = "Wallet";
-        else paymentMode = o.paymentMode;
+        else paymentMode = rawMode;
       }
 
       // Payment status label
@@ -135,7 +171,7 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
         dueAmount: Number(o.dueAmount) ?? null,
         walletUsed: Number(o.walletUsed) || 0,
         payments: payments.map((p: any) => ({
-          mode: String(p.mode || "").toLowerCase(),
+          mode: String(p.mode || "").trim().replace(/^custom_/i, "").toLowerCase(),
           amount: Number(p.amount) || 0,
         })),
         deliveryPerson: o.assignedDeliveryPersonName || "—",
@@ -176,18 +212,17 @@ router.get("/day-end/orders", async (req: ScopedRequest, res) => {
       const scaleFactor = nonWalletPaid > 0
         ? Math.min(1, Math.max(0, total - walletFromPays) / nonWalletPaid)
         : 0;
-      const isUpiLike = (m: string) =>
-        m === "upi" || m.includes("gpay") || m.includes("paytm") || m.includes("phonepe");
-
       for (const p of nonWalletPays) {
         const m = p.mode;
         const amt = p.amount * scaleFactor;
-        if (m === "cash" || m === "cod") {
+        if (paymentModeIncludesCategory(m, "cash")) {
           logCash += amt;
           cashBreakdown.push({ invoiceNo: o.invoiceNo, total, walletUsed: walletFromPays, cashCollected: amt });
-        } else if (isUpiLike(m)) {
+        }
+        if (paymentModeIncludesCategory(m, "upi")) {
           logUpi += amt;
-        } else if (m === "card") {
+        }
+        if (paymentModeIncludesCategory(m, "card")) {
           logCard += amt;
         }
       }
