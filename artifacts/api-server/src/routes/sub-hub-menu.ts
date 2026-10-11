@@ -984,6 +984,70 @@ router.get("/pincodes", async (req, res) => {
   }
 });
 
+// Save the service-area list to the selected sub-hub database. The admin UI
+// edits the list locally, so this endpoint reconciles additions, edits, and
+// removals against the same collection used by GET /pincodes.
+router.put("/pincodes", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(String((req.params as any).id ?? ""), res, req as ScopedRequest);
+    if (!ctx) return;
+
+    if (!Array.isArray(req.body?.pincodes)) {
+      res.status(400).json({ error: "ValidationError", message: "Pincodes must be an array" });
+      return;
+    }
+
+    const seen = new Set<string>();
+    const pincodes: Array<{ pincode: string; charge: number; timeDelay: number }> = [];
+    for (const item of req.body.pincodes) {
+      const pincode = String(item?.pincode ?? "").trim();
+      const charge = Number(item?.charge ?? 0);
+      const timeDelay = Number(item?.timeDelay ?? 0);
+      if (!pincode) {
+        res.status(400).json({ error: "ValidationError", message: "Every pincode must have a value" });
+        return;
+      }
+      if (seen.has(pincode)) {
+        res.status(400).json({ error: "Duplicate", message: `Pincode ${pincode} appears more than once` });
+        return;
+      }
+      if (!Number.isFinite(charge) || charge < 0 || !Number.isFinite(timeDelay) || timeDelay < 0) {
+        res.status(400).json({ error: "ValidationError", message: "Charge and time delay must be valid non-negative numbers" });
+        return;
+      }
+      seen.add(pincode);
+      pincodes.push({ pincode, charge, timeDelay });
+    }
+
+    const db = ctx.conn.db;
+    if (!db) throw new Error("Sub-hub database connection is unavailable");
+    const collection = db.collection("pincodes");
+    const now = new Date();
+    const operations: any[] = pincodes.map((entry) => ({
+      updateOne: {
+        filter: { pincode: entry.pincode },
+        update: {
+          $set: { ...entry, updatedAt: now },
+          $setOnInsert: { createdAt: now, area: "", city: "", isActive: true },
+        },
+        upsert: true,
+      },
+    }));
+    if (pincodes.length > 0) {
+      operations.push({ deleteMany: { filter: { pincode: { $nin: pincodes.map((entry) => entry.pincode) } } } });
+      await collection.bulkWrite(operations, { ordered: true });
+    } else {
+      await collection.deleteMany({});
+    }
+
+    const saved = await collection.find({}).sort({ pincode: 1 }).toArray();
+    res.json({ pincodes: saved, total: saved.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to save pincodes");
+    res.status(500).json({ error: "InternalError", message: "Failed to save service areas" });
+  }
+});
+
 router.post("/pincodes", async (req, res) => {
   try {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);

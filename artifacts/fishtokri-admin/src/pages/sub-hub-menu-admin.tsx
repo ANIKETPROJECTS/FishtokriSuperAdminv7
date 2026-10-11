@@ -692,7 +692,7 @@ export default function SubHubMenuAdmin() {
 // ─── PINCODES TAB ──────────────────────────────────────────────────────────────
 function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange: (n: number) => void }) {
   const { toast } = useToast();
-  type PincodeEntry = { pincode: string; charge: number; timeDelay: number };
+  type PincodeEntry = { _id?: string; pincode: string; charge: number; timeDelay: number };
   const [pincodes, setPincodes] = useState<PincodeEntry[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [pinCharge, setPinCharge] = useState("0");
@@ -700,6 +700,8 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [editingPincode, setEditingPincode] = useState<string | null>(null);
   const [editPinInput, setEditPinInput] = useState("");
   const [editPinCharge, setEditPinCharge] = useState("0");
@@ -707,18 +709,29 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
 
   useEffect(() => {
     setLoading(true);
+    setLoadError("");
+    setDirty(false);
+    onCountChange(0);
     apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`)
       .then((d) => {
-        const pins: PincodeEntry[] = Array.isArray(d.pincodes) ? d.pincodes : [];
+        const pins: PincodeEntry[] = Array.isArray(d.pincodes)
+          ? d.pincodes.map((p: any) => ({
+              _id: p?._id ? String(p._id) : undefined,
+              pincode: String(p?.pincode ?? ""),
+              charge: Number(p?.charge) || 0,
+              timeDelay: Number(p?.timeDelay) || 0,
+            }))
+          : [];
         setPincodes(pins);
         onCountChange(pins.length);
       })
-      .catch(() => {
+      .catch((err: any) => {
         setPincodes([]);
         onCountChange(0);
+        setLoadError(err?.message || "Failed to load service areas.");
       })
       .finally(() => setLoading(false));
-  }, [subHubId]);
+  }, [subHubId, loadAttempt, onCountChange]);
 
   const addPin = () => {
     const val = pinInput.trim();
@@ -778,10 +791,20 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
   const save = async () => {
     setSaving(true);
     try {
-      await apiFetch(`/api/sub-hubs/${subHubId}`, {
+      const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/pincodes`, {
         method: "PUT",
         body: JSON.stringify({ pincodes }),
       });
+      const savedPins: PincodeEntry[] = Array.isArray(data.pincodes)
+        ? data.pincodes.map((p: any) => ({
+            _id: p?._id ? String(p._id) : undefined,
+            pincode: String(p?.pincode ?? ""),
+            charge: Number(p?.charge) || 0,
+            timeDelay: Number(p?.timeDelay) || 0,
+          }))
+        : pincodes;
+      setPincodes(savedPins);
+      onCountChange(savedPins.length);
       setDirty(false);
       toast({ title: "Service areas saved" });
     } catch (err: any) {
@@ -795,6 +818,17 @@ function PincodesTab({ subHubId, onCountChange }: { subHubId: string; onCountCha
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50 p-4">
+        <p className="text-sm text-red-700">{loadError} No changes can be saved until the service areas load.</p>
+        <Button type="button" variant="outline" onClick={() => setLoadAttempt((n) => n + 1)}>
+          Retry
+        </Button>
       </div>
     );
   }
