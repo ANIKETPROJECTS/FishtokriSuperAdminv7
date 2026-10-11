@@ -114,6 +114,32 @@ async function fixPaidOrdersDueAmount() {
   }
 }
 
+async function fixSettledFtwUnpaidOrders() {
+  try {
+    const conn = await getSubHubDbConnection("orders");
+    const result = await conn.db.collection("orders").updateMany(
+      {
+        orderId: { $regex: "^#*FTW", $options: "i" },
+        paymentStatus: { $regex: "^unpaid$", $options: "i" },
+        createdAt: {
+          $gte: new Date("2026-10-09T18:30:00.000Z"),
+          $lt: new Date("2026-10-11T18:30:00.000Z"),
+        },
+        total: { $gt: 0 },
+        paidAmount: { $exists: true, $ne: null },
+        dueAmount: 0,
+        $expr: { $gte: ["$paidAmount", "$total"] },
+      },
+      { $set: { paymentStatus: "paid", dueAmount: 0 } },
+    );
+    if (result.modifiedCount > 0) {
+      logger.info({ count: result.modifiedCount }, "Migration: repaired fully paid FTW orders for Oct 10-11, 2026");
+    }
+  } catch (err) {
+    logger.error({ err }, "Migration: settled FTW payment repair failed (non-fatal)");
+  }
+}
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
@@ -145,6 +171,7 @@ connectDB()
 
       // Migration: fix paid orders that still have dueAmount > 0 (old takeaway bug).
       fixPaidOrdersDueAmount().catch(() => {});
+      fixSettledFtwUnpaidOrders().catch(() => {});
 
       // Auto-fix storefront (FT*) orders: set UPI+RZPAY immediately, then every 30s.
       autoFixStorefrontPaymentMode().catch(() => {});

@@ -2014,6 +2014,22 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         update.dueAmount = totalForDue;
       }
     }
+
+    const resolvedPaymentStatus = String(update.paymentStatus ?? prev.paymentStatus ?? "").trim().toLowerCase();
+    const resolvedTotal = Number(update.total ?? prev.total) || 0;
+    const resolvedPaidAmount = Math.max(0, Number(update.paidAmount ?? prev.paidAmount) || 0);
+    const resolvedDueAmount = Number(update.dueAmount ?? prev.dueAmount ?? Math.max(0, resolvedTotal - resolvedPaidAmount));
+    if (
+      isFtwOrder(prev) &&
+      resolvedPaymentStatus === "unpaid" &&
+      resolvedTotal > 0 &&
+      resolvedPaidAmount >= resolvedTotal &&
+      resolvedDueAmount <= 0
+    ) {
+      update.paymentStatus = "paid";
+      update.paidAmount = resolvedPaidAmount;
+      update.dueAmount = 0;
+    }
     // Final guard: if the resolved paymentStatus is "paid", dueAmount must be 0.
     const finalPaymentStatus = update.paymentStatus ?? String(prev.paymentStatus ?? "");
     if (finalPaymentStatus === "paid") {
