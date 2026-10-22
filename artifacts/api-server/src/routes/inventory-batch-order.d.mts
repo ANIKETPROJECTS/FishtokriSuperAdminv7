@@ -16,6 +16,7 @@ export interface BatchAllocation {
   quantity: number;
   lotId?: unknown;
   lotAddedAt?: Date | string;
+  lotAddedQuantity?: number;
   deductionMovementId?: unknown;
   batchSnapshot?: {
     batchNumber?: string;

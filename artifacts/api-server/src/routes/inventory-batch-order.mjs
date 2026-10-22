@@ -47,6 +47,7 @@ export function planBatchConsumption(batches, quantity) {
       batchNumber: batch.batchNumber || undefined,
       lotId: lot._id,
       lotAddedAt: lot.addedAt,
+      lotAddedQuantity: lot.addedQuantity ?? lot.quantity,
       quantity: take,
     });
     remaining -= take;
@@ -143,7 +144,7 @@ export function restoreBatchAllocations(batches, allocations) {
         lot = {
           _id: lotId,
           quantity: 0,
-          addedQuantity: quantity,
+          addedQuantity: Math.max(quantity, Number(allocation.lotAddedQuantity) || 0),
           addedAt: allocation.lotAddedAt ?? allocation.batchSnapshot?.receivedDate ?? new Date(),
           source: "legacy-restored",
         };
@@ -165,7 +166,7 @@ export function restoreBatchAllocations(batches, allocations) {
         quantityLots: [{
           _id: lotId,
           quantity,
-          addedQuantity: quantity,
+          addedQuantity: Math.max(quantity, Number(allocation.lotAddedQuantity) || 0),
           addedAt: allocation.lotAddedAt ?? allocation.batchSnapshot.receivedDate ?? new Date(),
           source: "legacy-restored",
         }],

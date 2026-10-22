@@ -65,8 +65,8 @@ test("records the exact quantities taken from the oldest quantity additions acro
   const plan = planBatchConsumption(batches, 4);
 
   assert.deepEqual(plan.allocations, [
-    { batchId: "earlier", batchNumber: "EARLIER", lotId: "lot-earlier", lotAddedAt: new Date("2026-01-01"), quantity: 2 },
-    { batchId: "later", batchNumber: "LATER", lotId: "lot-later", lotAddedAt: new Date("2026-01-02"), quantity: 2 },
+    { batchId: "earlier", batchNumber: "EARLIER", lotId: "lot-earlier", lotAddedAt: new Date("2026-01-01"), lotAddedQuantity: 2, quantity: 2 },
+    { batchId: "later", batchNumber: "LATER", lotId: "lot-later", lotAddedAt: new Date("2026-01-02"), lotAddedQuantity: 5, quantity: 2 },
   ]);
   assert.equal(plan.remaining, 0);
   assert.equal(batches[0].quantity, 5);
@@ -107,7 +107,7 @@ test("recreates a removed source batch using its saved ID and metadata", () => {
   assert.equal(restored.batchNumber, "SOURCE");
   assert.equal(restored.quantity, 2);
   assert.equal(restored.quantityLots[0].quantity, 2);
-  assert.equal(restored.quantityLots[0].addedAt, new Date("2026-08-01"));
+  assert.equal(new Date(restored.quantityLots[0].addedAt).getTime(), new Date("2026-08-01").getTime());
 });
 
 test("a repeated cancellation does not restore a deduction movement twice", () => {

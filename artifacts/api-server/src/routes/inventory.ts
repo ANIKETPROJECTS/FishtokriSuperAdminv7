@@ -974,7 +974,24 @@ router.delete("/products/:productId/batches/:batchId", async (req, res) => {
     if (!product) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
     const batches: Batch[] = Array.isArray(product.batches) ? product.batches.map((b: any) => normalizeBatch(b)) : [];
     const remaining = batches.filter((b) => String(b._id) !== String(req.params.batchId));
+    const removed = batches.find((b) => String(b._id) === String(req.params.batchId));
     const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, remaining, {}, ctx.conn.db.collection("combos"));
+    if (removed && removed.quantity > 0) {
+      await ctx.conn.db.collection(MOVEMENTS_COLLECTION).insertOne({
+        type: "adjustment",
+        productId: String(pid),
+        productName: product.name ?? "",
+        unit: product.unit ?? "",
+        change: -removed.quantity,
+        balance: persisted.quantity,
+        reason: "Batch deleted manually",
+        batchNumber: removed.batchNumber,
+        batchObjectId: String(removed._id),
+        expiryDate: removed.expiryDate,
+        receivedDate: removed.receivedDate,
+        createdAt: new Date(),
+      });
+    }
     res.json({ productId: String(pid), quantity: persisted.quantity, batches: persisted.batches });
   } catch (err) {
     req.log.error({ err }, "Failed to delete batch");

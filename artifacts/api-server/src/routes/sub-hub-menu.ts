@@ -244,7 +244,6 @@ router.put("/products/:productId", async (req, res) => {
     if (netWeight !== undefined) update.netWeight = netWeight;
     if (pieces !== undefined) update.pieces = pieces;
     if (serves !== undefined) update.serves = serves;
-    if (quantity !== undefined) update.quantity = Number(quantity) || 0;
     if (status !== undefined) update.status = status;
     if (isArchived !== undefined) update.isArchived = isArchived === true;
     if (imageUrl !== undefined) update.imageUrl = imageUrl;
@@ -271,8 +270,94 @@ router.put("/products/:productId", async (req, res) => {
     if (couponIds !== undefined) update.couponIds = normalizeIdList(couponIds);
     const existing = await ctx.conn.db.collection("products").findOne({ _id: oid });
     if (!existing) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
+    let stockEdit: { change: number; balance: number } | null = null;
+    if (quantity !== undefined) {
+      const desired = Math.max(0, Number(quantity) || 0);
+      const now = new Date();
+      const batches: any[] = Array.isArray(existing.batches)
+        ? existing.batches.map((batch: any) => ({ ...batch, quantityLots: Array.isArray(batch.quantityLots) ? batch.quantityLots.map((lot: any) => ({ ...lot })) : [] }))
+        : [];
+      if (batches.length === 0) {
+        const legacyQuantity = Math.max(0, Number(existing.quantity) || 0);
+        if (legacyQuantity > 0) {
+          batches.push({
+            _id: new mongoose.Types.ObjectId(),
+            batchNumber: "LEGACY-STOCK",
+            quantity: legacyQuantity,
+            receivedDate: existing.receivedDate ?? existing.createdAt ?? now,
+            createdAt: existing.createdAt ?? now,
+            quantityLots: [{
+              _id: new mongoose.Types.ObjectId(),
+              quantity: legacyQuantity,
+              addedQuantity: legacyQuantity,
+              addedAt: existing.receivedDate ?? existing.createdAt ?? now,
+              source: "legacy",
+            }],
+          });
+        }
+      } else {
+        for (const batch of batches) {
+          const batchQty = Math.max(0, Number(batch.quantity) || 0);
+          if (batch.quantityLots.length === 0 && batchQty > 0) {
+            batch.quantityLots.push({
+              _id: new mongoose.Types.ObjectId(),
+              quantity: batchQty,
+              addedQuantity: batchQty,
+              addedAt: batch.receivedDate ? new Date(batch.receivedDate) : batch.createdAt ? new Date(batch.createdAt) : now,
+              source: "legacy",
+            });
+          }
+        }
+      }
+      const isEligible = (batch: any) => !batch.expiryDate || new Date(batch.expiryDate).getTime() >= now.getTime();
+      const eligible = batches.filter(isEligible);
+      const before = eligible.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
+      const delta = desired - before;
+      if (delta > 0) {
+        batches.push({
+          _id: new mongoose.Types.ObjectId(),
+          batchNumber: `MANUAL-${now.getTime()}`,
+          quantity: delta,
+          receivedDate: now,
+          createdAt: now,
+          quantityLots: [{ _id: new mongoose.Types.ObjectId(), quantity: delta, addedQuantity: delta, addedAt: now, source: "product-edit" }],
+        });
+      } else if (delta < 0) {
+        let remaining = -delta;
+        const lots = eligible.flatMap((batch, batchIndex) => batch.quantityLots.map((lot: any, lotIndex: number) => ({
+          batch, lot, batchIndex, lotIndex, time: new Date(lot.addedAt ?? 0).getTime(),
+        }))).sort((a, b) => a.time - b.time || a.batchIndex - b.batchIndex || a.lotIndex - b.lotIndex);
+        for (const entry of lots) {
+          if (remaining <= 0) break;
+          const take = Math.min(Math.max(0, Number(entry.lot.quantity) || 0), remaining);
+          entry.lot.quantity -= take;
+          entry.batch.quantity = Math.max(0, (Number(entry.batch.quantity) || 0) - take);
+          remaining -= take;
+        }
+        if (remaining > 0) {
+          res.status(400).json({ error: "ValidationError", message: "New quantity is greater than the available non-expired batch stock can support" });
+          return;
+        }
+      }
+      const balance = batches.filter(isEligible).reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
+      update.batches = batches;
+      update.quantity = balance;
+      if (delta !== 0) stockEdit = { change: delta, balance };
+    }
     const result = await ctx.conn.db.collection("products").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
     if (!result) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
+    if (stockEdit) {
+      await ctx.conn.db.collection("inventory_movements").insertOne({
+        type: "adjustment",
+        productId: String(oid),
+        productName: existing.name ?? "",
+        unit: existing.unit ?? "",
+        change: stockEdit.change,
+        balance: stockEdit.balance,
+        reason: "Manual product quantity edit",
+        createdAt: new Date(),
+      });
+    }
     if (couponIds !== undefined) {
       const oldCouponIds: string[] = (existing.couponIds ?? []).map((c: any) => String(c));
       const newCouponIds: string[] = (Array.isArray(couponIds) ? couponIds : []).map((c: any) => String(c));
