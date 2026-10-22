@@ -577,6 +577,9 @@ router.get("/", async (req: ScopedRequest, res) => {
       assignedTo = "",
       deliveryDateFilter = "",
       orderType = "",
+      zoneId = "",
+      zoneSubHubId = "",
+      zoneName = "",
     } = req.query as Record<string, string>;
 
     const filter: any = {};
@@ -585,7 +588,6 @@ router.get("/", async (req: ScopedRequest, res) => {
     const isDeletedTab = tab === "deleted";
     filter.isDeleted = isDeletedTab ? true : { $ne: true };
     if (orderType === "preorder") filter.orderType = "preorder";
-
     if (q) {
       const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const words = q.trim().split(/\s+/).filter(Boolean);
@@ -719,10 +721,28 @@ router.get("/", async (req: ScopedRequest, res) => {
       }
     }
 
+    if (zoneId && zoneSubHubId) {
+      const zoneClause = {
+        $or: [
+          { "deliveryAddressDetail.zoneId": zoneId, "deliveryAddressDetail.zoneSubHubId": zoneSubHubId },
+          { zoneId, zoneSubHubId },
+          ...(zoneName ? [
+            { "deliveryAddressDetail.zoneName": zoneName, "deliveryAddressDetail.zoneSubHubId": zoneSubHubId },
+            { zoneName, zoneSubHubId },
+          ] : []),
+        ],
+      };
+      filter.$and = [...(filter.$and ?? []), zoneClause];
+    }
+
     const sortDir = order === "asc" ? 1 : -1;
     const sortObj: any = {};
     const allowedSorts = ["createdAt", "customerName", "status"];
-    sortObj[allowedSorts.includes(sort) ? sort : "createdAt"] = sortDir;
+    if (sort === "zone") {
+      sortObj["deliveryAddressDetail.zoneName"] = sortDir;
+      sortObj.zoneName = sortDir;
+    }
+    else sortObj[allowedSorts.includes(sort) ? sort : "createdAt"] = sortDir;
 
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));

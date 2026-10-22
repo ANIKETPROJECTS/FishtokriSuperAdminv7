@@ -827,6 +827,8 @@ export default function Orders() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [deliveryTypeFilter, setDeliveryTypeFilter] = useState("");
+  const [zoneFilter, setZoneFilter] = useState("");
+  const [zoneOptions, setZoneOptions] = useState<{ id: string; name: string; subHubId: string; subHubName: string }[]>([]);
   const [sortField, setSortField] = useState("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [dateFrom, setDateFrom] = useState("");
@@ -1814,6 +1816,15 @@ export default function Orders() {
     let address = "";
     let deliveryArea = "";
     let deliveryAddressDetail: any = undefined;
+    const selectedSavedAddress = chosenCustomer && selectedAddressIdx !== null
+      ? (chosenCustomer.addresses ?? [])[selectedAddressIdx] as any
+      : null;
+    const savedAddressZone = selectedSavedAddress ? {
+      zoneId: selectedSavedAddress.zoneId,
+      zoneName: selectedSavedAddress.zoneName,
+      zoneSubHubId: selectedSavedAddress.zoneSubHubId,
+      zoneSubHubName: selectedSavedAddress.zoneSubHubName,
+    } : {};
     if (orderDeliveryType === "delivery") {
       if (chosenCustomer && orderAddressMode === "saved" && selectedAddressIdx !== null) {
         const f = editedSavedAddress;
@@ -1827,7 +1838,7 @@ export default function Orders() {
         }
         address = [f.building, f.street, f.area, f.landmark, f.city, f.state, f.pincode].filter(Boolean).join(", ");
         deliveryArea = f.area || f.city || "";
-        deliveryAddressDetail = { label: f.label, name: f.name, phone: f.phone, building: f.building, street: f.street, area: f.area, landmark: f.landmark, pincode: f.pincode, city: f.city, state: f.state };
+        deliveryAddressDetail = { label: f.label, name: f.name, phone: f.phone, building: f.building, street: f.street, area: f.area, landmark: f.landmark, pincode: f.pincode, city: f.city, state: f.state, ...savedAddressZone };
       } else {
         const f = newAddress;
         if (!f.name.trim()) {
@@ -1878,7 +1889,7 @@ export default function Orders() {
         if (f.building.trim()) {
           address = [f.building, f.street, f.area, f.landmark, f.city, f.state, f.pincode].filter(Boolean).join(", ");
           deliveryArea = f.area || f.city || "";
-          deliveryAddressDetail = { label: f.label, name: f.name, phone: f.phone, building: f.building, street: f.street, area: f.area, landmark: f.landmark, pincode: f.pincode, city: f.city, state: f.state };
+          deliveryAddressDetail = { label: f.label, name: f.name, phone: f.phone, building: f.building, street: f.street, area: f.area, landmark: f.landmark, pincode: f.pincode, city: f.city, state: f.state, ...savedAddressZone };
         }
       } else if (newAddress.building.trim()) {
         address = formatAddressOneLine(newAddress);
@@ -2327,6 +2338,15 @@ export default function Orders() {
       if (activeTab === "all" && dateFrom) params.set("from", dateFrom);
       if (activeTab === "all" && dateTo) params.set("to", dateTo);
       if (subHubFilter) params.set("subHubId", subHubFilter);
+      if (zoneFilter) {
+        const [zoneSubHubId, zoneId] = zoneFilter.split(":");
+        const selectedZone = zoneOptions.find((zone) => zone.id === zoneId && zone.subHubId === zoneSubHubId);
+        if (zoneId && zoneSubHubId) {
+          params.set("zoneId", zoneId);
+          params.set("zoneSubHubId", zoneSubHubId);
+          if (selectedZone) params.set("zoneName", selectedZone.name);
+        }
+      }
 
       const data = await apiFetch(`/api/orders?${params}`);
       const loadedOrders = data.orders ?? [];
@@ -2411,7 +2431,7 @@ export default function Orders() {
     } catch (err: any) {
       toast({ title: "Error loading orders", description: err.message, variant: "destructive" });
     } finally { setLoading(false); }
-  }, [search, sortField, sortDir, page, activeTab, statusFilter, deliveryTypeFilter, dateFrom, dateTo, subHubFilter, toast]);
+  }, [search, sortField, sortDir, page, activeTab, statusFilter, deliveryTypeFilter, dateFrom, dateTo, subHubFilter, zoneFilter, zoneOptions, toast]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -2429,8 +2449,14 @@ export default function Orders() {
     } catch { }
   }, []);
 
+  useEffect(() => {
+    apiFetch("/api/customers/zones")
+      .then((data) => setZoneOptions(Array.isArray(data.zones) ? data.zones : []))
+      .catch(() => setZoneOptions([]));
+  }, []);
+
   useEffect(() => { loadStats(); }, [loadStats]);
-  useEffect(() => { setPage(1); }, [activeTab, search, statusFilter, deliveryTypeFilter, dateFrom, dateTo, sortField, sortDir, subHubFilter]);
+  useEffect(() => { setPage(1); }, [activeTab, search, statusFilter, deliveryTypeFilter, dateFrom, dateTo, sortField, sortDir, subHubFilter, zoneFilter]);
   useEffect(() => { load(); }, [load]);
 
   // Clear the delivery-date range filter when leaving the "All Orders" tab —
@@ -3042,10 +3068,10 @@ export default function Orders() {
   const clearFilters = () => {
     setSearch(""); setStatusFilter(""); setDeliveryTypeFilter("");
     setDateFrom(""); setDateTo(""); setSortField("createdAt"); setSortDir("desc");
-    setSubHubFilter(""); setPayFilter(false); setPayModeFilter("");
+    setSubHubFilter(""); setZoneFilter(""); setPayFilter(false); setPayModeFilter("");
   };
 
-  const hasFilters = !!(search || statusFilter || deliveryTypeFilter || dateFrom || dateTo || subHubFilter || payFilter);
+  const hasFilters = !!(search || statusFilter || deliveryTypeFilter || dateFrom || dateTo || subHubFilter || zoneFilter || payFilter);
 
   const totalAll = (statsTotals.total ?? 0) || (
     ACTIVE_STATUSES.reduce((s, k) => s + (statsData[k] ?? 0), 0) +
@@ -3238,6 +3264,21 @@ export default function Orders() {
             </Select>
           )}
 
+          {/* Delivery zone filter */}
+          <Select value={zoneFilter || "_all"} onValueChange={(value) => setZoneFilter(value === "_all" ? "" : value)} disabled={zoneOptions.length === 0}>
+            <SelectTrigger className="h-9 w-40 text-sm text-black rounded-full border-gray-200">
+              <SelectValue placeholder="All Zones" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">All Zones</SelectItem>
+              {zoneOptions.map((zone) => (
+                <SelectItem key={`${zone.subHubId}:${zone.id}`} value={`${zone.subHubId}:${zone.id}`}>
+                  {zone.subHubName} · {zone.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           {/* Status filter dropdown */}
           <Select value={statusFilter || "_all"} onValueChange={(v) => { setStatusFilter(v === "_all" ? "" : v); }}>
             <SelectTrigger className="h-9 w-36 text-sm text-black rounded-full border-gray-200">
@@ -3250,6 +3291,35 @@ export default function Orders() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Sort control */}
+          <Select
+            value={sortField}
+            onValueChange={(value) => {
+              setSortField(value);
+              if (value === "zone") setSortDir("asc");
+            }}
+          >
+            <SelectTrigger className="h-9 w-36 text-sm text-black rounded-full border-gray-200" aria-label="Sort orders">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="createdAt">Date placed</SelectItem>
+              <SelectItem value="customerName">Customer</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
+              <SelectItem value="zone">Zone</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setSortDir((direction) => direction === "asc" ? "desc" : "asc")}
+            className="h-9 rounded-full border-gray-200 px-3 text-sm text-black"
+            title={sortDir === "asc" ? "Ascending order" : "Descending order"}
+          >
+            <ArrowUpDown className="mr-1.5 h-3.5 w-3.5" />
+            {sortField === "createdAt" ? (sortDir === "desc" ? "Newest" : "Oldest") : (sortDir === "asc" ? "Ascending" : "Descending")}
+          </Button>
 
           {/* Date range picker — only shown on the All Orders tab */}
           {activeTab === "all" && (
@@ -3402,6 +3472,7 @@ export default function Orders() {
                   <th className="px-3 py-4 text-center">Sub Hub</th>
                   <th className="px-3 py-4 text-center">Time Slot</th>
                   <th className="px-3 py-4 text-center">Location</th>
+                  <th className="px-3 py-4 text-center">Zone</th>
                   <th className="px-3 py-4 text-center">Status</th>
                   <th className="px-3 py-4 text-center">Operations</th>
                   <th className="px-3 py-4 text-center">Actions</th>
@@ -3515,6 +3586,11 @@ export default function Orders() {
                         {o.deliveryArea
                           ? <span className="text-sm text-black">{o.deliveryArea}</span>
                           : <span className="text-sm text-black">—</span>}
+                      </td>
+                      <td className="px-3 py-4">
+                        {String(o.deliveryAddressDetail?.zoneName ?? o.zoneName ?? "").trim()
+                          ? <span className="text-sm text-black">{String(o.deliveryAddressDetail?.zoneName ?? o.zoneName).trim()}</span>
+                          : <span className="text-sm text-gray-400">—</span>}
                       </td>
                       <td className="px-4 py-4"><SolidStatusBadge status={o.status} deliveryType={o.deliveryType} /></td>
                       <td className="px-4 py-4">
