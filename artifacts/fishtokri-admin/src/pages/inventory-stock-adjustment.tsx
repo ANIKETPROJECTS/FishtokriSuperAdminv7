@@ -48,6 +48,14 @@ type Batch = {
   expiryDate: string | null;
   expiryTime?: string;
   notes: string;
+  quantityLots?: Array<{
+    id?: string;
+    _id?: string;
+    quantity: number;
+    addedQuantity?: number;
+    addedAt?: string;
+    source?: string;
+  }>;
 };
 type Product = { id: string; name: string; shortCode?: string; category: string; unit: string; quantity: number; batches?: Batch[] };
 
@@ -750,7 +758,7 @@ function ExistingBatchesCard({
 
   // Sync local edit state when batches prop changes or panel opens
   useEffect(() => {
-    setEdited(visibleBatches.map((b) => ({ ...b, expiryTime: extractTime12hFromISO(b.expiryDate) })));
+    setEdited(batches.map((b) => ({ ...b, expiryTime: extractTime12hFromISO(b.expiryDate) })));
     setDirty(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batches, open, showAllBatches]);
@@ -832,14 +840,18 @@ function ExistingBatchesCard({
 
           {/* Editable rows */}
           <div className="divide-y divide-[#364F9F]/10">
-            {edited.map((b, i) => {
+            {visibleBatches.map((visibleBatch) => {
+              const i = edited.findIndex((entry) => entry.id === visibleBatch.id);
+              const b = edited[i];
+              if (!b) return null;
               const dl = daysUntil(b.expiryDate);
               const expColor = dl == null ? "border-gray-200"
                 : dl < 0 ? "border-red-300 bg-red-50"
                 : dl <= 7 ? "border-amber-300 bg-amber-50"
                 : "border-emerald-200 bg-emerald-50";
               return (
-                <div key={b.id} className="px-3 py-2 grid grid-cols-6 gap-2 items-start bg-white/50 hover:bg-white/80 transition-colors">
+                <div key={b.id} className="grid grid-cols-6 bg-white/50 hover:bg-white/80 transition-colors">
+                <div className="px-3 py-2 grid grid-cols-6 gap-2 items-start col-span-6">
                   <input
                     type="text"
                     value={b.batchNumber}
@@ -925,6 +937,24 @@ function ExistingBatchesCard({
                     placeholder="Notes..."
                     className="h-7 px-2 text-[11px] text-gray-600 border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#364F9F]/30 mt-0.5"
                   />
+                </div>
+                <details className="col-span-6 border-t border-[#364F9F]/10 bg-white/70 px-3 py-1.5">
+                  <summary className="cursor-pointer select-none text-[10px] font-semibold text-[#364F9F]">
+                    Quantity history ({b.quantityLots?.length ?? 0} additions)
+                  </summary>
+                  <div className="ml-3 mt-1 border-l-2 border-[#364F9F]/20 pl-3">
+                    {(b.quantityLots ?? []).length === 0 ? (
+                      <p className="py-1 text-[10px] text-gray-400">No dated additions recorded for this legacy batch yet.</p>
+                    ) : (b.quantityLots ?? []).map((lot, lotIndex) => (
+                      <div key={lot.id ?? lot._id ?? lotIndex} className="flex flex-wrap items-center gap-x-3 py-1 text-[10px] text-gray-600">
+                        <span className="font-semibold text-[#162B4D]">Added {lot.addedQuantity ?? lot.quantity} {unit}</span>
+                        <span>{lot.addedAt ? formatDateTime(lot.addedAt) : "Date not recorded"}</span>
+                        <span>Remaining: {lot.quantity} {unit}</span>
+                        {lot.source && <span className="text-gray-400">{lot.source.replaceAll("-", " ")}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </details>
                 </div>
               );
             })}

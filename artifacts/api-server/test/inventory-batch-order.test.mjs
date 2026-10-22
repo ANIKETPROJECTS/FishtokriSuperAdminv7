@@ -50,17 +50,23 @@ test("does not use createdAt to order batches with the same expiry", () => {
   );
 });
 
-test("records the exact quantities taken from each expiry-ordered batch", () => {
+test("records the exact quantities taken from the oldest quantity additions across batches", () => {
   const batches = [
-    { _id: "later", batchNumber: "LATER", quantity: 5, expiryDate: new Date("2026-12-01") },
-    { _id: "earlier", batchNumber: "EARLIER", quantity: 2, expiryDate: new Date("2026-11-01") },
+    {
+      _id: "later", batchNumber: "LATER", quantity: 5, expiryDate: new Date("2026-12-01"),
+      quantityLots: [{ _id: "lot-later", quantity: 5, addedAt: new Date("2026-01-02") }],
+    },
+    {
+      _id: "earlier", batchNumber: "EARLIER", quantity: 2, expiryDate: new Date("2026-11-01"),
+      quantityLots: [{ _id: "lot-earlier", quantity: 2, addedAt: new Date("2026-01-01") }],
+    },
   ];
 
   const plan = planBatchConsumption(batches, 4);
 
   assert.deepEqual(plan.allocations, [
-    { batchId: "earlier", batchNumber: "EARLIER", quantity: 2 },
-    { batchId: "later", batchNumber: "LATER", quantity: 2 },
+    { batchId: "earlier", batchNumber: "EARLIER", lotId: "lot-earlier", lotAddedAt: new Date("2026-01-01"), quantity: 2 },
+    { batchId: "later", batchNumber: "LATER", lotId: "lot-later", lotAddedAt: new Date("2026-01-02"), quantity: 2 },
   ]);
   assert.equal(plan.remaining, 0);
   assert.equal(batches[0].quantity, 5);
@@ -97,16 +103,11 @@ test("recreates a removed source batch using its saved ID and metadata", () => {
     }],
   );
 
-  assert.deepEqual(
-    result.batches.find((batch) => batch._id === "removed-batch"),
-    {
-      batchNumber: "SOURCE",
-      expiryDate: new Date("2026-10-01"),
-      receivedDate: new Date("2026-08-01"),
-      _id: "removed-batch",
-      quantity: 2,
-    },
-  );
+  const restored = result.batches.find((batch) => batch._id === "removed-batch");
+  assert.equal(restored.batchNumber, "SOURCE");
+  assert.equal(restored.quantity, 2);
+  assert.equal(restored.quantityLots[0].quantity, 2);
+  assert.equal(restored.quantityLots[0].addedAt, new Date("2026-08-01"));
 });
 
 test("a repeated cancellation does not restore a deduction movement twice", () => {

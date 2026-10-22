@@ -1,11 +1,21 @@
 export interface ExpiryBatch {
   expiryDate?: Date | string | null;
+  receivedDate?: Date | string | null;
+  createdAt?: Date | string | null;
+  quantityLots?: Array<{
+    _id?: unknown;
+    quantity: number;
+    addedQuantity?: number;
+    addedAt?: Date | string | null;
+  }>;
 }
 
 export interface BatchAllocation {
   batchId?: unknown;
   batchNumber?: string;
   quantity: number;
+  lotId?: unknown;
+  lotAddedAt?: Date | string;
   deductionMovementId?: unknown;
   batchSnapshot?: {
     batchNumber?: string;

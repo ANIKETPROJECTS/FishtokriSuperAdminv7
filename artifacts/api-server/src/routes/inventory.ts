@@ -90,6 +90,15 @@ type Batch = {
   expiryDate?: Date | null;
   notes?: string;
   createdAt?: Date;
+  quantityLots?: QuantityLot[];
+};
+
+type QuantityLot = {
+  _id?: any;
+  quantity: number;
+  addedQuantity: number;
+  addedAt: Date;
+  source?: string;
 };
 
 function toDate(v: any): Date | null {
@@ -105,16 +114,85 @@ function normalizeBatch(b: any): Batch {
   if (!expiry && shelf != null && Number.isFinite(shelf)) {
     expiry = new Date(received.getTime() + shelf * 24 * 60 * 60 * 1000);
   }
+  const quantity = Math.max(0, Number(b?.quantity) || 0);
+  let quantityLots: QuantityLot[] = Array.isArray(b?.quantityLots)
+    ? b.quantityLots.map((lot: any) => ({
+        _id: lot?._id ?? new mongoose.Types.ObjectId(),
+        quantity: Math.max(0, Number(lot?.quantity) || 0),
+        addedQuantity: Math.max(0, Number(lot?.addedQuantity ?? lot?.quantity) || 0),
+        addedAt: toDate(lot?.addedAt) ?? received,
+        source: lot?.source ? String(lot.source) : "recorded",
+      })).filter((lot: QuantityLot) => lot.quantity > 0 || lot.addedQuantity > 0)
+    : [];
+  if (quantityLots.length === 0 && quantity > 0) {
+    // Existing inventory has no per-add history; preserve it as one legacy lot.
+    quantityLots = [{
+      _id: new mongoose.Types.ObjectId(),
+      quantity,
+      addedQuantity: quantity,
+      addedAt: toDate(b?.receivedDate) ?? toDate(b?.createdAt) ?? received,
+      source: "legacy",
+    }];
+  } else if (quantityLots.length > 0) {
+    const lotTotal = quantityLots.reduce((sum, lot) => sum + lot.quantity, 0);
+    if (lotTotal < quantity) {
+      const delta = quantity - lotTotal;
+      quantityLots.push({
+        _id: new mongoose.Types.ObjectId(),
+        quantity: delta,
+        addedQuantity: delta,
+        addedAt: new Date(),
+        source: "manual-correction",
+      });
+    } else if (lotTotal > quantity) {
+      let excess = lotTotal - quantity;
+      for (const lot of [...quantityLots].sort((a, b) => b.addedAt.getTime() - a.addedAt.getTime())) {
+        const remove = Math.min(lot.quantity, excess);
+        lot.quantity -= remove;
+        excess -= remove;
+        if (excess <= 0) break;
+      }
+    }
+  }
   return {
     _id: b?._id ?? new mongoose.Types.ObjectId(),
     batchNumber: b?.batchNumber ? String(b.batchNumber).trim() : "",
-    quantity: Math.max(0, Number(b?.quantity) || 0),
+    quantity,
     shelfLifeDays: shelf != null && Number.isFinite(shelf) ? shelf : null,
     receivedDate: received,
     expiryDate: expiry,
     notes: b?.notes ? String(b.notes).trim() : "",
     createdAt: b?.createdAt ? new Date(b.createdAt) : new Date(),
+    quantityLots,
   };
+}
+
+function addQuantityLot(batch: Batch, quantity: number, addedAt = new Date(), source = "manual"): void {
+  if (quantity <= 0) return;
+  if (!Array.isArray(batch.quantityLots)) batch.quantityLots = [];
+  batch.quantityLots.push({
+    _id: new mongoose.Types.ObjectId(),
+    quantity,
+    addedQuantity: quantity,
+    addedAt,
+    source,
+  });
+  batch.quantity += quantity;
+}
+
+function reduceBatchLots(batch: Batch, quantity: number): number {
+  let remaining = Math.max(0, quantity);
+  const lots = [...(batch.quantityLots ?? [])].sort(
+    (a, b) => a.addedAt.getTime() - b.addedAt.getTime(),
+  );
+  for (const lot of lots) {
+    if (remaining <= 0) break;
+    const take = Math.min(lot.quantity, remaining);
+    lot.quantity -= take;
+    batch.quantity -= take;
+    remaining -= take;
+  }
+  return remaining;
 }
 
 function batchesTotal(batches: Batch[] | undefined | null): number {
@@ -143,7 +221,7 @@ function availableBatchesTotal(batches: Batch[] | undefined | null, now: Date = 
 }
 
 /**
- * Consume `qty` units from batches by earliest expiry first,
+ * Consume eligible stock by the oldest recorded quantity addition (FIFO),
  * skipping any batches that have already expired.
  * Expired batches are preserved unchanged in the returned list so
  * admins can still see and remove them manually.
@@ -161,12 +239,16 @@ function consumeBatches(
   const active  = batches.filter((b) => !b.expiryDate || new Date(b.expiryDate).getTime() >= nowMs);
 
   const plan = planBatchConsumption(active, qty);
-  const allocations: BatchAllocation[] = plan.allocations.map((allocation) => {
+  const allocations: BatchAllocation[] = [];
+  for (const allocation of plan.allocations) {
     const sourceBatch = active.find((batch) => String(batch._id) === String(allocation.batchId));
     if (!sourceBatch) throw new Error(`Batch ${String(allocation.batchId)} disappeared while planning a deduction`);
+    const lot = sourceBatch.quantityLots?.find((entry) => String(entry._id) === String(allocation.lotId));
+    if (!lot || lot.quantity < allocation.quantity) throw new Error("FIFO quantity lot changed while planning a deduction");
+    lot.quantity -= allocation.quantity;
     sourceBatch.quantity -= allocation.quantity;
-    return { ...allocation, batchSnapshot: batchSnapshot(sourceBatch) };
-  });
+    allocations.push({ ...allocation, batchSnapshot: batchSnapshot(sourceBatch) });
+  }
   const sorted = sortBatchesByExpiry(active);
 
   // Keep ALL batches — including emptied ones (quantity=0) so they appear in
@@ -447,7 +529,7 @@ router.get("/products", async (req, res) => {
           quantity: qty,
           status: p.status ?? "available",
           imageUrl: p.imageUrl ?? "",
-          batches: sortBatchesByExpiry(batches).map((b) => ({
+        batches: sortBatchesByExpiry(batches.map((batch: any) => normalizeBatch(batch))).map((b) => ({
             id: String(b._id ?? ""),
             batchNumber: b.batchNumber ?? "",
             quantity: Number(b.quantity) || 0,
@@ -673,6 +755,7 @@ router.post("/adjustments", async (req, res) => {
       let newBatches = [...currentBatches];
       let delta = 0;
       let appliedBatch: Batch | null = null;
+      let appliedAllocations: BatchAllocation[] = [];
 
       if (mode === "add") {
         const addQty = Math.max(0, Number(it.addQuantity) || 0);
@@ -685,6 +768,13 @@ router.post("/adjustments", async (req, res) => {
           receivedDate: it.receivedDate ?? now,
           notes: it.notes,
           createdAt: now,
+          quantityLots: [{
+            _id: new mongoose.Types.ObjectId(),
+            quantity: addQty,
+            addedQuantity: addQty,
+            addedAt: now,
+            source: "stock-adjustment",
+          }],
         });
         newBatches.push(batch);
         delta = addQty;
@@ -695,37 +785,44 @@ router.post("/adjustments", async (req, res) => {
         if (!it.batchId) continue;
         const targetIdx = currentBatches.findIndex((b) => String(b._id) === String(it.batchId));
         if (targetIdx < 0) continue;
-        newBatches = currentBatches.map((b, i) => i === targetIdx ? { ...b, quantity: b.quantity + addQty } : b);
+        newBatches = currentBatches.map((b, i) => {
+          if (i !== targetIdx) return b;
+          const updated = { ...b, quantityLots: (b.quantityLots ?? []).map((lot) => ({ ...lot })) };
+          addQuantityLot(updated, addQty, now, "stock-adjustment");
+          return updated;
+        });
         delta = addQty;
         appliedBatch = newBatches[targetIdx];
       } else if (mode === "remove") {
         const rmQty = Math.max(0, Number(it.removeQuantity) || 0);
         if (rmQty <= 0) continue;
 
-        // If a specific batchId is provided, reduce from that batch first then earliest-expiry order for the remainder
+        // If a batch is selected, consume its oldest quantity lots first, then FIFO across other eligible batches.
         if (it.batchId) {
           const targetIdx = currentBatches.findIndex((b) => String(b._id) === String(it.batchId));
           if (targetIdx >= 0) {
             appliedBatch = currentBatches[targetIdx]; // capture before modification
             const working = currentBatches.map((b) => ({ ...b }));
             const target = working[targetIdx];
-            const take = Math.min(target.quantity, rmQty);
-            target.quantity -= take;
-            const remaining = rmQty - take;
+            const first = consumeBatches([target], rmQty);
+            working[targetIdx] = first.batches[0];
+            appliedAllocations.push(...first.allocations);
+            const remaining = first.remaining;
             if (remaining > 0) {
-              // Consume from the rest in earliest-expiry order
               const others = working.filter((_, i) => i !== targetIdx);
               const consumed = consumeBatches(others, remaining);
+              appliedAllocations.push(...consumed.allocations);
               newBatches = [working[targetIdx], ...consumed.batches];
               delta = -(rmQty - consumed.remaining);
             } else {
               newBatches = working;
-              delta = -take;
+              delta = -rmQty;
             }
           } else {
             // batchId not found — fall back to earliest-expiry order
             const consumed = consumeBatches(currentBatches, rmQty);
             newBatches = consumed.batches;
+            appliedAllocations = consumed.allocations;
             delta = -(rmQty - consumed.remaining);
             // Capture first earliest-expiry batch for movement tracking
             if (!appliedBatch && currentBatches.length > 0) appliedBatch = currentBatches[0];
@@ -733,6 +830,7 @@ router.post("/adjustments", async (req, res) => {
         } else {
           const consumed = consumeBatches(currentBatches, rmQty);
           newBatches = consumed.batches;
+          appliedAllocations = consumed.allocations;
           delta = -(rmQty - consumed.remaining);
           // Capture first earliest-expiry batch for movement tracking
           if (!appliedBatch && currentBatches.length > 0) appliedBatch = currentBatches[0];
@@ -758,12 +856,20 @@ router.post("/adjustments", async (req, res) => {
             expiryDate: it.expiryDate,
             receivedDate: now,
             createdAt: now,
+            quantityLots: [{
+              _id: new mongoose.Types.ObjectId(),
+              quantity: delta,
+              addedQuantity: delta,
+              addedAt: now,
+              source: "stock-adjustment",
+            }],
           });
           newBatches.push(batch);
           appliedBatch = batch;
         } else {
           const consumed = consumeBatches(currentBatches, -delta);
           newBatches = consumed.batches;
+          appliedAllocations = consumed.allocations;
           if (consumed.remaining > 0 && currentBatches.length === 0) {
             // legacy product without batches: just set total directly
             newBatches = [];
@@ -801,6 +907,7 @@ router.post("/adjustments", async (req, res) => {
         batchObjectId: appliedBatch?._id ? String(appliedBatch._id) : undefined,
         expiryDate: appliedBatch?.expiryDate || undefined,
         receivedDate: appliedBatch?.receivedDate || undefined,
+        ...(appliedAllocations.length > 0 ? { batchAllocations: appliedAllocations } : {}),
         createdAt: now,
       });
     }
@@ -886,8 +993,54 @@ router.put("/products/:productId/batches", async (req, res) => {
     if (!pid) { res.status(400).json({ error: "InvalidId", message: "Invalid product id" }); return; }
     const product = await ctx.conn.db.collection("products").findOne({ _id: pid });
     if (!product) { res.status(404).json({ error: "NotFound", message: "Product not found" }); return; }
-    const batches: Batch[] = Array.isArray(req.body.batches) ? req.body.batches : [];
+    const submitted: any[] = Array.isArray(req.body.batches) ? req.body.batches : [];
+    const current: Batch[] = Array.isArray(product.batches) ? product.batches.map((b: any) => normalizeBatch(b)) : [];
+    const now = new Date();
+    const batches: Batch[] = [];
+    const movements = ctx.conn.db.collection(MOVEMENTS_COLLECTION);
+    for (const raw of submitted) {
+      const prior = current.find((batch) => String(batch._id) === String(raw?._id ?? raw?.id));
+      const requestedQuantity = Math.max(0, Number(raw?.quantity) || 0);
+      const updated = normalizeBatch({
+        ...raw,
+        _id: prior?._id ?? raw?._id ?? raw?.id,
+        quantity: prior?.quantity ?? requestedQuantity,
+        quantityLots: prior?.quantityLots ?? raw?.quantityLots,
+      });
+      const before = prior?.quantity ?? 0;
+      const delta = requestedQuantity - before;
+      if (delta > 0) addQuantityLot(updated, delta, now, "manual-batch-edit");
+      else if (delta < 0) {
+        const remaining = reduceBatchLots(updated, -delta);
+        if (remaining > 0) {
+          res.status(400).json({ error: "ValidationError", message: `Cannot remove more stock than batch ${updated.batchNumber} contains` });
+          return;
+        }
+      }
+      updated.quantity = requestedQuantity;
+      batches.push(updated);
+      if (delta !== 0) {
+        await movements.insertOne({
+          type: "adjustment",
+          productId: String(pid),
+          productName: product.name ?? "",
+          unit: product.unit ?? "",
+          change: delta,
+          balance: null,
+          reason: "Manual batch quantity edit",
+          batchNumber: updated.batchNumber,
+          batchObjectId: String(updated._id),
+          expiryDate: updated.expiryDate,
+          receivedDate: updated.receivedDate,
+          createdAt: now,
+        });
+      }
+    }
     const persisted = await persistBatches(ctx.conn.db.collection("products"), pid, batches, {}, ctx.conn.db.collection("combos"));
+    await movements.updateMany(
+      { type: "adjustment", productId: String(pid), reason: "Manual batch quantity edit", balance: null, createdAt: now },
+      { $set: { balance: persisted.quantity } },
+    );
     res.json({ productId: String(pid), quantity: persisted.quantity, batches: persisted.batches });
   } catch (err) {
     req.log.error({ err }, "Failed to update batches");
