@@ -2788,6 +2788,9 @@ function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange
   type Zone = { _id?: string; key: string; name: string };
   const { toast } = useToast();
   const [zones, setZones] = useState<Zone[]>([]);
+  const [search, setSearch] = useState("");
+  const [zoneFilter, setZoneFilter] = useState("all");
+  const [sortValue, setSortValue] = useState("original");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -2847,6 +2850,19 @@ function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange
     }
   };
 
+  const visibleZones = useMemo(() => {
+    let items = zones.map((zone, originalIndex) => ({ zone, originalIndex }));
+    const query = search.trim().toLocaleLowerCase();
+    if (query) items = items.filter(({ zone }) => zone.name.toLocaleLowerCase().includes(query));
+    if (zoneFilter === "saved") items = items.filter(({ zone }) => Boolean(zone._id));
+    if (zoneFilter === "new") items = items.filter(({ zone }) => !zone._id);
+    if (sortValue === "name_asc") items.sort((a, b) => a.zone.name.localeCompare(b.zone.name));
+    if (sortValue === "name_desc") items.sort((a, b) => b.zone.name.localeCompare(a.zone.name));
+    if (sortValue === "original") items.sort((a, b) => a.originalIndex - b.originalIndex);
+    return items.map(({ zone }) => zone);
+  }, [zones, search, zoneFilter, sortValue]);
+  const pagedZones = usePaginated(visibleZones, 10, `${search}|${zoneFilter}|${sortValue}`);
+
   if (loading) return <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>;
   if (loadError) {
     return (
@@ -2874,23 +2890,67 @@ function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange
         className="bg-blue-50 border-blue-100 text-blue-700 hover:bg-blue-100"
         onClick={() => {
           setZones((current) => [...current, { key: `new-${Date.now()}-${Math.random()}`, name: "" }]);
+          setSearch("");
+          setZoneFilter("all");
+          setSortValue("original");
+          pagedZones.setPage(1);
           setDirty(true);
         }}
       >
         <Plus className="w-4 h-4 mr-1" /> Add Zone
       </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[200px] flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search zones..."
+            aria-label="Search zones"
+            className="pl-9"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch("")} aria-label="Clear zone search" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <Select value={zoneFilter} onValueChange={setZoneFilter}>
+          <SelectTrigger className="w-[150px]" aria-label="Filter zones">
+            <SelectValue placeholder="Filter zones" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All zones</SelectItem>
+            <SelectItem value="saved">Saved zones</SelectItem>
+            <SelectItem value="new">New zones</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortValue} onValueChange={setSortValue}>
+          <SelectTrigger className="w-[170px]" aria-label="Sort zones">
+            <SelectValue placeholder="Sort zones" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="original">Original order</SelectItem>
+            <SelectItem value="name_asc">Name A–Z</SelectItem>
+            <SelectItem value="name_desc">Name Z–A</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="ml-auto text-xs text-gray-500">
+          {visibleZones.length === zones.length ? `${zones.length} zones` : `${visibleZones.length} of ${zones.length} zones`}
+        </span>
+      </div>
       {zones.length ? (
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-sm">
             <thead><tr className="bg-gray-50 text-xs text-gray-500"><th className="px-3 py-2 text-left">Zone Name</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
             <tbody>
-              {zones.map((zone, index) => (
+              {pagedZones.pageItems.map((zone, index) => (
                 <tr key={zone.key} className="border-t border-gray-100">
                   <td className="px-3 py-2">
                     <Input
                       value={zone.name}
-                      placeholder={`Zone ${index + 1}`}
-                      aria-label={`Zone ${index + 1} name`}
+                      placeholder={`Zone ${(pagedZones.page - 1) * 10 + index + 1}`}
+                      aria-label={`Zone ${(pagedZones.page - 1) * 10 + index + 1} name`}
                       onChange={(event) => {
                         setZones((current) => current.map((entry) => entry.key === zone.key ? { ...entry, name: event.target.value } : entry));
                         setDirty(true);
@@ -2907,6 +2967,10 @@ function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange
               ))}
             </tbody>
           </table>
+          {visibleZones.length === 0 && (
+            <div className="py-8 text-center text-sm text-gray-400">No zones match these search or filter options.</div>
+          )}
+          <PaginationBar page={pagedZones.page} pages={pagedZones.pages} total={pagedZones.total} onChange={pagedZones.setPage} label="zones" />
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center text-sm text-gray-400">No zones added yet.</div>
