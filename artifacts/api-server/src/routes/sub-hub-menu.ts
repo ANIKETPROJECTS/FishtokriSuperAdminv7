@@ -117,7 +117,7 @@ router.get("/stats", async (req, res) => {
     const ctx = await getSubHubDb(req.params.id, res, req as ScopedRequest);
     if (!ctx) return;
     const db = ctx.conn.db;
-    const [products, categories, coupons, combos, carousels, pincodes, sections, timeslots] = await Promise.all([
+    const [products, categories, coupons, combos, carousels, pincodes, sections, timeslots, zones] = await Promise.all([
       db.collection("products").countDocuments(),
       db.collection("categories").countDocuments(),
       db.collection("coupons").countDocuments(),
@@ -126,8 +126,9 @@ router.get("/stats", async (req, res) => {
       db.collection("pincodes").countDocuments(),
       db.collection("sections").countDocuments(),
       db.collection("timeslots").countDocuments(),
+      db.collection("zones").countDocuments(),
     ]);
-    res.json({ stats: { products, categories, coupons, combos, carousels, pincodes, sections, timeslots, dbName: ctx.sub.dbName } });
+    res.json({ stats: { products, categories, coupons, combos, carousels, pincodes, sections, timeslots, zones, dbName: ctx.sub.dbName } });
   } catch (err) {
     req.log.error({ err }, "Failed to get sub hub menu stats");
     res.status(500).json({ error: "InternalError", message: "Failed to get stats" });
@@ -1192,6 +1193,75 @@ router.delete("/pincodes/:pincodeId", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to delete pincode");
     res.status(500).json({ error: "InternalError", message: "Failed to delete pincode" });
+  }
+});
+
+// ─── ZONES ────────────────────────────────────────────────────────────────────
+router.get("/zones", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(String(req.params.id ?? ""), res, req as ScopedRequest);
+    if (!ctx) return;
+    const db = ctx.conn.db;
+    if (!db) throw new Error("Sub-hub database connection is unavailable");
+    const zones = await db.collection("zones").find({}).sort({ name: 1 }).toArray();
+    res.json({ zones, total: zones.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get zones");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch zones" });
+  }
+});
+
+router.put("/zones", async (req, res) => {
+  try {
+    const ctx = await getSubHubDb(String((req.params as any).id ?? ""), res, req as ScopedRequest);
+    if (!ctx) return;
+    const db = ctx.conn.db;
+    if (!db) throw new Error("Sub-hub database connection is unavailable");
+    if (!Array.isArray(req.body?.zones)) {
+      res.status(400).json({ error: "ValidationError", message: "Zones must be an array" });
+      return;
+    }
+
+    const seen = new Set<string>();
+    const submitted = req.body.zones.map((item: any) => ({
+      id: toId(String(item?._id ?? "")),
+      name: String(item?.name ?? "").trim(),
+    }));
+    for (const zone of submitted) {
+      if (!zone.name || zone.name.length > 80) {
+        res.status(400).json({ error: "ValidationError", message: "Zone names must be 1–80 characters" });
+        return;
+      }
+      const key = zone.name.toLocaleLowerCase();
+      if (seen.has(key)) {
+        res.status(400).json({ error: "Duplicate", message: `Zone "${zone.name}" appears more than once` });
+        return;
+      }
+      seen.add(key);
+    }
+
+    const collection = db.collection("zones");
+    const existing = await collection.find({}).toArray();
+    const existingIds = new Set(existing.map((zone: any) => String(zone._id)));
+    const keepIds: mongoose.Types.ObjectId[] = [];
+    const now = new Date();
+    for (const zone of submitted) {
+      if (zone.id && existingIds.has(String(zone.id))) {
+        await collection.updateOne({ _id: zone.id }, { $set: { name: zone.name, updatedAt: now } });
+        keepIds.push(zone.id);
+      } else {
+        const inserted = await collection.insertOne({ name: zone.name, createdAt: now, updatedAt: now });
+        keepIds.push(inserted.insertedId);
+      }
+    }
+    if (keepIds.length) await collection.deleteMany({ _id: { $nin: keepIds } });
+    else await collection.deleteMany({});
+
+    const zones = await collection.find({}).sort({ name: 1 }).toArray();
+    res.json({ zones, total: zones.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to save zones");
+    res.status(500).json({ error: "InternalError", message: "Failed to save zones" });
   }
 });
 

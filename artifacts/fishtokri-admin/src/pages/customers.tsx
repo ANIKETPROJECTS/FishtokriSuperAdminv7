@@ -147,6 +147,17 @@ async function fetchCustomer(id: string): Promise<Customer> {
   return json.customer;
 }
 
+type CustomerZone = { id: string; name: string; subHubId: string; subHubName: string };
+
+async function fetchCustomerZones(): Promise<CustomerZone[]> {
+  const res = await fetch(`${getBase()}/api/customers/zones`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.message || "Failed to fetch zones");
+  return Array.isArray(json.zones) ? json.zones : [];
+}
+
 async function createCustomer(data: Partial<Customer>): Promise<Customer> {
   const base = getBase();
   const res = await fetch(`${base}/api/customers`, {
@@ -312,7 +323,7 @@ function addressText(address: any) {
     address.houseNo, address.house, address.flatNo, address.apartment,
     address.building, address.street, address.addressLine1, address.addressLine2,
     address.area, address.landmark, address.city, address.state,
-    address.pincode, address.zipCode,
+    address.pincode, address.zipCode, address.zoneName,
   ].filter(Boolean);
   return parts.length ? parts.join(", ") : JSON.stringify(address, null, 2);
 }
@@ -1459,6 +1470,8 @@ function AddressCard({ address, index }: { address: any; index: number }) {
   const state = address.state || "";
   const pincode = address.pincode || address.zipCode || address.zip || "";
   const instructions = address.instructions || address.deliveryInstructions || "";
+  const zoneName = address.zoneName || "";
+  const zoneSubHubName = address.zoneSubHubName || "";
   const addressLines = [
     [houseNo, building].filter(Boolean).join(", "),
     [street, area].filter(Boolean).join(", "),
@@ -1475,6 +1488,7 @@ function AddressCard({ address, index }: { address: any; index: number }) {
           {contactName && <p className="text-sm font-semibold text-black">{contactName}</p>}
           {phone && <p className="text-xs text-black mt-0.5">{phone}</p>}
           <div className="mt-2 space-y-0.5">{addressLines.map((line, i) => <p key={i} className="text-sm text-black">{line}</p>)}</div>
+          {zoneName && <p className="mt-2 text-xs font-medium text-blue-700">Zone: {zoneName}{zoneSubHubName ? ` · ${zoneSubHubName}` : ""}</p>}
           {instructions && <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 border border-amber-100">Delivery note: {instructions}</p>}
         </div>
       </div>
@@ -1975,10 +1989,11 @@ type AddressDraft = {
   label: string; type: string; name: string; phone: string;
   building: string; street: string; area: string;
   pincode: string; instructions: string; isDefault: boolean;
+  zoneId: string; zoneName: string; zoneSubHubId: string; zoneSubHubName: string;
 };
 
 function emptyAddress(): AddressDraft {
-  return { label: "Home", type: "house", name: "", phone: "", building: "", street: "", area: "", pincode: "", instructions: "", isDefault: false };
+  return { label: "Home", type: "house", name: "", phone: "", building: "", street: "", area: "", pincode: "", instructions: "", isDefault: false, zoneId: "", zoneName: "", zoneSubHubId: "", zoneSubHubName: "" };
 }
 
 function addressFromExisting(a: any): AddressDraft {
@@ -1995,6 +2010,10 @@ function addressFromExisting(a: any): AddressDraft {
     pincode: a?.pincode ?? a?.zipCode ?? a?.zip ?? "",
     instructions: a?.instructions ?? a?.deliveryInstructions ?? "",
     isDefault: !!a?.isDefault,
+    zoneId: a?.zoneId ?? "",
+    zoneName: a?.zoneName ?? "",
+    zoneSubHubId: a?.zoneSubHubId ?? "",
+    zoneSubHubName: a?.zoneSubHubName ?? "",
   };
 }
 
@@ -2009,6 +2028,8 @@ function CustomerModal({ isOpen, onClose, customer, onSuccess }: {
   const [dob, setDob] = useState("");
   const [walletBalance, setWalletBalance] = useState("");
   const [addresses, setAddresses] = useState<AddressDraft[]>([]);
+  const [zones, setZones] = useState<CustomerZone[]>([]);
+  const [zonesError, setZonesError] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const reset = useCallback(() => {
@@ -2020,6 +2041,17 @@ function CustomerModal({ isOpen, onClose, customer, onSuccess }: {
   }, [customer]);
 
   useEffect(() => { if (isOpen) reset(); }, [isOpen, reset]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setZonesError("");
+    fetchCustomerZones()
+      .then(setZones)
+      .catch((err: any) => {
+        setZones([]);
+        setZonesError(err?.message || "Zones could not be loaded.");
+      });
+  }, [isOpen]);
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Customer>) => createCustomer(data),
@@ -2185,6 +2217,31 @@ function CustomerModal({ isOpen, onClose, customer, onSuccess }: {
                       </Field>
                       <Field label="Pincode" required={!!(a.name || a.phone || a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_pincode`]}>
                         <Input value={a.pincode} onChange={(e) => updateAddress(i, { pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="6-digit pincode" className={errors[`addr_${i}_pincode`] ? "border-red-400" : ""} />
+                      </Field>
+                      <Field label="Zone">
+                        <Select
+                          value={a.zoneId && a.zoneSubHubId ? `${a.zoneSubHubId}:${a.zoneId}` : "none"}
+                          onValueChange={(value) => {
+                            const selected = zones.find((zone) => `${zone.subHubId}:${zone.id}` === value);
+                            updateAddress(i, selected
+                              ? { zoneId: selected.id, zoneName: selected.name, zoneSubHubId: selected.subHubId, zoneSubHubName: selected.subHubName }
+                              : { zoneId: "", zoneName: "", zoneSubHubId: "", zoneSubHubName: "" });
+                          }}
+                        >
+                          <SelectTrigger><SelectValue placeholder="Select a zone (optional)" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">No zone</SelectItem>
+                            {a.zoneId && a.zoneSubHubId && !zones.some((zone) => zone.id === a.zoneId && zone.subHubId === a.zoneSubHubId) && (
+                              <SelectItem value={`${a.zoneSubHubId}:${a.zoneId}`}>{a.zoneName || "Unavailable zone"} · {a.zoneSubHubName || "Sub hub"} (unavailable)</SelectItem>
+                            )}
+                            {zones.map((zone) => (
+                              <SelectItem key={`${zone.subHubId}:${zone.id}`} value={`${zone.subHubId}:${zone.id}`}>
+                                {zone.subHubName} · {zone.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {zonesError ? <p className="text-xs text-amber-700">{zonesError}</p> : zones.length === 0 && <p className="text-xs text-gray-400">No zones configured for your accessible sub-hubs.</p>}
                       </Field>
                       <div className="md:col-span-2">
                         <Field label="Address Type">

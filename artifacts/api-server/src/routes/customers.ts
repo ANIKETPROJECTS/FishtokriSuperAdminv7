@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import mongoose from "mongoose";
 import { getCustomersConnection } from "../db/customers-connection.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
+import { SubHub } from "../db/models/sub-hub.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { customerExportPasswordMatches } from "../lib/customer-export-password.mjs";
@@ -98,6 +99,34 @@ function isCustomerInScope(
   return false;
 }
 
+router.get("/zones", async (req: ScopedRequest, res) => {
+  try {
+    const scope = req.scope;
+    const filter = scope?.isMaster
+      ? {}
+      : { _id: { $in: (scope?.subHubIds ?? []).filter((id) => mongoose.isValidObjectId(id)).map((id) => new mongoose.Types.ObjectId(id)) } };
+    const subHubs = await SubHub.find(filter).select("_id name dbName").lean();
+    const zones = (await Promise.all(subHubs.map(async (sub: any) => {
+      if (!sub.dbName) return [];
+      const conn = await getSubHubDbConnection(sub.dbName);
+      const db = conn.db;
+      if (!db) throw new Error(`Database is unavailable for sub hub ${sub.name}`);
+      const records = await db.collection("zones").find({}).sort({ name: 1 }).toArray();
+      return records.map((zone: any) => ({
+        id: String(zone._id),
+        name: String(zone.name ?? ""),
+        subHubId: String(sub._id),
+        subHubName: String(sub.name ?? ""),
+      }));
+    }))).flat();
+    zones.sort((a, b) => a.subHubName.localeCompare(b.subHubName) || a.name.localeCompare(b.name));
+    res.json({ zones });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch customer assignment zones");
+    res.status(500).json({ error: "InternalError", message: "Failed to fetch zones" });
+  }
+});
+
 const ACTIVE_ORDER_STATUSES = new Set(["pending", "confirmed", "out_for_delivery"]);
 
 const customerSchema = new mongoose.Schema(
@@ -154,6 +183,7 @@ function sanitizeAddresses(addresses: any): any[] {
         "landmark", "city", "state", "pincode", "zipCode",
         "instructions", "deliveryInstructions",
         "latitude", "longitude", "isDefault",
+        "zoneId", "zoneName", "zoneSubHubId", "zoneSubHubName",
       ];
       for (const k of keep) {
         if (a[k] !== undefined && a[k] !== null && a[k] !== "") cleaned[k] = a[k];

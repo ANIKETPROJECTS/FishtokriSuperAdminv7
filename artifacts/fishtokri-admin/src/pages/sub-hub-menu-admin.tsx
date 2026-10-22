@@ -6,7 +6,7 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket,
+  ArrowLeft, Plus, Edit2, Trash2, Search, X, Package, Tag, Ticket, MapPin,
   Database, AlertCircle, Check, CheckCircle, XCircle, Image,
   LayoutList, ShoppingBag, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, GripVertical,
   LayoutGrid, List, SlidersHorizontal, ArrowUpDown, Clock,
@@ -161,7 +161,7 @@ async function apiFetch(path: string, options?: RequestInit) {
   return res.json();
 }
 
-type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "timeslots" | "pincodes";
+type Tab = "products" | "categories" | "combos" | "coupons" | "carousels" | "sections" | "timeslots" | "pincodes" | "zones";
 type Layout = "list" | "grid";
 
 type BatchForm = {
@@ -209,6 +209,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "sections", label: "Sections", icon: LayoutList },
   { key: "timeslots", label: "Time Slots", icon: Clock },
   { key: "pincodes", label: "Pincodes", icon: Database },
+  { key: "zones", label: "Zones", icon: MapPin },
 ];
 
 // ─── SHARED TOOLBAR ───────────────────────────────────────────────────────────
@@ -563,6 +564,7 @@ export default function SubHubMenuAdmin() {
   const [excelBar, setExcelBar] = useState<ExcelBarConfig>(null);
 
   const [pincodesCount, setPincodesCount] = useState(0);
+  const [zonesCount, setZonesCount] = useState(0);
 
   const loadStats = useCallback(async (silent = false) => {
     if (!silent) { setLoadingStats(true); setStatsError(""); }
@@ -571,6 +573,7 @@ export default function SubHubMenuAdmin() {
       setStats(data.stats);
       setDbName(data.stats.dbName ?? "");
       setPincodesCount(Number(data.stats.pincodes) || 0);
+      setZonesCount(Number(data.stats.zones) || 0);
     } catch (err: any) {
       if (!silent) setStatsError(err.message);
     } finally {
@@ -603,6 +606,7 @@ export default function SubHubMenuAdmin() {
     { label: "Sections", value: stats?.sections ?? 0, img: iconMenuSections },
     { label: "Time Slots", value: stats?.timeslots ?? 0, img: iconMenuTimeslots },
     { label: "Pincodes", value: pincodesCount, img: iconPin },
+    { label: "Zones", value: zonesCount, img: iconPin },
   ];
 
   const headerSlot = document.getElementById("page-header-slot");
@@ -655,7 +659,7 @@ export default function SubHubMenuAdmin() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+      <div className="grid grid-cols-4 md:grid-cols-9 gap-3">
         {loadingStats
           ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)
           : statCards.map(({ label, value, img }) => (
@@ -682,7 +686,8 @@ export default function SubHubMenuAdmin() {
           {!statsError && tab === "sections" && <SectionsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
           {!statsError && tab === "timeslots" && <TimeSlotsTab subHubId={subHubId} onSetExcel={setExcelBar} />}
           {tab === "pincodes" && <PincodesTab subHubId={subHubId} onCountChange={setPincodesCount} />}
-          {statsError && tab !== "pincodes" && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
+          {tab === "zones" && <ZonesTab subHubId={subHubId} onCountChange={setZonesCount} />}
+          {statsError && tab !== "pincodes" && tab !== "zones" && <div className="py-12 text-center text-gray-400 text-sm">Fix the database connection to manage this sub hub's menu.</div>}
         </div>
       </div>
     </div>
@@ -2775,6 +2780,137 @@ function SectionsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
 
       <SectionModal isOpen={modalOpen} onClose={() => setModalOpen(false)} section={editing} subHubId={subHubId} onSaved={load} nextOrder={nextOrder} allItems={sections} />
       <DeleteDialog open={!!deleteId} onCancel={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Section" description="This will permanently remove this homepage section." />
+    </div>
+  );
+}
+
+function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange: (n: number) => void }) {
+  type Zone = { _id?: string; key: string; name: string };
+  const { toast } = useToast();
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    setLoading(true);
+    setLoadError("");
+    setDirty(false);
+    apiFetch(`/api/sub-hubs/${subHubId}/menu/zones`)
+      .then((data) => {
+        const saved: Zone[] = Array.isArray(data.zones)
+          ? data.zones.map((zone: any) => ({
+              _id: zone?._id ? String(zone._id) : undefined,
+              key: zone?._id ? String(zone._id) : `${Date.now()}-${Math.random()}`,
+              name: String(zone?.name ?? ""),
+            }))
+          : [];
+        setZones(saved);
+        onCountChange(saved.length);
+      })
+      .catch((err: any) => setLoadError(err?.message || "Failed to load zones."))
+      .finally(() => setLoading(false));
+  }, [subHubId, loadAttempt, onCountChange]);
+
+  const save = async () => {
+    const names = zones.map((zone) => zone.name.trim());
+    if (names.some((name) => !name)) {
+      toast({ title: "Every zone needs a name", variant: "destructive" });
+      return;
+    }
+    const normalized = names.map((name) => name.toLocaleLowerCase());
+    if (new Set(normalized).size !== normalized.length) {
+      toast({ title: "Zone names must be unique", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const data = await apiFetch(`/api/sub-hubs/${subHubId}/menu/zones`, {
+        method: "PUT",
+        body: JSON.stringify({ zones: zones.map((zone) => ({ _id: zone._id, name: zone.name.trim() })) }),
+      });
+      const saved: Zone[] = (data.zones ?? []).map((zone: any) => ({
+        _id: String(zone._id),
+        key: String(zone._id),
+        name: String(zone.name ?? ""),
+      }));
+      setZones(saved);
+      onCountChange(saved.length);
+      setDirty(false);
+      toast({ title: "Zones saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save zones", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>;
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50 p-4">
+        <p className="text-sm text-red-700">{loadError} No changes can be saved until zones load.</p>
+        <Button type="button" variant="outline" onClick={() => setLoadAttempt((n) => n + 1)}>Retry</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Zones</p>
+          <p className="text-xs text-gray-400 mt-1">Manage named zones for customer addresses. Zones are independent of pincodes.</p>
+        </div>
+        <Button type="button" onClick={save} disabled={saving || !dirty} className="bg-[#1A56DB] hover:bg-[#1447B4] text-white">
+          {saving ? "Saving..." : "Save Changes"}
+        </Button>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="bg-blue-50 border-blue-100 text-blue-700 hover:bg-blue-100"
+        onClick={() => {
+          setZones((current) => [...current, { key: `new-${Date.now()}-${Math.random()}`, name: "" }]);
+          setDirty(true);
+        }}
+      >
+        <Plus className="w-4 h-4 mr-1" /> Add Zone
+      </Button>
+      {zones.length ? (
+        <div className="overflow-x-auto rounded-lg border border-gray-100">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-gray-50 text-xs text-gray-500"><th className="px-3 py-2 text-left">Zone Name</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
+            <tbody>
+              {zones.map((zone, index) => (
+                <tr key={zone.key} className="border-t border-gray-100">
+                  <td className="px-3 py-2">
+                    <Input
+                      value={zone.name}
+                      placeholder={`Zone ${index + 1}`}
+                      aria-label={`Zone ${index + 1} name`}
+                      onChange={(event) => {
+                        setZones((current) => current.map((entry) => entry.key === zone.key ? { ...entry, name: event.target.value } : entry));
+                        setDirty(true);
+                      }}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button type="button" title="Delete zone" className="p-2 text-red-500 hover:bg-red-50 rounded" onClick={() => {
+                      setZones((current) => current.filter((entry) => entry.key !== zone.key));
+                      setDirty(true);
+                    }}><Trash2 className="w-4 h-4" /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center text-sm text-gray-400">No zones added yet.</div>
+      )}
     </div>
   );
 }
