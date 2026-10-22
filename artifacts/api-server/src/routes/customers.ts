@@ -458,6 +458,83 @@ router.get("/lean-all", async (req: ScopedRequest, res) => {
   }
 });
 
+router.post("/bulk-assign-zone", async (req: ScopedRequest, res) => {
+  try {
+    const customerIds = Array.isArray(req.body?.customerIds)
+      ? [...new Set(req.body.customerIds.map((id: any) => String(id).trim()).filter(Boolean))]
+      : [];
+    const zoneId = String(req.body?.zoneId ?? "").trim();
+    const subHubId = String(req.body?.subHubId ?? "").trim();
+
+    if (!customerIds.length || customerIds.length > 500) {
+      res.status(400).json({ error: "ValidationError", message: "Select between 1 and 500 customers" });
+      return;
+    }
+    if (!mongoose.isValidObjectId(zoneId) || !mongoose.isValidObjectId(subHubId)) {
+      res.status(400).json({ error: "ValidationError", message: "A valid saved zone and sub hub are required" });
+      return;
+    }
+    if (customerIds.some((id: string) => !mongoose.isValidObjectId(id))) {
+      res.status(400).json({ error: "ValidationError", message: "One or more customer IDs are invalid" });
+      return;
+    }
+
+    const scope = req.scope;
+    if (scope && !scope.isMaster && !scope.subHubIds.includes(subHubId)) {
+      res.status(404).json({ error: "NotFound", message: "Zone not found" });
+      return;
+    }
+    const subHub = await SubHub.findById(subHubId).select("_id name dbName").lean() as any;
+    if (!subHub?.dbName) {
+      res.status(404).json({ error: "NotFound", message: "Sub hub not found" });
+      return;
+    }
+    const subHubConnection = await getSubHubDbConnection(subHub.dbName);
+    if (!subHubConnection.db) throw new Error(`Database is unavailable for sub hub ${subHub.name}`);
+    const zone = await subHubConnection.db.collection("zones").findOne({ _id: new mongoose.Types.ObjectId(zoneId) });
+    if (!zone) {
+      res.status(404).json({ error: "NotFound", message: "Zone not found" });
+      return;
+    }
+
+    const Customer = await getCustomerModel();
+    const selectedIds = customerIds.map((id: string) => new mongoose.Types.ObjectId(id));
+    const customers = await Customer.find({ _id: { $in: selectedIds } });
+    if (customers.length !== selectedIds.length) {
+      res.status(404).json({ error: "NotFound", message: "One or more selected customers could not be found" });
+      return;
+    }
+    const scopeKeys = await loadCustomerScopeKeys(scope);
+    if (customers.some((customer: any) => !isCustomerInScope(scope, scopeKeys, customer))) {
+      res.status(404).json({ error: "NotFound", message: "One or more selected customers could not be found" });
+      return;
+    }
+
+    const assignment = {
+      zoneId: String(zone._id),
+      zoneName: String(zone.name ?? ""),
+      zoneSubHubId: String(subHub._id),
+      zoneSubHubName: String(subHub.name ?? ""),
+    };
+    let updatedCustomers = 0;
+    let skippedNoAddresses = 0;
+    for (const customer of customers as any[]) {
+      const addresses = Array.isArray(customer.addresses) ? customer.addresses : [];
+      if (!addresses.length) {
+        skippedNoAddresses += 1;
+        continue;
+      }
+      customer.addresses = addresses.map((address: any) => ({ ...address, ...assignment }));
+      await customer.save();
+      updatedCustomers += 1;
+    }
+    res.json({ updatedCustomers, skippedNoAddresses, zone: assignment });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk assign customer zone");
+    res.status(500).json({ error: "InternalError", message: "Failed to assign zone to customers" });
+  }
+});
+
 router.get("/:id", async (req: ScopedRequest, res) => {
   try {
     const Customer = await getCustomerModel();

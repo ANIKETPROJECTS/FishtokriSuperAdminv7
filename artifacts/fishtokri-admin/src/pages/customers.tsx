@@ -2181,7 +2181,7 @@ function CustomerModal({ isOpen, onClose, customer, onSuccess }: {
             </div>
             {addresses.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 bg-white py-6 text-center text-xs text-black">
-                No addresses yet. Click "Add address" to add one or more delivery locations.
+                No addresses yet. Click "Add address" to add a delivery location, then choose its optional zone. Zones are assigned per address and do not depend on the pincode.
               </div>
             ) : (
               <div className="space-y-3">
@@ -2218,7 +2218,7 @@ function CustomerModal({ isOpen, onClose, customer, onSuccess }: {
                       <Field label="Pincode" required={!!(a.name || a.phone || a.building || a.street || a.area || a.pincode)} error={errors[`addr_${i}_pincode`]}>
                         <Input value={a.pincode} onChange={(e) => updateAddress(i, { pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })} placeholder="6-digit pincode" className={errors[`addr_${i}_pincode`] ? "border-red-400" : ""} />
                       </Field>
-                      <Field label="Zone">
+                      <Field label="Delivery zone (optional)">
                         <Select
                           value={a.zoneId && a.zoneSubHubId ? `${a.zoneSubHubId}:${a.zoneId}` : "none"}
                           onValueChange={(value) => {

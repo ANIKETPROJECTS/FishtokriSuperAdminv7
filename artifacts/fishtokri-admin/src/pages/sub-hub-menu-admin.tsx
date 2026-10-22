@@ -2786,8 +2786,16 @@ function SectionsTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (
 
 function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange: (n: number) => void }) {
   type Zone = { _id?: string; key: string; name: string };
+  type CustomerChoice = { id: string; name: string; phone: string };
   const { toast } = useToast();
   const [zones, setZones] = useState<Zone[]>([]);
+  const [customers, setCustomers] = useState<CustomerChoice[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [customersError, setCustomersError] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [selectedZoneId, setSelectedZoneId] = useState("");
+  const [assigning, setAssigning] = useState(false);
   const [search, setSearch] = useState("");
   const [zoneFilter, setZoneFilter] = useState("all");
   const [sortValue, setSortValue] = useState("original");
@@ -2816,6 +2824,15 @@ function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange
       .catch((err: any) => setLoadError(err?.message || "Failed to load zones."))
       .finally(() => setLoading(false));
   }, [subHubId, loadAttempt, onCountChange]);
+
+  useEffect(() => {
+    setCustomersLoading(true);
+    setCustomersError("");
+    apiFetch("/api/customers/lean-all")
+      .then((data) => setCustomers(Array.isArray(data.customers) ? data.customers : []))
+      .catch((err: any) => setCustomersError(err?.message || "Failed to load customers."))
+      .finally(() => setCustomersLoading(false));
+  }, []);
 
   const save = async () => {
     const names = zones.map((zone) => zone.name.trim());
@@ -2862,6 +2879,48 @@ function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange
     return items.map(({ zone }) => zone);
   }, [zones, search, zoneFilter, sortValue]);
   const pagedZones = usePaginated(visibleZones, 10, `${search}|${zoneFilter}|${sortValue}`);
+  const filteredCustomers = useMemo(() => {
+    const query = customerSearch.trim().toLocaleLowerCase();
+    if (!query) return customers;
+    return customers.filter((customer) =>
+      customer.name.toLocaleLowerCase().includes(query) || customer.phone.includes(query),
+    );
+  }, [customers, customerSearch]);
+
+  const toggleCustomer = (id: string) => {
+    setSelectedCustomerIds((current) => current.includes(id)
+      ? current.filter((selected) => selected !== id)
+      : [...current, id]);
+  };
+
+  const toggleAllFilteredCustomers = () => {
+    const filteredIds = filteredCustomers.map((customer) => customer.id);
+    const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedCustomerIds.includes(id));
+    setSelectedCustomerIds((current) => allSelected
+      ? current.filter((id) => !filteredIds.includes(id))
+      : [...new Set([...current, ...filteredIds])]);
+  };
+
+  const assignZoneToCustomers = async () => {
+    if (!selectedZoneId || selectedCustomerIds.length === 0) return;
+    setAssigning(true);
+    try {
+      const result = await apiFetch("/api/customers/bulk-assign-zone", {
+        method: "POST",
+        body: JSON.stringify({ customerIds: selectedCustomerIds, zoneId: selectedZoneId, subHubId }),
+      });
+      const skipped = Number(result.skippedNoAddresses) || 0;
+      toast({
+        title: "Zone assignment complete",
+        description: `${result.updatedCustomers} customer${result.updatedCustomers === 1 ? "" : "s"} updated${skipped ? `; ${skipped} skipped because they have no saved addresses` : ""}.`,
+      });
+      setSelectedCustomerIds([]);
+    } catch (err: any) {
+      toast({ title: "Zone assignment failed", description: err.message, variant: "destructive" });
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   if (loading) return <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>;
   if (loadError) {
@@ -2975,6 +3034,80 @@ function ZonesTab({ subHubId, onCountChange }: { subHubId: string; onCountChange
       ) : (
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 py-8 text-center text-sm text-gray-400">No zones added yet.</div>
       )}
+
+      <section className="space-y-3 rounded-lg border border-gray-100 p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Assign a zone to multiple customers</h3>
+          <p className="mt-1 text-xs text-gray-500">The selected zone replaces any current zone on every saved address for each selected customer. Customers without saved addresses will be skipped.</p>
+          {dirty && <p className="mt-1 text-xs font-medium text-amber-700">Save zone changes before assigning customers.</p>}
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Select value={selectedZoneId} onValueChange={setSelectedZoneId}>
+            <SelectTrigger aria-label="Choose zone for bulk assignment">
+              <SelectValue placeholder="Select a saved zone" />
+            </SelectTrigger>
+            <SelectContent>
+              {zones.filter((zone) => zone._id).map((zone) => (
+                <SelectItem key={zone._id} value={zone._id!}>{zone.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            value={customerSearch}
+            onChange={(event) => setCustomerSearch(event.target.value)}
+            placeholder="Search customers by name or phone..."
+            aria-label="Search customers for zone assignment"
+          />
+        </div>
+        {customersError ? (
+          <p className="text-sm text-red-600">{customersError}</p>
+        ) : customersLoading ? (
+          <p className="text-sm text-gray-500">Loading customers...</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={filteredCustomers.length > 0 && filteredCustomers.every((customer) => selectedCustomerIds.includes(customer.id))}
+                  onChange={toggleAllFilteredCustomers}
+                  className="h-4 w-4 accent-[#1A56DB]"
+                />
+                Select all {filteredCustomers.length} shown
+              </label>
+              <span className="text-xs text-gray-500">{selectedCustomerIds.length} selected</span>
+            </div>
+            <div className="max-h-64 overflow-y-auto rounded-md border border-gray-100">
+              {filteredCustomers.length ? filteredCustomers.map((customer) => (
+                <label key={customer.id} className="flex cursor-pointer items-center gap-3 border-b border-gray-50 px-3 py-2 last:border-b-0 hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={selectedCustomerIds.includes(customer.id)}
+                    onChange={() => toggleCustomer(customer.id)}
+                    className="h-4 w-4 accent-[#1A56DB]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-gray-800">{customer.name || "Unnamed customer"}</span>
+                    <span className="block text-xs text-gray-500">{customer.phone}</span>
+                  </span>
+                </label>
+              )) : (
+                <p className="py-6 text-center text-sm text-gray-500">No matching customers.</p>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                onClick={assignZoneToCustomers}
+                disabled={assigning || dirty || !selectedZoneId || selectedCustomerIds.length === 0}
+                className="bg-[#1A56DB] text-white hover:bg-[#1447B4]"
+              >
+                {assigning ? "Assigning..." : `Assign zone to ${selectedCustomerIds.length || "selected"} customers`}
+              </Button>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 }
