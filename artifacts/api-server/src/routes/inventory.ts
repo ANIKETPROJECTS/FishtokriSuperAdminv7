@@ -538,6 +538,13 @@ router.get("/products", async (req, res) => {
             expiryDate: b.expiryDate ? new Date(b.expiryDate).toISOString() : null,
             notes: b.notes ?? "",
             createdAt: b.createdAt ? new Date(b.createdAt).toISOString() : null,
+            quantityLots: (b.quantityLots ?? []).map((lot: QuantityLot) => ({
+              id: String(lot._id ?? ""),
+              quantity: Number(lot.quantity) || 0,
+              addedQuantity: Number(lot.addedQuantity) || 0,
+              addedAt: lot.addedAt ? new Date(lot.addedAt).toISOString() : null,
+              source: lot.source ?? "",
+            })),
           })),
         };
       }),
