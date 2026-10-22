@@ -334,6 +334,9 @@ router.put("/products/:productId", async (req, res) => {
           entry.batch.quantity = Math.max(0, (Number(entry.batch.quantity) || 0) - take);
           remaining -= take;
         }
+        for (const batch of eligible) {
+          batch.quantityLots = batch.quantityLots.filter((lot: any) => Number(lot.quantity) > 0);
+        }
         if (remaining > 0) {
           res.status(400).json({ error: "ValidationError", message: "New quantity is greater than the available non-expired batch stock can support" });
           return;

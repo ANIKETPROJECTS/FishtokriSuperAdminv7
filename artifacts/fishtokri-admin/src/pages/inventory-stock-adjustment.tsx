@@ -940,17 +940,16 @@ function ExistingBatchesCard({
                 </div>
                 <details className="col-span-6 border-t border-[#364F9F]/10 bg-white/70 px-3 py-1.5">
                   <summary className="cursor-pointer select-none text-[10px] font-semibold text-[#364F9F]">
-                    Quantity history ({b.quantityLots?.length ?? 0} additions)
+                    Quantity record ({(b.quantityLots ?? []).filter((lot) => Number(lot.quantity) > 0).length} available)
                   </summary>
                   <div className="ml-3 mt-1 border-l-2 border-[#364F9F]/20 pl-3">
-                    {(b.quantityLots ?? []).length === 0 ? (
-                      <p className="py-1 text-[10px] text-gray-400">No dated additions recorded for this legacy batch yet.</p>
-                    ) : (b.quantityLots ?? []).map((lot, lotIndex) => (
+                    {(b.quantityLots ?? []).filter((lot) => Number(lot.quantity) > 0).length === 0 ? (
+                      <p className="py-1 text-[10px] text-gray-400">No quantity remains in this batch.</p>
+                    ) : (b.quantityLots ?? []).filter((lot) => Number(lot.quantity) > 0).map((lot, lotIndex) => (
                       <div key={lot.id ?? lot._id ?? lotIndex} className="flex flex-wrap items-center gap-x-3 py-1 text-[10px] text-gray-600">
-                        <span className="font-semibold text-[#162B4D]">Added {lot.addedQuantity ?? lot.quantity} {unit}</span>
-                        <span>{lot.addedAt ? formatDateTime(lot.addedAt) : "Date not recorded"}</span>
-                        <span>Remaining: {lot.quantity} {unit}</span>
-                        {lot.source && <span className="text-gray-400">{lot.source.replaceAll("-", " ")}</span>}
+                        <span className="font-semibold text-[#162B4D]">{lot.quantity} {unit} available</span>
+                        <span>Added {lot.addedAt ? formatDateTime(lot.addedAt) : "date not recorded"}</span>
+                        {lot.source && <span className="text-gray-400">Source: {lot.source.replaceAll("-", " ")}</span>}
                       </div>
                     ))}
                   </div>

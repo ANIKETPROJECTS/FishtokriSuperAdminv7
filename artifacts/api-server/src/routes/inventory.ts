@@ -122,7 +122,7 @@ function normalizeBatch(b: any): Batch {
         addedQuantity: Math.max(0, Number(lot?.addedQuantity ?? lot?.quantity) || 0),
         addedAt: toDate(lot?.addedAt) ?? received,
         source: lot?.source ? String(lot.source) : "recorded",
-      })).filter((lot: QuantityLot) => lot.quantity > 0 || lot.addedQuantity > 0)
+      })).filter((lot: QuantityLot) => lot.quantity > 0)
     : [];
   if (quantityLots.length === 0 && quantity > 0) {
     // Existing inventory has no per-add history; preserve it as one legacy lot.
@@ -192,6 +192,7 @@ function reduceBatchLots(batch: Batch, quantity: number): number {
     batch.quantity -= take;
     remaining -= take;
   }
+  batch.quantityLots = (batch.quantityLots ?? []).filter((lot) => lot.quantity > 0);
   return remaining;
 }
 
@@ -248,6 +249,9 @@ function consumeBatches(
     lot.quantity -= allocation.quantity;
     sourceBatch.quantity -= allocation.quantity;
     allocations.push({ ...allocation, batchSnapshot: batchSnapshot(sourceBatch) });
+  }
+  for (const batch of active) {
+    batch.quantityLots = (batch.quantityLots ?? []).filter((lot) => lot.quantity > 0);
   }
   const sorted = sortBatchesByExpiry(active);
 
