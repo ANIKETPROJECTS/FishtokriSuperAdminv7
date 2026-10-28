@@ -4,6 +4,8 @@ import { applyOrderInventoryOnDelete } from "../routes/inventory.js";
 import {
   buildExpiredFtwPaymentFilter,
   buildFtwPaymentExpiryBackfillFilter,
+  buildFtwPaymentExpiryExtensionFilter,
+  buildFtwPaymentExpiryPipeline,
   FTW_FAILED_FILTER,
   FTW_PAYMENT_TIMEOUT_MINUTES,
   FTW_PENDING_FILTER,
@@ -26,33 +28,14 @@ export function isFtwPaymentOnHold(order: any): boolean {
  * a successful capture, so it must not trigger immediate cleanup.
  */
 export async function ensureFtwPaymentExpiryDates(ordersCollection: any): Promise<void> {
+  const expiryPipeline = buildFtwPaymentExpiryPipeline();
   await ordersCollection.updateMany(
     buildFtwPaymentExpiryBackfillFilter(),
-    [
-      {
-        $set: {
-          paymentExpiresAt: {
-            $dateAdd: {
-              startDate: {
-                $ifNull: [
-                  {
-                    $convert: {
-                      input: "$createdAt",
-                      to: "date",
-                      onError: null,
-                      onNull: null,
-                    },
-                  },
-                  "$$NOW",
-                ],
-              },
-              unit: "minute",
-              amount: FTW_PAYMENT_TIMEOUT_MINUTES,
-            },
-          },
-        },
-      },
-    ],
+    expiryPipeline,
+  );
+  await ordersCollection.updateMany(
+    buildFtwPaymentExpiryExtensionFilter(),
+    expiryPipeline,
   );
 }
 

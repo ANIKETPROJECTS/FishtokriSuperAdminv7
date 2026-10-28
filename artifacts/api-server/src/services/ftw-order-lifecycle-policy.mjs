@@ -1,8 +1,8 @@
 export const FTW_PAYMENT_TIMEOUT_MINUTES = 7;
 
 export const FTW_ORDER_ID_FILTER = { $regex: "^#*FTW", $options: "i" };
-export const FTW_PENDING_FILTER = { $regex: "^pending$", $options: "i" };
-export const FTW_FAILED_FILTER = { $regex: "^failed$", $options: "i" };
+export const FTW_PENDING_FILTER = /^pending$/i;
+export const FTW_FAILED_FILTER = /^failed$/i;
 export const FTW_UNSETTLED_PAYMENT_FILTER = {
   $in: [FTW_PENDING_FILTER, FTW_FAILED_FILTER],
 };
@@ -17,6 +17,55 @@ export function buildFtwPaymentExpiryBackfillFilter() {
       { paymentExpiresAt: null },
     ],
   };
+}
+
+export function buildFtwPaymentExpiryExtensionFilter() {
+  return {
+    orderId: FTW_ORDER_ID_FILTER,
+    isDeleted: { $ne: true },
+    paymentStatus: FTW_UNSETTLED_PAYMENT_FILTER,
+    createdAt: { $type: "date" },
+    $expr: {
+      $lt: [
+        "$paymentExpiresAt",
+        {
+          $dateAdd: {
+            startDate: "$createdAt",
+            unit: "minute",
+            amount: FTW_PAYMENT_TIMEOUT_MINUTES,
+          },
+        },
+      ],
+    },
+  };
+}
+
+export function buildFtwPaymentExpiryPipeline() {
+  return [
+    {
+      $set: {
+        paymentExpiresAt: {
+          $dateAdd: {
+            startDate: {
+              $ifNull: [
+                {
+                  $convert: {
+                    input: "$createdAt",
+                    to: "date",
+                    onError: null,
+                    onNull: null,
+                  },
+                },
+                "$$NOW",
+              ],
+            },
+            unit: "minute",
+            amount: FTW_PAYMENT_TIMEOUT_MINUTES,
+          },
+        },
+      },
+    },
+  ];
 }
 
 export function buildExpiredFtwPaymentFilter(paymentStatusFilter) {

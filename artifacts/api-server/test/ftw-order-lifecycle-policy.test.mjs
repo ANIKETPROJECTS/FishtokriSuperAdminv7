@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   buildExpiredFtwPaymentFilter,
   buildFtwPaymentExpiryBackfillFilter,
+  buildFtwPaymentExpiryExtensionFilter,
+  buildFtwPaymentExpiryPipeline,
   canAcceptFtwSettlement,
   FTW_FAILED_FILTER,
   FTW_PAYMENT_TIMEOUT_MINUTES,
@@ -51,4 +53,14 @@ test("expiry is backfilled for both pending and failed FTW orders", () => {
   const filter = buildFtwPaymentExpiryBackfillFilter();
   assert.equal(filter.paymentStatus.$in.length, 2);
   assert.deepEqual(filter.paymentStatus.$in, [FTW_PENDING_FILTER, FTW_FAILED_FILTER]);
+});
+
+test("active orders with the former five-minute expiry are extended to seven minutes", () => {
+  const filter = buildFtwPaymentExpiryExtensionFilter();
+  assert.deepEqual(filter.paymentStatus.$in, [FTW_PENDING_FILTER, FTW_FAILED_FILTER]);
+  assert.deepEqual(filter.createdAt, { $type: "date" });
+  assert.equal(
+    buildFtwPaymentExpiryPipeline()[0].$set.paymentExpiresAt.$dateAdd.amount,
+    7,
+  );
 });
