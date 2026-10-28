@@ -1,12 +1,13 @@
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
 import { logger } from "../lib/logger.js";
 import { applyOrderInventoryOnDelete } from "../routes/inventory.js";
-
-export const FTW_PAYMENT_TIMEOUT_MINUTES = 5;
-
-const FTW_ORDER_ID_FILTER = { $regex: "^#*FTW", $options: "i" };
-const FTW_PENDING_FILTER = { $regex: "^pending$", $options: "i" };
-const FTW_FAILED_FILTER = { $regex: "^failed$", $options: "i" };
+import {
+  buildExpiredFtwPaymentFilter,
+  buildFtwPaymentExpiryBackfillFilter,
+  FTW_FAILED_FILTER,
+  FTW_PAYMENT_TIMEOUT_MINUTES,
+  FTW_PENDING_FILTER,
+} from "./ftw-order-lifecycle-policy.mjs";
 
 export function isFtwOrder(order: any): boolean {
   const orderId = String(order?.orderId ?? "").trim().replace(/^#+/, "").toUpperCase();
@@ -20,21 +21,13 @@ export function isFtwPaymentOnHold(order: any): boolean {
 }
 
 /**
- * Persist an absolute expiry in MongoDB so the timer survives browser closure,
- * refreshes, and API restarts. MongoDB's $$NOW is used only when an order has
- * no usable createdAt timestamp.
+ * Persist one absolute seven-minute payment window for pending and failed FTW
+ * statuses. A failed signal is provisional while the gateway may still report
+ * a successful capture, so it must not trigger immediate cleanup.
  */
-export async function ensureFtwPendingPaymentExpiryDates(ordersCollection: any): Promise<void> {
+export async function ensureFtwPaymentExpiryDates(ordersCollection: any): Promise<void> {
   await ordersCollection.updateMany(
-    {
-      orderId: FTW_ORDER_ID_FILTER,
-      isDeleted: { $ne: true },
-      paymentStatus: FTW_PENDING_FILTER,
-      $or: [
-        { paymentExpiresAt: { $exists: false } },
-        { paymentExpiresAt: null },
-      ],
-    },
+    buildFtwPaymentExpiryBackfillFilter(),
     [
       {
         $set: {
@@ -70,17 +63,10 @@ async function softDeleteFtwPaymentOrder(
 ): Promise<boolean> {
   const paymentStatusFilter =
     reason === "payment_failed" ? FTW_FAILED_FILTER : FTW_PENDING_FILTER;
-  const filter: Record<string, any> = {
+  const filter = {
+    ...buildExpiredFtwPaymentFilter(paymentStatusFilter),
     _id: candidate._id,
-    orderId: FTW_ORDER_ID_FILTER,
-    isDeleted: { $ne: true },
-    paymentStatus: paymentStatusFilter,
   };
-
-  if (reason === "payment_timeout") {
-    filter.paymentExpiresAt = { $type: "date" };
-    filter.$expr = { $lte: ["$paymentExpiresAt", "$$NOW"] };
-  }
 
   // The state check and soft-delete are one atomic operation. If payment
   // completion wins the race, this no longer matches and inventory is untouched.
@@ -123,8 +109,8 @@ async function softDeleteFtwPaymentOrder(
 
 /**
  * Server-side lifecycle sweep. Expiry is evaluated against MongoDB's clock,
- * not a browser timer, and failed-payment records are soft-deleted as soon as
- * FTW marks paymentStatus="failed".
+ * not a browser timer. Pending and failed states are both provisional until
+ * the shared seven-minute payment window expires.
  */
 export async function runFtwPaymentLifecycleSweep(): Promise<void> {
   try {
@@ -132,7 +118,7 @@ export async function runFtwPaymentLifecycleSweep(): Promise<void> {
     if (!conn.db) throw new Error("Orders database connection is unavailable");
     const orders = conn.db.collection("orders");
 
-    await ensureFtwPendingPaymentExpiryDates(orders);
+    await ensureFtwPaymentExpiryDates(orders);
 
     const projection = {
       _id: 1,
@@ -148,11 +134,7 @@ export async function runFtwPaymentLifecycleSweep(): Promise<void> {
     };
 
     const failedOrders = await orders
-      .find({
-        orderId: FTW_ORDER_ID_FILTER,
-        isDeleted: { $ne: true },
-        paymentStatus: FTW_FAILED_FILTER,
-      })
+      .find(buildExpiredFtwPaymentFilter(FTW_FAILED_FILTER))
       .project(projection)
       .limit(100)
       .toArray();
@@ -166,13 +148,7 @@ export async function runFtwPaymentLifecycleSweep(): Promise<void> {
     }
 
     const expiredOrders = await orders
-      .find({
-        orderId: FTW_ORDER_ID_FILTER,
-        isDeleted: { $ne: true },
-        paymentStatus: FTW_PENDING_FILTER,
-        paymentExpiresAt: { $type: "date" },
-        $expr: { $lte: ["$paymentExpiresAt", "$$NOW"] },
-      })
+      .find(buildExpiredFtwPaymentFilter(FTW_PENDING_FILTER))
       .project(projection)
       .limit(100)
       .toArray();

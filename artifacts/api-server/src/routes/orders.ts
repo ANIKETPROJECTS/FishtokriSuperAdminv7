@@ -16,10 +16,11 @@ import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { HubUser } from "../db/models/hub-user.js";
 import { sendOrderConfirmed, sendOutForDelivery, sendOrderCancelled } from "../services/whatsapp.js";
 import {
-  ensureFtwPendingPaymentExpiryDates,
+  ensureFtwPaymentExpiryDates,
   isFtwOrder,
   isFtwPaymentOnHold,
 } from "../services/ftw-order-lifecycle.js";
+import { canAcceptFtwSettlement } from "../services/ftw-order-lifecycle-policy.mjs";
 
 const router = Router();
 router.use(requireAuth as any);
@@ -558,7 +559,7 @@ router.get("/", async (req: ScopedRequest, res) => {
     const conn = await getOrdersDb();
     const db = conn.db;
     try {
-      await ensureFtwPendingPaymentExpiryDates(db.collection(COLLECTION));
+      await ensureFtwPaymentExpiryDates(db.collection(COLLECTION));
     } catch (err) {
       req.log.error({ err }, "Could not initialize FTW payment expiry timestamps");
     }
@@ -1754,7 +1755,7 @@ router.get("/:id", async (req: ScopedRequest, res) => {
     const oid = toId(req.params.id);
     if (!oid) { res.status(400).json({ error: "InvalidId", message: "Invalid order ID" }); return; }
     const conn = await getOrdersDb();
-    await ensureFtwPendingPaymentExpiryDates(conn.db.collection(COLLECTION));
+    await ensureFtwPaymentExpiryDates(conn.db.collection(COLLECTION));
     const order = await conn.db.collection(COLLECTION).findOne({ _id: oid });
     if (!order || !isOrderInScope(req.scope, order, req)) {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
@@ -1926,10 +1927,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       res.status(404).json({ error: "NotFound", message: "Order not found" }); return;
     }
     const ftwPaymentHold = isFtwPaymentOnHold(prev);
-    const successfulFtwSettlement =
-      isFtwOrder(prev) &&
-      String(prev.paymentStatus ?? "").trim().toLowerCase() === "pending" &&
-      String(paymentStatus ?? "").trim().toLowerCase() === "completed";
+    const successfulFtwSettlement = canAcceptFtwSettlement(prev, paymentStatus);
     const failedFtwPaymentSignal =
       isFtwOrder(prev) &&
       String(prev.paymentStatus ?? "").trim().toLowerCase() === "pending" &&

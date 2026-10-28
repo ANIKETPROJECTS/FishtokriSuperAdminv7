@@ -138,7 +138,7 @@ function displayStatus(status: string, deliveryType?: string) {
   return status;
 }
 
-const FTW_PAYMENT_TIMEOUT_MS = 5 * 60 * 1000;
+const FTW_PAYMENT_TIMEOUT_MS = 7 * 60 * 1000;
 
 function isFtwOrder(order: any): boolean {
   return String(order?.orderId ?? "").trim().replace(/^#+/, "").toUpperCase().startsWith("FTW");
