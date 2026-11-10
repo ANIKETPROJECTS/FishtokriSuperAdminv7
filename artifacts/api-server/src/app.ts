@@ -11,6 +11,7 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
+    autoLogging: false,
     serializers: {
       req(req) {
         return {
