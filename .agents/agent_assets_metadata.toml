@@ -40,3 +40,17 @@ mtime_ms = 1791337586632
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:bf84a5a0-6065-4cbc-a90a-122909921b84/84e25861-cd87-46f3-a4fc-90c3d836944b/90b8057f-f4c8-405a-8f43-e9c2022495b5"
 storage_version_token = "1791337588427106"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "nOjy_sSCe8oaG9YH-LXB1"
+uri = "file://docs/client-system-update-requirements.pdf"
+type = "pdf"
+title = "FishTokri System Updates PDF"
+description = "PDF version of the updated FishTokri system features document."
+logical_id = "fe445d89-08ec-4e15-a685-e73b23a48208"
+content_hash = "sha256:6873f145243faf7c34b2d44dac06b24c5c14c6821092850c2dd5392766bc8ca4"
+size = 71700
+mtime_ms = 1794813339039
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:bf84a5a0-6065-4cbc-a90a-122909921b84/fe445d89-08ec-4e15-a685-e73b23a48208/e9473601-5f4c-45be-9fe4-f5dfdff3b306"
+storage_version_token = "1794813370125032"
+content_type = "application/pdf"
