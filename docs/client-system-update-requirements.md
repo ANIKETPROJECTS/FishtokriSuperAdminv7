@@ -100,16 +100,57 @@ Authorized administrators will be able to review customer purchase history and s
 
 Reports may also support filtering and export so administrators can review the information outside the dashboard.
 
-## 8. Inventory tracking across the workflow
+## 8. Detailed business analytics and WhatsApp marketing
 
-The system will keep a record of stock movements through the full process:
+The admin panel will include a Business Analytics area that brings sales, products, customer activity, and marketing results together. Users will be able to select a date range and filter the information by Sub Hub, product, category, and order status.
 
-1. Raw materials are purchased from a vendor.
-2. Received materials are added to Super Hub raw inventory.
-3. Raw materials are used in a processing run.
-4. Processing output is added as finished-product inventory at the Super Hub.
-5. Finished products are transferred to a Sub Hub.
-6. Accepted quantities are added to the Sub Hub’s inventory.
-7. Any damage, shortage, return, or wastage is recorded and reflected in inventory.
+### Sales overview
 
-This tracking will help prevent stock from being counted twice and make it possible to trace a finished product batch back to its raw materials.
+The sales dashboard will show daily and date-range summaries, including:
+
+- Number of orders and items sold.
+- Order value and sales totals, with discounts, delivery charges, taxes, refunds, and cancellations shown separately where available.
+- Sales comparisons across days and Sub Hubs.
+- Changes in sales over time, so administrators can spot busy and slow periods.
+
+### Product performance and demand
+
+Administrators will be able to see:
+
+- Best-selling products by quantity and sales value.
+- Product and category sales by day, week, or selected date range.
+- Products gaining or losing demand over time.
+- Products that are frequently purchased together.
+- Demand patterns that can help with purchasing raw materials, planning processing, and sending stock to Sub Hubs.
+
+### Customer activity and interests
+
+Customer analytics will show useful shopping patterns, such as:
+
+- Purchase history and frequently purchased products or categories.
+- Order frequency, average order value, and total spend over a selected period.
+- Products viewed or added to a cart, where this activity is available.
+- Customers with a strong interest in particular products or categories.
+- Customers who may be returning, inactive, or likely to purchase again, based on their order activity.
+
+Customer information and marketing access will be limited to authorized admin users.
+
+### Automated WhatsApp image campaigns
+
+The system will use customer purchase and shopping interests to create relevant WhatsApp marketing audiences. For example, customers who regularly buy prawns can be grouped for a prawn promotion, while customers interested in chicken products can receive a chicken-product campaign.
+
+Marketing users will be able to:
+
+- Choose an audience based on products or categories purchased, order history, cart activity, Sub Hub, or other available customer activity.
+- Create a campaign with a product or promotional image, message text, and relevant offer or link.
+- Send the campaign through the connected WhatsApp API using the appropriate approved marketing template, including an image header where supported.
+- Review the audience and message before sending, and schedule or start the campaign.
+- See campaign progress and results, such as messages sent, delivered, read, failed, and customer responses or link activity where available.
+
+Automated campaigns can be triggered by defined customer activity, such as interest in a product category or a period without a repeat purchase. The system will respect WhatsApp messaging rules, template requirements, customer opt-in and opt-out status, and message frequency limits. Customers who have opted out or cannot be contacted will be excluded.
+
+### Marketing and business reports
+
+The analytics area will show which audiences and campaigns perform best. Administrators will be able to compare campaign results with product sales and customer activity to understand which products customers respond to and whether a campaign leads to visits or purchases.
+
+Reports will support date and Sub Hub filters and can be exported for further review where needed.
