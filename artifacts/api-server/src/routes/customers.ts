@@ -337,12 +337,31 @@ async function enrichCustomers(customers: any[], log?: any) {
 router.get("/", async (req: ScopedRequest, res) => {
   try {
     const Customer = await getCustomerModel();
-    const { search, sort = "createdAt_desc", page = "1", limit = "20" } = req.query as Record<string, string>;
+    const {
+      search,
+      sort = "createdAt_desc",
+      page = "1",
+      limit = "20",
+      wallet,
+    } = req.query as Record<string, string>;
 
     const filter: Record<string, any> = {};
     if (search) {
       const regex = new RegExp(search, "i");
       filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
+    }
+    if (wallet === "has" || wallet === "none") {
+      const numericWalletBalance = {
+        $convert: {
+          input: "$walletBalance",
+          to: "double",
+          onError: 0,
+          onNull: 0,
+        },
+      };
+      filter.$expr = wallet === "has"
+        ? { $gt: [numericWalletBalance, 0] }
+        : { $lte: [numericWalletBalance, 0] };
     }
 
     // Apply hub scope: non-master users only see customers who placed at

@@ -89,6 +89,7 @@ async function fetchCustomers(params: {
   sort?: string;
   page?: number;
   limit?: number;
+  wallet?: "all" | "has" | "none";
 }): Promise<CustomersResponse> {
   const base = getBase();
   const qs = new URLSearchParams();
@@ -96,6 +97,7 @@ async function fetchCustomers(params: {
   if (params.sort) qs.set("sort", params.sort);
   if (params.page) qs.set("page", String(params.page));
   if (params.limit) qs.set("limit", String(params.limit));
+  if (params.wallet && params.wallet !== "all") qs.set("wallet", params.wallet);
   const res = await fetch(`${base}/api/customers?${qs.toString()}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
@@ -371,11 +373,17 @@ export default function Customers() {
     );
   }, [searchTimeout]);
 
-  const queryKey = [...CUSTOMERS_QUERY_KEY, debouncedSearch, sort, page];
+  const queryKey = [...CUSTOMERS_QUERY_KEY, debouncedSearch, sort, page, filterWallet];
 
   const { data, isLoading } = useQuery({
     queryKey,
-    queryFn: () => fetchCustomers({ search: debouncedSearch, sort, page, limit: LIMIT }),
+    queryFn: () => fetchCustomers({
+      search: debouncedSearch,
+      sort,
+      page,
+      limit: LIMIT,
+      wallet: filterWallet,
+    }),
     refetchInterval: 1000,
   });
 
