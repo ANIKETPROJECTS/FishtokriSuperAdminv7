@@ -3,15 +3,12 @@ export const FTW_PAYMENT_TIMEOUT_MINUTES = 7;
 export const FTW_ORDER_ID_FILTER = { $regex: "^#*FTW", $options: "i" };
 export const FTW_PENDING_FILTER = /^pending$/i;
 export const FTW_FAILED_FILTER = /^failed$/i;
-export const FTW_UNSETTLED_PAYMENT_FILTER = {
-  $in: [FTW_PENDING_FILTER, FTW_FAILED_FILTER],
-};
 
 export function buildFtwPaymentExpiryBackfillFilter() {
   return {
     orderId: FTW_ORDER_ID_FILTER,
     isDeleted: { $ne: true },
-    paymentStatus: FTW_UNSETTLED_PAYMENT_FILTER,
+    paymentStatus: FTW_PENDING_FILTER,
     $or: [
       { paymentExpiresAt: { $exists: false } },
       { paymentExpiresAt: null },
@@ -23,7 +20,7 @@ export function buildFtwPaymentExpiryExtensionFilter() {
   return {
     orderId: FTW_ORDER_ID_FILTER,
     isDeleted: { $ne: true },
-    paymentStatus: FTW_UNSETTLED_PAYMENT_FILTER,
+    paymentStatus: FTW_PENDING_FILTER,
     createdAt: { $type: "date" },
     $expr: {
       $lt: [
@@ -68,6 +65,14 @@ export function buildFtwPaymentExpiryPipeline() {
   ];
 }
 
+export function buildFailedFtwPaymentFilter() {
+  return {
+    orderId: FTW_ORDER_ID_FILTER,
+    isDeleted: { $ne: true },
+    paymentStatus: FTW_FAILED_FILTER,
+  };
+}
+
 export function buildExpiredFtwPaymentFilter(paymentStatusFilter) {
   return {
     orderId: FTW_ORDER_ID_FILTER,
@@ -91,7 +96,7 @@ export function canAcceptFtwSettlement(order, incomingPaymentStatus, now = Date.
   const incomingStatus = String(incomingPaymentStatus ?? "").trim().toLowerCase();
   return (
     orderId.startsWith("FTW") &&
-    ["pending", "failed"].includes(currentStatus) &&
+    currentStatus === "pending" &&
     incomingStatus === "completed" &&
     isWithinFtwPaymentWindow(order, now)
   );

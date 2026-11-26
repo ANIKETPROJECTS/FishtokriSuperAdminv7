@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildFailedFtwPaymentFilter,
   buildExpiredFtwPaymentFilter,
   buildFtwPaymentExpiryBackfillFilter,
   buildFtwPaymentExpiryExtensionFilter,
@@ -19,10 +20,10 @@ test("FTW payment window is seven minutes from order creation", () => {
   assert.equal(expiresAt.toISOString(), "2026-10-28T09:09:24.490Z");
 });
 
-test("failed FTW payment remains eligible for a successful settlement during the window", () => {
+test("pending FTW payment accepts settlement only within the payment window", () => {
   const order = {
     orderId: "#FTW2026102837",
-    paymentStatus: "failed",
+    paymentStatus: "pending",
     paymentExpiresAt: expiresAt,
   };
 
@@ -36,28 +37,43 @@ test("failed FTW payment remains eligible for a successful settlement during the
   );
 });
 
-test("failed-payment cleanup is gated by the same expiry as pending-payment cleanup", () => {
+test("failed FTW payment cannot be revived by a later successful settlement", () => {
+  const failedOrder = {
+    orderId: "#FTW2026102837",
+    paymentStatus: "failed",
+    paymentExpiresAt: expiresAt,
+  };
+
+  assert.equal(
+    canAcceptFtwSettlement(failedOrder, "completed", new Date("2026-10-28T09:04:42.343Z").getTime()),
+    false,
+  );
+});
+
+test("failed FTW payments are immediately eligible for cleanup without an expiry", () => {
+  const filter = buildFailedFtwPaymentFilter();
+  assert.deepEqual(filter.paymentStatus, FTW_FAILED_FILTER);
+  assert.deepEqual(filter.isDeleted, { $ne: true });
+  assert.equal(filter.paymentExpiresAt, undefined);
+});
+
+test("pending-payment cleanup remains gated by the seven-minute expiry", () => {
   const pendingFilter = buildExpiredFtwPaymentFilter(FTW_PENDING_FILTER);
-  const failedFilter = buildExpiredFtwPaymentFilter(FTW_FAILED_FILTER);
 
-  for (const filter of [pendingFilter, failedFilter]) {
-    assert.deepEqual(filter.paymentExpiresAt, { $type: "date" });
-    assert.deepEqual(filter.$expr, { $lte: ["$paymentExpiresAt", "$$NOW"] });
-    assert.deepEqual(filter.isDeleted, { $ne: true });
-  }
+  assert.deepEqual(pendingFilter.paymentExpiresAt, { $type: "date" });
+  assert.deepEqual(pendingFilter.$expr, { $lte: ["$paymentExpiresAt", "$$NOW"] });
+  assert.deepEqual(pendingFilter.isDeleted, { $ne: true });
   assert.deepEqual(pendingFilter.paymentStatus, FTW_PENDING_FILTER);
-  assert.deepEqual(failedFilter.paymentStatus, FTW_FAILED_FILTER);
 });
 
-test("expiry is backfilled for both pending and failed FTW orders", () => {
+test("expiry is backfilled only for pending FTW orders", () => {
   const filter = buildFtwPaymentExpiryBackfillFilter();
-  assert.equal(filter.paymentStatus.$in.length, 2);
-  assert.deepEqual(filter.paymentStatus.$in, [FTW_PENDING_FILTER, FTW_FAILED_FILTER]);
+  assert.deepEqual(filter.paymentStatus, FTW_PENDING_FILTER);
 });
 
-test("active orders with the former five-minute expiry are extended to seven minutes", () => {
+test("pending orders with the former five-minute expiry are extended to seven minutes", () => {
   const filter = buildFtwPaymentExpiryExtensionFilter();
-  assert.deepEqual(filter.paymentStatus.$in, [FTW_PENDING_FILTER, FTW_FAILED_FILTER]);
+  assert.deepEqual(filter.paymentStatus, FTW_PENDING_FILTER);
   assert.deepEqual(filter.createdAt, { $type: "date" });
   assert.equal(
     buildFtwPaymentExpiryPipeline()[0].$set.paymentExpiresAt.$dateAdd.amount,

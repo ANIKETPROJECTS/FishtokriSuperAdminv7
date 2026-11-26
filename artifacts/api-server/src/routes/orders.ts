@@ -19,6 +19,7 @@ import {
   ensureFtwPaymentExpiryDates,
   isFtwOrder,
   isFtwPaymentOnHold,
+  cleanupFailedFtwPaymentOrder,
 } from "../services/ftw-order-lifecycle.js";
 import { canAcceptFtwSettlement } from "../services/ftw-order-lifecycle-policy.mjs";
 import {
@@ -2146,12 +2147,36 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       update.dueAmount = 0;
     }
 
+    const orderUpdateFilter: Record<string, any> = {
+      _id: oid,
+      isDeleted: { $ne: true },
+    };
+    if (successfulFtwSettlement || failedFtwPaymentSignal) {
+      // A failed FTW signal and a successful settlement race on the same
+      // pending state. Only the first atomic transition may win.
+      orderUpdateFilter.paymentStatus = /^pending$/i;
+    }
     const result = await conn.db.collection(COLLECTION).findOneAndUpdate(
-      { _id: oid, isDeleted: { $ne: true } },
+      orderUpdateFilter,
       { $set: update },
       { returnDocument: "after" }
     );
-    if (!result) { res.status(404).json({ error: "NotFound", message: "Order not found" }); return; }
+    if (!result) {
+      if (successfulFtwSettlement || failedFtwPaymentSignal) {
+        const current = await conn.db.collection(COLLECTION).findOne(
+          { _id: oid, isDeleted: { $ne: true } },
+        );
+        if (current) {
+          res.status(409).json({
+            error: "FtwPaymentStateChanged",
+            message: "The FTW payment state was already finalized.",
+          });
+          return;
+        }
+      }
+      res.status(404).json({ error: "NotFound", message: "Order not found" });
+      return;
+    }
 
     // Sync inventory if status transitioned between active/cancelled.
     try {
@@ -2326,7 +2351,19 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       }
     }
 
-    res.json({ order: result });
+    let responseOrder: any = result;
+    if (failedFtwPaymentSignal) {
+      try {
+        await cleanupFailedFtwPaymentOrder(String(oid));
+        responseOrder = await conn.db.collection(COLLECTION).findOne({ _id: oid }) ?? result;
+      } catch (e) {
+        req.log.error(
+          { err: e, orderId: (result as any).orderId },
+          "Failed to immediately clean up FTW payment failure",
+        );
+      }
+    }
+    res.json({ order: responseOrder });
 
     // --- WhatsApp notifications (fire-and-forget, never blocks the response) ---
     if (status !== undefined && String(status) !== String(prev.status ?? "")) {
