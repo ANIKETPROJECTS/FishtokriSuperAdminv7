@@ -22,6 +22,7 @@ import {
 } from "../services/ftw-order-lifecycle.js";
 import { canAcceptFtwSettlement } from "../services/ftw-order-lifecycle-policy.mjs";
 import {
+  getMissingWalletDebit,
   getWalletPaymentAmount,
   hasNonWalletPayment,
 } from "../lib/wallet-payment-amount.mjs";
@@ -268,10 +269,11 @@ async function ensureMixedFtwWalletDebit(
       { projection: { walletTransactions: 1 } },
     );
     if (!customer) throw new Error("Customer for FTW order was not found");
-    const alreadyDebited = (Array.isArray(customer.walletTransactions) ? customer.walletTransactions : [])
-      .filter((transaction: any) => String(transaction?.orderRef ?? "") === orderRef)
-      .reduce((total: number, transaction: any) => total + Math.max(0, -(Number(transaction?.amount) || 0)), 0);
-    const missingWalletAmount = Math.max(0, walletAmount - alreadyDebited);
+    const missingWalletAmount = getMissingWalletDebit(
+      walletAmount,
+      customer.walletTransactions,
+      orderRef,
+    );
     if (missingWalletAmount === 0) return;
 
     const deduction = await customersCollection.updateOne(

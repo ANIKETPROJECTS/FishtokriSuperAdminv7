@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  getMissingWalletDebit,
   getWalletPaymentAmount,
   hasNonWalletPayment,
 } from "../src/lib/wallet-payment-amount.mjs";
@@ -45,4 +46,18 @@ test("recognizes the UPI leg of a mixed payment", () => {
     true,
   );
   assert.equal(hasNonWalletPayment([{ mode: "wallet", amount: 22 }]), false);
+});
+
+test("does not duplicate a full wallet debit on a settlement retry", () => {
+  assert.equal(
+    getMissingWalletDebit(22, [{ orderRef: "order-1", amount: -22 }], "order-1"),
+    0,
+  );
+});
+
+test("deducts only the remaining wallet amount after a partial debit", () => {
+  assert.equal(
+    getMissingWalletDebit(22, [{ orderRef: "order-1", amount: -10 }], "order-1"),
+    12,
+  );
 });
