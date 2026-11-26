@@ -21,6 +21,10 @@ import {
   isFtwPaymentOnHold,
 } from "../services/ftw-order-lifecycle.js";
 import { canAcceptFtwSettlement } from "../services/ftw-order-lifecycle-policy.mjs";
+import {
+  getWalletPaymentAmount,
+  hasNonWalletPayment,
+} from "../lib/wallet-payment-amount.mjs";
 
 const router = Router();
 router.use(requireAuth as any);
@@ -231,6 +235,83 @@ async function pushWalletTx(
     { _id: custOid },
     { $inc: { walletBalance: balanceDelta }, $push: { walletTransactions: txEntry } }
   );
+}
+
+async function ensureMixedFtwWalletDebit(
+  ordersCollection: any,
+  customersCollection: any,
+  order: any,
+  orderRef: string,
+  log: any,
+): Promise<void> {
+  const walletAmount = getWalletPaymentAmount(order?.payments, order?.walletUsed);
+  const fallbackPaymentMode = String(order?.paymentMode ?? "").trim().toLowerCase();
+  const hasMixedPayment =
+    hasNonWalletPayment(order?.payments) ||
+    (fallbackPaymentMode !== "" &&
+      fallbackPaymentMode !== "wallet" &&
+      Math.max(0, Number(order?.paidAmount) || 0) > 0);
+  if (walletAmount <= 0 || !hasMixedPayment) return;
+
+  const claim = await ordersCollection.updateOne(
+    { _id: toId(orderRef), walletDeductionApplied: { $ne: true } },
+    { $set: { walletDeductionApplied: true } },
+  );
+  if (claim.modifiedCount === 0) return;
+
+  try {
+    const customerId = toId(String(order?.customerId ?? ""));
+    if (!customerId) throw new Error("FTW order has no valid customer ID");
+
+    const customer = await customersCollection.findOne(
+      { _id: customerId },
+      { projection: { walletTransactions: 1 } },
+    );
+    if (!customer) throw new Error("Customer for FTW order was not found");
+    const alreadyDebited = (Array.isArray(customer.walletTransactions) ? customer.walletTransactions : [])
+      .filter((transaction: any) => String(transaction?.orderRef ?? "") === orderRef)
+      .reduce((total: number, transaction: any) => total + Math.max(0, -(Number(transaction?.amount) || 0)), 0);
+    const missingWalletAmount = Math.max(0, walletAmount - alreadyDebited);
+    if (missingWalletAmount === 0) return;
+
+    const deduction = await customersCollection.updateOne(
+      { _id: customerId, walletBalance: { $gte: missingWalletAmount } },
+      {
+        $inc: { walletBalance: -missingWalletAmount },
+        $push: {
+          walletTransactions: {
+            amount: -missingWalletAmount,
+            type: "debit",
+            reason: "FTW mixed payment settled — wallet deducted",
+            createdAt: new Date(),
+            orderId: String(order?.orderId ?? ""),
+            orderRef,
+          },
+        },
+      },
+    );
+    if (deduction.matchedCount === 0) {
+      await ordersCollection.updateOne(
+        { _id: toId(orderRef), walletDeductionApplied: true },
+        { $unset: { walletDeductionApplied: "" } },
+      );
+      log.error(
+        { orderId: order?.orderId, customerId: String(order?.customerId ?? ""), walletAmount: missingWalletAmount },
+        "FTW mixed-payment wallet deduction rejected — insufficient live balance",
+      );
+      return;
+    }
+    log.info(
+      { orderId: order?.orderId, customerId: String(order?.customerId ?? ""), walletAmount: missingWalletAmount },
+      "FTW mixed-payment wallet deducted on settlement",
+    );
+  } catch (error) {
+    await ordersCollection.updateOne(
+      { _id: toId(orderRef), walletDeductionApplied: true },
+      { $unset: { walletDeductionApplied: "" } },
+    );
+    throw error;
+  }
 }
 
 function toId(id: string): mongoose.mongo.BSON.ObjectId | null {
@@ -1121,6 +1202,7 @@ router.post("/", async (req: ScopedRequest, res) => {
       coupons,
       paymentStatus,
       payments,
+      walletUsed: walletUsedInput,
       paidAmount,
       paymentMode,
       scheduleType,
@@ -1309,6 +1391,8 @@ router.post("/", async (req: ScopedRequest, res) => {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+    const walletUsed = getWalletPaymentAmount(orderDoc.payments, walletUsedInput);
+    if (walletUsed > 0) orderDoc.walletUsed = walletUsed;
 
     Object.keys(orderDoc).forEach((k) => orderDoc[k] === undefined && delete orderDoc[k]);
 
@@ -1527,8 +1611,6 @@ router.post("/", async (req: ScopedRequest, res) => {
     // Guarded atomically against the live balance so a stale client-computed amount
     // (e.g. balance changed by another order between page load and submit) can never
     // push walletBalance negative — the update only applies if balance >= walletUsed.
-    const walletPayments = (orderDoc.payments ?? []).filter((p: any) => p.mode === "wallet");
-    const walletUsed = walletPayments.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
     if (walletUsed > 0 && resolvedCustomerId) {
       try {
         const cCol = await getCustomersCollection();
@@ -1555,6 +1637,10 @@ router.post("/", async (req: ScopedRequest, res) => {
             "Wallet deduction on order create rejected — insufficient live balance (stale client amount)"
           );
         } else {
+          await conn.db.collection(COLLECTION).updateOne(
+            { _id: result.insertedId },
+            { $set: { walletDeductionApplied: true } },
+          );
           req.log.info({ customerId: resolvedCustomerId, deducted: walletUsed }, "Wallet deducted on order create");
         }
       } catch (e) {
@@ -1777,6 +1863,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       assignedDeliveryPersonId, assignedDeliveryPersonName,
       customerName, phone, email, address, deliveryArea, deliveryAddressDetail,
       paymentStatus, payments, paidAmount, paymentMode, upiVariant,
+      walletUsed,
       razorpayPaymentId, razorpayOrderId, upiTransactionId, gatewayTransactionId,
       items, deliveryType,
       superHubId, superHubName, subHubId, subHubName,
@@ -1854,6 +1941,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       update.paymentStatus = String(paymentStatus).trim().toLowerCase();
     }
     if (paymentMode !== undefined) update.paymentMode = paymentMode ? String(paymentMode) : "";
+    if (walletUsed !== undefined) update.walletUsed = Math.max(0, Number(walletUsed) || 0);
     if (upiVariant !== undefined) update.upiVariant = upiVariant ? String(upiVariant).trim() : null;
     if (razorpayPaymentId !== undefined) update.razorpayPaymentId = String(razorpayPaymentId ?? "").trim();
     if (razorpayOrderId !== undefined) update.razorpayOrderId = String(razorpayOrderId ?? "").trim();
@@ -1868,6 +1956,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
           paidAt: p?.paidAt ? new Date(p.paidAt) : new Date(),
         }))
         .filter((p: any) => p.mode && p.amount > 0);
+      update.walletUsed = getWalletPaymentAmount(update.payments, walletUsed);
     }
     if (paidAmount !== undefined) {
       const requestedPaidNum = Math.max(0, Number(paidAmount) || 0);
@@ -2022,6 +2111,7 @@ router.put("/:id", async (req: ScopedRequest, res) => {
       update.payments = [];
       update.paidAmount = 0;
       update.paymentMode = "";
+      update.walletUsed = 0;
       const totalForDue = Number((update.total ?? prev.total)) || 0;
       // If the order total is zero (fully discounted), keep it paid; otherwise revert to unpaid.
       if (totalForDue === 0) {
@@ -2102,14 +2192,17 @@ router.put("/:id", async (req: ScopedRequest, res) => {
     // customer wallet balance. walletDelta represents change in wallet *used*:
     //   positive delta (more wallet used)  → deduct from balance  → $inc: -walletDelta
     //   negative delta (less wallet used)  → refund to balance    → $inc: -walletDelta (becomes positive)
-    if (Array.isArray(payments) && (result as any).customerId) {
+    if ((Array.isArray(payments) || walletUsed !== undefined) && (result as any).customerId) {
       try {
-        const prevWalletTotal = ((prev as any).payments ?? [])
-          .filter((p: any) => p.mode === "wallet")
-          .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
-        const newWalletTotal = ((result as any).payments ?? [])
-          .filter((p: any) => p.mode === "wallet")
-          .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        const prevWalletTotal = getWalletPaymentAmount(
+          (prev as any).payments,
+          (prev as any).walletUsed,
+        );
+        const newWalletTotal = getWalletPaymentAmount(
+          (result as any).payments,
+          (result as any).walletUsed,
+          walletUsed !== undefined && !Array.isArray(payments),
+        );
         const walletDelta = newWalletTotal - prevWalletTotal;
         if (walletDelta !== 0) {
           const cCol = await getCustomersCollection();
@@ -2121,6 +2214,20 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         }
       } catch (e) {
         req.log.error({ err: e }, "Failed to update wallet from delivery payment");
+      }
+    }
+
+    if (successfulFtwSettlement && (result as any).customerId) {
+      try {
+        await ensureMixedFtwWalletDebit(
+          conn.db.collection(COLLECTION),
+          await getCustomersCollection(),
+          result,
+          String(oid),
+          req.log,
+        );
+      } catch (e) {
+        req.log.error({ err: e, orderId: (result as any).orderId }, "Failed to apply FTW mixed-payment wallet debit");
       }
     }
 
@@ -2136,9 +2243,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         // Case 1: Order just cancelled — refund any wallet payments back to the customer.
         // Only fires when payments array is not explicitly provided (that case is handled above).
         if (isNowCancelled && wasNotCancelled && !Array.isArray(payments)) {
-          const walletToRefund = ((prev as any).payments ?? [])
-            .filter((p: any) => p.mode === "wallet")
-            .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+          const walletToRefund = getWalletPaymentAmount(
+            (prev as any).payments,
+            (prev as any).walletUsed,
+          );
           if (walletToRefund > 0) {
             const cCol = await getCustomersCollection();
             await pushWalletTx(cCol, String((result as any).customerId), walletToRefund,
@@ -2152,9 +2260,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         // Case 2: Order un-cancelled (moved from cancelled → active) — re-deduct wallet payments.
         // Only fires when payments array is not explicitly provided.
         if (wasCancelled && !isNowCancelled && !Array.isArray(payments)) {
-          const walletToDeduct = ((result as any).payments ?? [])
-            .filter((p: any) => p.mode === "wallet")
-            .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+          const walletToDeduct = getWalletPaymentAmount(
+            (result as any).payments,
+            (result as any).walletUsed,
+          );
           if (walletToDeduct > 0) {
             const cCol = await getCustomersCollection();
             await pushWalletTx(cCol, String((result as any).customerId), -walletToDeduct,
@@ -2168,9 +2277,10 @@ router.put("/:id", async (req: ScopedRequest, res) => {
         // Case 3: Order moved OUT of "delivered" (payments cleared) — refund any wallet used.
         // clearPayments wipes the payments array so we look at prev.payments for the amount.
         if (clearPayments && !isNowCancelled && !Array.isArray(payments)) {
-          const walletToRefund = ((prev as any).payments ?? [])
-            .filter((p: any) => p.mode === "wallet")
-            .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+          const walletToRefund = getWalletPaymentAmount(
+            (prev as any).payments,
+            (prev as any).walletUsed,
+          );
           if (walletToRefund > 0) {
             const cCol = await getCustomersCollection();
             await pushWalletTx(cCol, String((result as any).customerId), walletToRefund,
@@ -2348,9 +2458,10 @@ router.delete("/:id", async (req: ScopedRequest, res) => {
     // Cancelled orders already had their wallet refunded at the time of cancellation.
     if ((existing as any).customerId && (existing as any).status !== "cancelled") {
       try {
-        const walletToRefund = ((existing as any).payments ?? [])
-          .filter((p: any) => p.mode === "wallet")
-          .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        const walletToRefund = getWalletPaymentAmount(
+          (existing as any).payments,
+          (existing as any).walletUsed,
+        );
         if (walletToRefund > 0) {
           const cCol = await getCustomersCollection();
           await pushWalletTx(cCol, String((existing as any).customerId), walletToRefund,
@@ -2533,9 +2644,10 @@ router.post("/:id/restore", async (req: ScopedRequest, res) => {
     // delete did not refund again for them).
     if ((existing as any).customerId && (existing as any).status !== "cancelled") {
       try {
-        const walletToDeduct = ((existing as any).payments ?? [])
-          .filter((p: any) => p.mode === "wallet")
-          .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        const walletToDeduct = getWalletPaymentAmount(
+          (existing as any).payments,
+          (existing as any).walletUsed,
+        );
         if (walletToDeduct > 0) {
           const cCol = await getCustomersCollection();
           await pushWalletTx(cCol, String((existing as any).customerId), -walletToDeduct,
