@@ -6,6 +6,7 @@ import { SubHub } from "../db/models/sub-hub.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 import { customerExportPasswordMatches } from "../lib/customer-export-password.mjs";
+import { addMissingWalletOrderDeductions } from "../lib/wallet-transaction-recovery.mjs";
 
 const router: IRouter = Router();
 router.use(requireAuth as any);
@@ -330,7 +331,19 @@ async function enrichCustomers(customers: any[], log?: any) {
       }
     }
 
-    return { ...customer, orders, currentOrders, orderHistory, totalDue: Math.round(totalDue * 100) / 100 };
+    const walletTransactions = addMissingWalletOrderDeductions(
+      customer.walletTransactions ?? [],
+      linkedOrders,
+    );
+
+    return {
+      ...customer,
+      walletTransactions,
+      orders,
+      currentOrders,
+      orderHistory,
+      totalDue: Math.round(totalDue * 100) / 100,
+    };
   });
 }
 
