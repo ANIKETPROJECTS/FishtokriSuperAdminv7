@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import mongoose from "mongoose";
 import { SubHub } from "../db/models/sub-hub.js";
 import { getSubHubDbConnection } from "../db/sub-hub-connections.js";
+import { isComboEffectivelyActive, isComboManuallyActive } from "../lib/combo-availability.mjs";
 import { requireAuth } from "../middlewares/auth.js";
 import { loadScope, type ScopedRequest } from "../middlewares/scope.js";
 
@@ -717,15 +718,15 @@ router.get("/combos", async (req, res) => {
     const productsCol = ctx.conn.db.collection("products");
     const combos = await combosCol.find({}).sort({ sortOrder: 1, name: 1 }).toArray();
 
-    // Sync each combo's isActive against current product stock.
-    // A combo must be inactive if ANY of its constituent products has quantity <= 0.
-    // Do not automatically activate combos again: an inactive combo may have
-    // been disabled manually, and the list refresh must preserve that choice.
-    const toDeactivate: any[] = [];
-
+    // Keep the manual toggle separate from stock availability. `isActive` in
+    // the response remains the effective state used by storefront/order consumers.
     for (const combo of combos) {
+      combo.manualIsActive = isComboManuallyActive(combo);
       const includes: any[] = Array.isArray(combo.includes) ? combo.includes : [];
-      if (includes.length === 0) continue;
+      if (includes.length === 0) {
+        combo.isActive = isComboEffectivelyActive(combo, true);
+        continue;
+      }
 
       // Collect all productIds (support both string and ObjectId storage)
       const productIds = includes.map((inc: any) => {
@@ -734,28 +735,18 @@ router.get("/combos", async (req, res) => {
         return oid;
       }).filter(Boolean);
 
-      if (productIds.length === 0) continue;
+      if (productIds.length === 0) {
+        combo.isActive = isComboEffectivelyActive(combo, true);
+        continue;
+      }
 
       const products = await productsCol
         .find({ _id: { $in: productIds } }, { projection: { quantity: 1 } })
         .toArray();
 
-      const anyOutOfStock = products.some((p: any) => (Number(p.quantity) || 0) <= 0)
-        || products.length < productIds.length; // some products missing entirely
-
-      if (anyOutOfStock && combo.isActive) {
-        toDeactivate.push(combo._id);
-        combo.isActive = false;
-      }
-    }
-
-    // Persist the synced statuses in bulk
-    const now = new Date();
-    if (toDeactivate.length > 0) {
-      await combosCol.updateMany(
-        { _id: { $in: toDeactivate } },
-        { $set: { isActive: false, updatedAt: now } },
-      );
+      const stockAvailable = products.length >= productIds.length
+        && products.every((p: any) => (Number(p.quantity) || 0) > 0);
+      combo.isActive = isComboEffectivelyActive(combo, stockAvailable);
     }
     res.json({ combos, total: combos.length });
   } catch (err) {
@@ -786,6 +777,7 @@ router.post("/combos", async (req, res) => {
       tags: Array.isArray(tags) ? tags : [],
       nutrition: Array.isArray(nutrition) ? nutrition : [],
       isActive: isActive !== false,
+      manualIsActive: isActive !== false,
       sortOrder: Number(sortOrder) || 0,
       sectionId: normalizeIdList(sectionId),
       createdAt: new Date(),
@@ -838,7 +830,10 @@ router.put("/combos/:comboId", async (req, res) => {
     if (includes !== undefined) update.includes = Array.isArray(includes) ? includes : [];
     if (tags !== undefined) update.tags = tags;
     if (nutrition !== undefined) update.nutrition = nutrition;
-    if (isActive !== undefined) update.isActive = isActive;
+    if (isActive !== undefined) {
+      update.isActive = isActive !== false;
+      update.manualIsActive = isActive !== false;
+    }
     if (sortOrder !== undefined) update.sortOrder = Number(sortOrder) || 0;
     if (sectionId !== undefined) update.sectionId = normalizeIdList(sectionId);
     const result = await ctx.conn.db.collection("combos").findOneAndUpdate({ _id: oid }, { $set: update }, { returnDocument: "after" });
@@ -1571,13 +1566,26 @@ router.post("/combos/bulk-upsert", async (req, res) => {
           discount: Number(row.discount) || (op > dp && dp > 0 ? Math.round(((op - dp) / op) * 100) : 0),
           includes: row.includes ? String(row.includes).split("|").map((s: string) => s.trim()).filter(Boolean) : [],
           tags: row.tags ? String(row.tags).split("|").map((s: string) => s.trim()).filter(Boolean) : [],
-          isActive: String(row.isActive ?? "yes").toLowerCase() !== "no",
+          manualIsActive: String(row.isActive ?? "yes").toLowerCase() !== "no",
           sortOrder: Number(row.sortOrder) || 0, updatedAt: new Date(),
         };
+        const hasActiveValue = row.isActive != null && String(row.isActive).trim() !== "";
+        if (hasActiveValue) {
+          const manualIsActive = String(row.isActive).toLowerCase() !== "no";
+          fields.isActive = manualIsActive;
+          fields.manualIsActive = manualIsActive;
+        } else {
+          delete fields.manualIsActive;
+        }
         if (!fields.name) { errors.push("Skipped: missing name"); continue; }
         const oid = row._id ? toId(String(row._id)) : null;
         if (oid) { await ctx.conn.db.collection("combos").updateOne({ _id: oid }, { $set: fields }); updated++; }
-        else { await ctx.conn.db.collection("combos").insertOne({ ...fields, createdAt: new Date() }); created++; }
+        else {
+          fields.isActive ??= true;
+          fields.manualIsActive ??= true;
+          await ctx.conn.db.collection("combos").insertOne({ ...fields, createdAt: new Date() });
+          created++;
+        }
       } catch (e: any) { errors.push(e.message); }
     }
     res.json({ created, updated, errors });

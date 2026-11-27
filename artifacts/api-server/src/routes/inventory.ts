@@ -288,8 +288,9 @@ async function persistBatches(
     logger.info({ productId: String(productId), newTotal: total, batchCount: normalized.length }, "persistBatches: stock updated successfully");
   }
 
-  // Sync combo isActive based on whether this product's stock is available.
-  // productId may be stored as a string or ObjectId inside combo.includes — match both.
+  // Keep manual enablement separate from stock availability. Inventory may
+  // deactivate an enabled combo when stock runs out, but must never reactivate
+  // a combo the admin manually disabled.
   if (combosCol) {
     const pidStr = String(productId);
     const pidOid = toId(pidStr);
@@ -300,8 +301,15 @@ async function persistBatches(
     if (total === 0) {
       // Stock is 0 (all batches consumed or expired) → deactivate every combo containing this product.
       const deactivated = await combosCol.updateMany(
-        { ...pidFilter, isActive: true },
-        { $set: { isActive: false, updatedAt: new Date() } },
+        {
+          ...pidFilter,
+          isActive: true,
+          $or: [
+            { manualIsActive: true },
+            { manualIsActive: { $exists: false } },
+          ],
+        },
+        { $set: { isActive: false, manualIsActive: true, updatedAt: new Date() } },
       );
       if (deactivated.modifiedCount > 0) {
         logger.info(
@@ -310,10 +318,10 @@ async function persistBatches(
         );
       }
     } else if (total > 0) {
-      // Product now has available stock — re-activate any inactive combo that includes
-      // this product, but only when ALL of its other constituent products also have stock.
+      // Product now has stock — only reactivate combos that are explicitly
+      // manually enabled and whose other constituent products also have stock.
       const inactiveCombos = await combosCol.find(
-        { ...pidFilter, isActive: false },
+        { ...pidFilter, isActive: false, manualIsActive: true },
       ).toArray();
 
       const toReactivate: any[] = [];

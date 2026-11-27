@@ -1970,14 +1970,14 @@ function CombosTab({ subHubId, onSetExcel }: { subHubId: string; onSetExcel: (cf
     discountedPrice: c.discountedPrice ?? 0, originalPrice: c.originalPrice ?? 0, discount: c.discount ?? 0,
     includes: Array.isArray(c.includes) ? c.includes.join("|") : "",
     tags: Array.isArray(c.tags) ? c.tags.join("|") : "",
-    isActive: c.isActive !== false ? "yes" : "no", sortOrder: c.sortOrder ?? 0,
+    isActive: (typeof c.manualIsActive === "boolean" ? c.manualIsActive : c.isActive !== false) ? "yes" : "no", sortOrder: c.sortOrder ?? 0,
   });
   const parseComboRow = (r: any) => ({
     _id: r["ID (do not edit)"] ?? "", name: r["Name"], description: r["Description"] ?? "",
     serves: r["Serves"] ?? "", weight: r["Weight"] ?? "",
     discountedPrice: r["Sale Price"], originalPrice: r["Original Price"], discount: r["Discount %"],
     includes: r["Includes (pipe-separated)"] ?? "", tags: r["Tags (pipe-separated)"] ?? "",
-    isActive: String(r["Active (yes/no)"] ?? "yes"), sortOrder: r["Sort Order"],
+    isActive: String(r["Active (yes/no)"] ?? ""), sortOrder: r["Sort Order"],
   });
 
   const handleComboExport = async () => {
@@ -3956,7 +3956,7 @@ function ComboModal({ isOpen, onClose, combo, subHubId, onSaved, nextOrder = 1, 
         label: i.label ?? "",
         quantity: Math.max(1, Number(i.quantity) || 1),
       })) : []);
-      setIsActive(combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
+      setIsActive(typeof combo.manualIsActive === "boolean" ? combo.manualIsActive : combo.isActive !== false); setSortOrder(String(combo.sortOrder ?? 0));
     } else {
       setName(""); setDescription(""); setFullDescription(""); setDiscountedPrice(""); setOriginalPrice("");
       setServes(""); setWeight(""); setTagsStr(""); setIncludes([]); setIsActive(true); setSortOrder(String(nextOrder));
