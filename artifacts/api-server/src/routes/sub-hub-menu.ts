@@ -733,7 +733,7 @@ router.get("/combos", async (req, res) => {
         const id = inc.productId;
         const oid = toId(String(id));
         return oid;
-      }).filter(Boolean);
+      }).filter((id): id is mongoose.Types.ObjectId => id !== null);
 
       if (productIds.length === 0) {
         combo.isActive = isComboEffectivelyActive(combo, true);

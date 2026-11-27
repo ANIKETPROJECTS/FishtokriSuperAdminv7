@@ -15,3 +15,4 @@
 - [Secrets in process configuration](secrets-in-process-config.md) — after managing a Replit secret, check tracked process configs for plaintext copies and pass values through the environment.
 - [Admark template variables in chats](admark-chat-template-rendering.md) — Admark messages can carry `variables.bodyN`; resolve them against raw template text and avoid displaying unresolved tokens.
 - [Customer delivery zones](customer-delivery-zones.md) — zones are independent from pincodes and should be assigned manually to customer addresses.
+- [Combo manual availability](combo-manual-availability.md) — keep the admin's manual enablement separate from stock-based sellability so restocking cannot undo a deliberate disable.

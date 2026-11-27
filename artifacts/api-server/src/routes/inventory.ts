@@ -338,7 +338,11 @@ async function persistBatches(
 
       if (toReactivate.length > 0) {
         await combosCol.updateMany(
-          { _id: { $in: toReactivate } },
+          {
+            _id: { $in: toReactivate },
+            isActive: false,
+            manualIsActive: true,
+          },
           { $set: { isActive: true, updatedAt: new Date() } },
         );
         logger.info(
